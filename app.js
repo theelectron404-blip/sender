@@ -252,40 +252,27 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
 app.post('/api/auth/login', (req, res) => {
-    // Detect whether this is a native form POST or a JSON fetch call
-    const ct = String(req.headers['content-type'] || '');
-    const isFormPost = ct.includes('application/x-www-form-urlencoded');
-
     if (!LOGIN_ENABLED) {
-        if (isFormPost) return res.redirect(302, '/dashboard');
-        return res.json({ ok: true, authenticated: true, loginEnabled: false });
+        const token = createAuthToken('admin');
+        res.setHeader('Set-Cookie', authCookie(req, token, Math.floor(AUTH_TOKEN_TTL_MS / 1000)));
+        res.setHeader('Cache-Control', 'no-store');
+        return res.redirect(302, '/dashboard');
     }
 
     const username = String(req.body?.username || '').trim();
     const password = String(req.body?.password || '');
 
     if (!username || !password) {
-        if (isFormPost) return res.redirect(302, '/login?error=' + encodeURIComponent('Username and password are required.'));
-        return res.status(400).json({ error: 'Username and password are required.' });
+        return res.redirect(302, '/login?error=' + encodeURIComponent('Username and password are required.'));
     }
     if (username !== AUTH_USER || password !== AUTH_PASS) {
-        if (isFormPost) return res.redirect(302, '/login?error=' + encodeURIComponent('Invalid username or password.'));
-        return res.status(401).json({ error: 'Invalid username or password.' });
+        return res.redirect(302, '/login?error=' + encodeURIComponent('Invalid username or password.'));
     }
 
     const token = createAuthToken(username);
-    const cookieStr = authCookie(req, token, Math.floor(AUTH_TOKEN_TTL_MS / 1000));
-
-    if (isFormPost) {
-        // Native form POST path — let the browser handle cookie storage during redirect
-        res.setHeader('Set-Cookie', cookieStr);
-        res.setHeader('Cache-Control', 'no-store');
-        return res.redirect(302, '/dashboard');
-    }
-
+    res.setHeader('Set-Cookie', authCookie(req, token, Math.floor(AUTH_TOKEN_TTL_MS / 1000)));
     res.setHeader('Cache-Control', 'no-store');
-    res.setHeader('Set-Cookie', cookieStr);
-    return res.json({ ok: true, authenticated: true, loginEnabled: true });
+    return res.redirect(302, '/dashboard');
 });
 
 app.post('/api/auth/logout', (req, res) => {
