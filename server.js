@@ -38,8 +38,8 @@ server.on('error', (err) => {
     process.exitCode = 1;
 });
 
-server.listen(activePort, () => {
-    console.log(`Notification server running at http://localhost:${activePort}`);
+server.listen(activePort, '0.0.0.0', () => {
+    console.log(`Notification server running at http://0.0.0.0:${activePort}`);
     // Start bounce monitor after server is listening so io is fully ready
     bounceMonitor.start(io);
 });
