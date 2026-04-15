@@ -27,6 +27,12 @@ function loadBlacklist() {
 const _redirectStore = new Map();
 const CLICK_LOG_PATH = path.join(__dirname, 'click-log.json');
 
+// ── Microsoft Graph OAuth (delegated / personal account) ─────────────────────
+// State map: random hex → { clientId, clientSecret, redirectUri, createdAt }
+const _graphOAuthState = new Map();
+// Token store: clientId → { refreshToken, accessToken, expiresAt, senderEmail, clientId, clientSecret }
+const _graphTokenStore = new Map();
+
 function _loadClickLog() {
     try {
         const entries = JSON.parse(fs.readFileSync(CLICK_LOG_PATH, 'utf8'));
@@ -85,13 +91,43 @@ function cloakLinks(html, domains) {
 }
 
 async function getGraphAccessToken(graphConfig) {
-    const tenantId = String(graphConfig.tenantId || '').trim();
     const clientId = String(graphConfig.clientId || '').trim();
-    const clientSecret = String(graphConfig.clientSecret || '').trim();
-    if (!tenantId || !clientId || !clientSecret) {
-        throw new Error('Graph credentials are incomplete.');
+
+    // ── Delegated flow: use stored refresh_token (personal & work accounts) ──
+    const stored = clientId ? _graphTokenStore.get(clientId) : null;
+    if (stored && stored.refreshToken) {
+        // Return cached access token if still valid (60 s buffer)
+        if (stored.accessToken && stored.expiresAt > Date.now() + 60000) {
+            return stored.accessToken;
+        }
+        // Refresh using refresh_token
+        const tokenRes = await fetch('https://login.microsoftonline.com/common/oauth2/v2.0/token', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams({
+                client_id: clientId,
+                ...(stored.clientSecret ? { client_secret: stored.clientSecret } : {}),
+                refresh_token: stored.refreshToken,
+                grant_type: 'refresh_token',
+                scope: 'https://graph.microsoft.com/Mail.Send offline_access',
+            }),
+        });
+        const tokenData = await tokenRes.json().catch(() => ({}));
+        if (!tokenRes.ok || !tokenData.access_token) {
+            throw new Error(tokenData.error_description || tokenData.error || 'Token refresh failed. Reconnect via Microsoft login.');
+        }
+        stored.accessToken = tokenData.access_token;
+        stored.expiresAt = Date.now() + (tokenData.expires_in || 3600) * 1000;
+        if (tokenData.refresh_token) stored.refreshToken = tokenData.refresh_token;
+        return stored.accessToken;
     }
 
+    // ── Client credentials flow: work/org accounts ──────────────────────────
+    const tenantId = String(graphConfig.tenantId || '').trim();
+    const clientSecret = String(graphConfig.clientSecret || '').trim();
+    if (!tenantId || !clientId || !clientSecret) {
+        throw new Error('Not connected to Microsoft. Click "Connect with Microsoft" to log in, or fill Tenant ID + Client Secret for a work account.');
+    }
     const tokenUrl = `https://login.microsoftonline.com/${encodeURIComponent(tenantId)}/oauth2/v2.0/token`;
     const body = new URLSearchParams({
         client_id: clientId,
@@ -99,7 +135,6 @@ async function getGraphAccessToken(graphConfig) {
         grant_type: 'client_credentials',
         scope: 'https://graph.microsoft.com/.default',
     });
-
     const tokenRes = await fetch(tokenUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -113,8 +148,10 @@ async function getGraphAccessToken(graphConfig) {
 }
 
 async function sendGraphMail({ graphConfig, recipient, subject, html }) {
-    const sender = String(graphConfig.sender || '').trim();
-    if (!sender) throw new Error('Graph sender mailbox is required.');
+    const clientId = String(graphConfig.clientId || '').trim();
+    const stored = clientId ? _graphTokenStore.get(clientId) : null;
+    const sender = String(graphConfig.sender || (stored && stored.senderEmail) || '').trim();
+    if (!sender) throw new Error('Graph sender mailbox is required. Connect with Microsoft first.');
 
     const accessToken = await getGraphAccessToken(graphConfig);
     const sendUrl = `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(sender)}/sendMail`;
@@ -299,8 +336,97 @@ app.get('/dashboard', requireAuth, (req, res) => {
     return res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
+// ── Microsoft Graph OAuth routes (public — no auth cookie required) ──────────
+
+// Returns a Microsoft login URL for the delegated OAuth2 flow.
+app.get('/api/graph/auth-url', requireAuth, (req, res) => {
+    const clientId     = String(req.query.clientId     || '').trim();
+    const clientSecret = String(req.query.clientSecret || '').trim();
+    const redirectUri  = String(req.query.redirectUri  || '').trim();
+    if (!clientId || !redirectUri) return res.status(400).json({ error: 'clientId and redirectUri are required.' });
+    const state = crypto.randomBytes(16).toString('hex');
+    // Clean up stale states (>10 min)
+    for (const [k, v] of _graphOAuthState) { if (Date.now() - v.createdAt > 600000) _graphOAuthState.delete(k); }
+    _graphOAuthState.set(state, { clientId, clientSecret, redirectUri, createdAt: Date.now() });
+    const params = new URLSearchParams({
+        client_id: clientId,
+        response_type: 'code',
+        redirect_uri: redirectUri,
+        scope: 'https://graph.microsoft.com/Mail.Send offline_access',
+        response_mode: 'query',
+        state,
+    });
+    return res.json({ url: `https://login.microsoftonline.com/common/oauth2/v2.0/authorize?${params}` });
+});
+
+// OAuth callback — Microsoft redirects here after login.
+app.get('/api/graph/callback', async (req, res) => {
+    const code    = String(req.query.code  || '');
+    const state   = String(req.query.state || '');
+    const errMsg  = String(req.query.error_description || req.query.error || '');
+
+    const page = (type, payload) => {
+        const bg = type === 'graph-auth-success' ? '#0a3d1f' : '#3d0a0a';
+        const icon = type === 'graph-auth-success' ? '✓' : '✗';
+        const msg  = type === 'graph-auth-success' ? `Connected as ${payload.sender}` : payload.error;
+        return `<!DOCTYPE html><html><head><title>Microsoft Auth</title></head><body style="margin:0;display:grid;place-items:center;height:100vh;background:${bg};font-family:sans-serif;color:#e2e8f0"><div style="text-align:center;padding:32px"><div style="font-size:40px;margin-bottom:12px">${icon}</div><p style="font-size:18px;font-weight:600">${msg}</p><p style="color:#94a3b8;font-size:14px">You can close this window.</p></div><script>try{window.opener.postMessage(${JSON.stringify({ type, ...payload })},'*');}catch(e){}setTimeout(()=>window.close(),2000);</script></body></html>`;
+    };
+
+    if (errMsg) return res.send(page('graph-auth-error', { error: errMsg }));
+
+    const oauthData = _graphOAuthState.get(state);
+    if (!oauthData) return res.send(page('graph-auth-error', { error: 'Invalid or expired state. Try again.' }));
+    _graphOAuthState.delete(state);
+
+    try {
+        const tokenRes = await fetch('https://login.microsoftonline.com/common/oauth2/v2.0/token', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams({
+                client_id: oauthData.clientId,
+                ...(oauthData.clientSecret ? { client_secret: oauthData.clientSecret } : {}),
+                code,
+                redirect_uri: oauthData.redirectUri,
+                grant_type: 'authorization_code',
+            }),
+        });
+        const tokenData = await tokenRes.json().catch(() => ({}));
+        if (!tokenRes.ok || !tokenData.access_token) {
+            throw new Error(tokenData.error_description || tokenData.error || 'Token exchange failed.');
+        }
+        // Extract email from id_token JWT payload
+        let senderEmail = '';
+        try {
+            const parts = (tokenData.id_token || '').split('.');
+            if (parts[1]) {
+                const pl = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8'));
+                senderEmail = pl.preferred_username || pl.email || pl.unique_name || '';
+            }
+        } catch { /* non-fatal */ }
+        _graphTokenStore.set(oauthData.clientId, {
+            clientId: oauthData.clientId,
+            clientSecret: oauthData.clientSecret,
+            refreshToken: tokenData.refresh_token || '',
+            accessToken: tokenData.access_token,
+            expiresAt: Date.now() + (tokenData.expires_in || 3600) * 1000,
+            senderEmail,
+        });
+        return res.send(page('graph-auth-success', { sender: senderEmail }));
+    } catch (e) {
+        return res.send(page('graph-auth-error', { error: e.message }));
+    }
+});
+
+// Returns current connection status for a given clientId.
+app.get('/api/graph/token-status', requireAuth, (req, res) => {
+    const clientId = String(req.query.clientId || '').trim();
+    const stored = _graphTokenStore.get(clientId);
+    if (!stored) return res.json({ connected: false });
+    return res.json({ connected: true, sender: stored.senderEmail });
+});
+
 app.use((req, res, next) => {
-    if (req.path === '/unsub' || req.path.startsWith('/r/')) return next();
+    if (req.path === '/unsub' || req.path.startsWith('/r/') || req.path === '/api/graph/callback') return next();
     if (req.path === '/login.html') return res.redirect('/login');
     if (req.path.startsWith('/api/auth')) return next();
 

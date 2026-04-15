@@ -554,23 +554,44 @@ details[open] summary{margin-bottom:13px}
       <div id="tab-graph" class="tab-panel">
         <div class="s-hdr">
           <div class="s-hdr-title">Microsoft Graph API</div>
-          <div class="s-hdr-sub">Authenticate with Tenant App credentials and optionally send the full batch through Graph API instead of SMTP.</div>
+          <div class="s-hdr-sub">Send via your Microsoft account — personal (@outlook.com) or work/org accounts.</div>
         </div>
+
+        <!-- ── Personal account (delegated OAuth) ── -->
         <div class="card">
+          <div class="lbl" style="margin-bottom:12px">Personal Account <span class="hint">— @outlook.com · @hotmail.com · @live.com (delegated login)</span></div>
+          <div class="g2">
+            <div class="field"><div class="lbl">Client ID</div><input class="inp" id="graphClientId" type="text" placeholder="Application (client) ID" oninput="saveField(this.id);onGraphClientIdChange()"></div>
+            <div class="field"><div class="lbl">Client Secret <span class="hint">— optional for public apps</span></div><input class="inp" id="graphClientSecret" type="password" placeholder="Client secret value" oninput="saveField(this.id)" autocomplete="off"></div>
+          </div>
+          <div class="field" style="margin-bottom:14px">
+            <div class="lbl">Redirect URI <span class="hint">— copy this into your Azure app registration</span></div>
+            <input class="inp" id="graphRedirectUri" readonly style="font-family:monospace;font-size:13px;color:var(--text2)">
+          </div>
+          <div class="btn-row">
+            <button class="btn-primary" onclick="graphConnectPersonal()">▶ Connect with Microsoft</button>
+            <button class="btn-ghost" onclick="graphSendTest()">Send Test</button>
+            <span id="graphAuthStatus" style="font-size:15px;color:var(--text3)">Not connected</span>
+          </div>
+          <div style="margin-top:14px;padding:10px 14px;border-radius:8px;background:rgba(59,130,246,0.08);border:1px solid rgba(59,130,246,0.18);font-size:13px;color:var(--text3);line-height:1.6">
+            <strong style="color:var(--text2)">Azure setup:</strong> App registration → Supported account types: <em>Personal Microsoft accounts</em> → Redirect URI (Web): paste the URI above → API permissions → Microsoft Graph → <strong>Delegated</strong> → Mail.Send.
+          </div>
+        </div>
+
+        <!-- ── Work / org account (client credentials) ── -->
+        <div class="card">
+          <div class="lbl" style="margin-bottom:12px">Work / Organization Account <span class="hint">— Azure AD tenant (application permissions)</span></div>
           <div class="g2">
             <div class="field"><div class="lbl">Tenant ID</div><input class="inp" id="graphTenantId" type="text" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" oninput="saveField(this.id)"></div>
-            <div class="field"><div class="lbl">Client ID</div><input class="inp" id="graphClientId" type="text" placeholder="Application (client) ID" oninput="saveField(this.id)"></div>
-          </div>
-          <div class="g2">
-            <div class="field"><div class="lbl">Client Secret</div><input class="inp" id="graphClientSecret" type="password" placeholder="Client secret value" oninput="saveField(this.id)" autocomplete="off"></div>
             <div class="field"><div class="lbl">Sender Mailbox</div><input class="inp" id="graphSender" type="email" placeholder="sender@yourdomain.com" oninput="saveField(this.id)"></div>
           </div>
           <div class="btn-row">
-            <button class="btn-primary" onclick="graphAuthenticate()">Authenticate</button>
-            <button class="btn-ghost" onclick="graphSendTest()">Send Test To First Recipient</button>
-            <span id="graphAuthStatus" style="font-size:15px;color:var(--text3)">Not connected</span>
+            <button class="btn-primary" onclick="graphAuthenticate()">Authenticate (Work)</button>
+            <span id="graphWorkStatus" style="font-size:15px;color:var(--text3)"></span>
           </div>
         </div>
+
+        <!-- ── Enable toggle ── -->
         <div class="card">
           <div class="toggle-row">
             <div class="toggle-info">
@@ -1201,14 +1222,86 @@ function readGraphConfigFromUi() {
   };
 }
 
+// Auto-fill Redirect URI when the page loads or when clientId changes
+function onGraphClientIdChange() {
+  var el = document.getElementById('graphRedirectUri');
+  if (el) el.value = window.location.origin + '/api/graph/callback';
+}
+
+// Called on tab-graph reveal / page init
+(function initGraphRedirectUri() {
+  window.addEventListener('DOMContentLoaded', function() {
+    onGraphClientIdChange();
+    // Restore persisted connection status
+    var clientId = localStorage.getItem('graphClientId') || '';
+    if (clientId) {
+      fetch('/api/graph/token-status?clientId=' + encodeURIComponent(clientId))
+        .then(r => r.json()).then(d => {
+          if (d.connected) {
+            var st = document.getElementById('graphAuthStatus');
+            if (st) st.textContent = '✓ Connected as ' + d.sender;
+          }
+        }).catch(() => {});
+    }
+  });
+})();
+
+async function graphConnectPersonal() {
+  var clientId = (document.getElementById('graphClientId').value || '').trim();
+  var clientSecret = (document.getElementById('graphClientSecret').value || '').trim();
+  if (!clientId) {
+    showToast('Graph: enter your Client ID first', 'warn');
+    return;
+  }
+  var redirectUri = window.location.origin + '/api/graph/callback';
+  var st = document.getElementById('graphAuthStatus');
+  if (st) st.textContent = 'Opening Microsoft login…';
+  try {
+    var res = await fetch('/api/graph/auth-url?'
+      + 'clientId=' + encodeURIComponent(clientId)
+      + '&clientSecret=' + encodeURIComponent(clientSecret)
+      + '&redirectUri=' + encodeURIComponent(redirectUri));
+    var data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Could not generate auth URL');
+    // Open OAuth popup
+    var popup = window.open(data.url, 'ms-graph-auth', 'width=520,height=640,menubar=no,toolbar=no');
+    if (!popup) {
+      // Fallback: redirect in same tab
+      window.location.href = data.url;
+      return;
+    }
+    // Listen for result from popup
+    var handleMsg = function(event) {
+      if (!event.data || !event.data.type) return;
+      if (event.data.type === 'graph-auth-success') {
+        window.removeEventListener('message', handleMsg);
+        var sender = event.data.sender || '';
+        if (st) st.textContent = '✓ Connected as ' + sender;
+        // Auto-fill sender mailbox for work section too
+        var senderEl = document.getElementById('graphSender');
+        if (senderEl && !senderEl.value) { senderEl.value = sender; saveField('graphSender'); }
+        showToast('Microsoft account connected: ' + sender, 'ok');
+      } else if (event.data.type === 'graph-auth-error') {
+        window.removeEventListener('message', handleMsg);
+        if (st) st.textContent = 'Auth failed';
+        showToast('Graph auth failed: ' + event.data.error, 'err');
+      }
+    };
+    window.addEventListener('message', handleMsg);
+  } catch (e) {
+    if (st) st.textContent = 'Error';
+    showToast('Graph connect error: ' + e.message, 'err');
+  }
+}
+
 async function graphAuthenticate() {
   var cfg = readGraphConfigFromUi();
   if (!cfg.tenantId || !cfg.clientId || !cfg.clientSecret || !cfg.sender) {
-    showToast('Graph: fill Tenant ID, Client ID, Secret, and Sender mailbox', 'warn');
+    showToast('Graph (work): fill Tenant ID, Client ID, Secret, and Sender mailbox', 'warn');
     return;
   }
-  var st = document.getElementById('graphAuthStatus');
-  if (st) st.textContent = 'Connecting...';
+  var st = document.getElementById('graphWorkStatus');
+  if (st) st.textContent = 'Connecting…';
   try {
     var res = await fetch('/api/graph/authenticate', {
       method: 'POST',
@@ -1217,11 +1310,11 @@ async function graphAuthenticate() {
     });
     var data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Auth failed');
-    if (st) st.textContent = 'Connected: ' + (data.sender || cfg.sender);
-    showToast('Graph authenticated', 'ok');
+    if (st) st.textContent = '✓ Connected: ' + (data.sender || cfg.sender);
+    showToast('Graph (work) authenticated', 'ok');
   } catch (e) {
     if (st) st.textContent = 'Auth failed';
-    showToast('Graph auth failed: ' + e.message, 'err');
+    showToast('Graph work auth failed: ' + e.message, 'err');
   }
 }
 
