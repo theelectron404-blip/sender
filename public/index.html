@@ -1,0 +1,1397 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MailEngine Pro</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#09090f;--surface:#0e0e18;--surface2:#131320;--surface3:#1a1a2e;
+  --border:rgba(255,255,255,.07);--border2:rgba(255,255,255,.13);
+  --text1:#eef0f8;--text2:#9aa3c2;--text3:#6b7499;--text4:#3a4068;
+  --blue:#3b82f6;--blue-dim:rgba(59,130,246,.12);--blue-border:rgba(59,130,246,.3);
+  --green:#22c55e;--amber:#f59e0b;--red:#ef4444;--violet:#8b5cf6;
+  --r:10px;--sidebar:272px;--feed:370px;
+}
+html,body{height:100%;overflow:hidden;background:var(--bg);font-family:'Inter',system-ui,sans-serif;color:var(--text1);font-size:18px;-webkit-font-smoothing:antialiased}
+::-webkit-scrollbar{width:5px;height:5px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--surface3);border-radius:9999px}
+
+/* ─── Layout ─── */
+#app{display:flex;height:100vh;overflow:hidden}
+
+/* ─── Sidebar ─── */
+#sidebar{width:var(--sidebar);flex-shrink:0;display:flex;flex-direction:column;background:var(--surface);border-right:1px solid var(--border)}
+.sb-brand{padding:22px 18px 20px;display:flex;align-items:center;gap:14px;border-bottom:1px solid var(--border)}
+.sb-icon{width:42px;height:42px;flex-shrink:0;border-radius:11px;background:linear-gradient(140deg,#3b82f6,#6366f1);display:grid;place-items:center;box-shadow:0 0 20px -4px rgba(99,102,241,.6)}
+.sb-icon svg{color:#fff;width:20px;height:20px}
+.sb-name{font-size:17px;font-weight:700;color:var(--text1);letter-spacing:-.01em}
+.sb-tag{font-size:13px;font-weight:600;color:var(--blue);letter-spacing:.08em;text-transform:uppercase;margin-top:2px}
+.sb-nav{flex:1;padding:12px 10px;overflow-y:auto;display:flex;flex-direction:column;gap:3px}
+.sb-section{font-size:12px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--text4);padding:12px 10px 6px}
+.sbi{display:flex;align-items:center;gap:12px;padding:12px 15px;border-radius:9px;cursor:pointer;color:var(--text3);font-size:15px;font-weight:500;transition:all .1s;border:1px solid transparent;user-select:none;position:relative}
+.sbi svg{width:17px;height:17px;flex-shrink:0}
+.sbi:hover{background:var(--surface2);color:var(--text2)}
+.sbi.on{background:var(--blue-dim);color:var(--blue);border-color:var(--blue-border)}
+.sbi.on::after{content:'';position:absolute;right:-1px;top:50%;transform:translateY(-50%);width:2px;height:20px;background:var(--blue);border-radius:2px 0 0 2px}
+.sbi-badge{margin-left:auto;background:var(--blue-dim);color:var(--blue);font-size:12px;font-weight:700;padding:2px 9px;border-radius:999px;flex-shrink:0}
+.sb-foot{padding:13px 10px;border-top:1px solid var(--border)}
+.sb-conn{display:flex;align-items:center;gap:10px;padding:11px 14px;border-radius:9px;background:var(--surface2);border:1px solid var(--border)}
+#conn-dot{width:9px;height:9px;border-radius:50%;background:var(--text4);flex-shrink:0;transition:.3s}
+#conn-dot.on{background:var(--green);box-shadow:0 0 7px var(--green)}
+#conn-dot.err{background:var(--red)}
+#conn-label{font-size:15px;color:var(--text3);font-weight:500}
+
+/* ─── Main ─── */
+#main{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0}
+#topbar{height:66px;flex-shrink:0;background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;padding:0 28px;gap:14px}
+#tb-left{display:flex;align-items:center;gap:10px;min-width:0}
+#tab-title{font-size:18px;font-weight:600;color:var(--text1);white-space:nowrap}
+.tb-sep{color:var(--text4);font-size:16px}
+#tab-sub{font-size:15px;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#tb-right{display:flex;align-items:center;gap:8px;flex-shrink:0}
+#status-pill{padding:7px 16px;border-radius:999px;border:1px solid;font-size:13px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;transition:all .3s;white-space:nowrap}
+.spl-idle{border-color:var(--text4);background:rgba(46,52,86,.25);color:var(--text4)}
+.spl-running{border-color:rgba(245,158,11,.4);background:rgba(245,158,11,.09);color:var(--amber);animation:blink 1.4s ease-in-out infinite}
+.spl-paused{border-color:rgba(56,189,248,.4);background:rgba(56,189,248,.09);color:#38bdf8}
+.spl-stopped{border-color:rgba(239,68,68,.4);background:rgba(239,68,68,.09);color:var(--red)}
+.spl-success{border-color:rgba(34,197,94,.4);background:rgba(34,197,94,.09);color:var(--green)}
+.spl-error{border-color:rgba(239,68,68,.4);background:rgba(239,68,68,.09);color:var(--red)}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.45}}
+
+/* Control buttons */
+.ctrl-btn{font-size:14px;font-weight:600;padding:10px 16px;border-radius:8px;border:1px solid;cursor:pointer;transition:all .12s;display:flex;align-items:center;gap:6px;white-space:nowrap}
+#pause-btn{background:rgba(56,189,248,.08);color:#38bdf8;border-color:rgba(56,189,248,.3);display:none}
+#pause-btn:hover{background:rgba(56,189,248,.18)}
+#resume-btn{background:rgba(34,197,94,.08);color:var(--green);border-color:rgba(34,197,94,.3);display:none}
+#resume-btn:hover{background:rgba(34,197,94,.18)}
+#stop-btn{background:rgba(239,68,68,.08);color:var(--red);border-color:rgba(239,68,68,.3);display:none}
+#stop-btn:hover{background:rgba(239,68,68,.18)}
+#launch-btn{background:var(--blue);color:#fff;font-weight:600;font-size:16px;padding:11px 25px;border-radius:9px;border:none;cursor:pointer;transition:all .12s;display:flex;align-items:center;gap:8px;white-space:nowrap}
+#launch-btn:hover{background:#2563eb;box-shadow:0 0 18px -4px rgba(59,130,246,.65)}
+#launch-btn:active{transform:scale(.97)}
+#launch-btn:disabled{background:var(--surface3);color:var(--text4);cursor:not-allowed;box-shadow:none}
+
+/* ─── Body / panels ─── */
+#body{flex:1;display:flex;overflow:hidden}
+#content{flex:1;overflow-y:auto;padding:28px 32px}
+.tab-panel{display:none}
+.tab-panel.active{display:block}
+
+/* ─── Section header ─── */
+.s-hdr{margin-bottom:24px}
+.s-hdr-title{font-size:22px;font-weight:700;color:var(--text1);margin-bottom:6px}
+.s-hdr-sub{font-size:16px;color:var(--text3);line-height:1.65}
+
+/* ─── Cards ─── */
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:22px;margin-bottom:14px}
+.card-hi{border-color:var(--blue-border);background:rgba(59,130,246,.04)}
+
+/* ─── Fields ─── */
+.field{margin-bottom:16px}
+.field:last-child{margin-bottom:0}
+.lbl{display:flex;align-items:center;gap:6px;font-size:14px;font-weight:600;color:var(--text3);letter-spacing:.05em;text-transform:uppercase;margin-bottom:9px}
+.lbl .req{color:var(--blue);font-size:15px;line-height:1}
+.lbl .hint{font-size:14px;font-weight:400;color:var(--text4);text-transform:none;letter-spacing:0}
+.inp{width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:9px;padding:14px 16px;color:var(--text1);font-size:17px;font-family:inherit;outline:none;transition:border-color .12s,box-shadow .12s;line-height:1.5}
+.inp::placeholder{color:var(--text4)}
+.inp:focus{border-color:rgba(59,130,246,.5);box-shadow:0 0 0 3px rgba(59,130,246,.09)}
+textarea.inp{resize:vertical;font-family:'Menlo','Consolas',monospace;font-size:15px;line-height:1.75}
+select.inp{cursor:pointer;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%236b7499' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 14px center;padding-right:36px;background-color:var(--surface2)}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px}
+
+/* ─── Buttons ─── */
+.btn-primary{background:var(--blue);color:#fff;font-weight:600;font-size:16px;padding:12px 22px;border-radius:9px;border:none;cursor:pointer;transition:all .12s;white-space:nowrap}
+.btn-primary:hover{background:#2563eb;box-shadow:0 0 14px -3px rgba(59,130,246,.5)}
+.btn-ghost{background:var(--surface2);border:1px solid var(--border);color:var(--text2);font-size:16px;font-weight:500;padding:12px 18px;border-radius:9px;cursor:pointer;transition:all .12s;white-space:nowrap}
+.btn-ghost:hover{background:var(--surface3);color:var(--text1);border-color:var(--border2)}
+.btn-row{display:flex;align-items:center;gap:10px;margin-top:15px;flex-wrap:wrap}
+
+/* ─── Radio pills ─── */
+.radio-group{display:flex;flex-wrap:wrap;gap:9px}
+.rpill input{display:none}
+.rpill label{display:inline-flex;align-items:center;gap:7px;padding:12px 20px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text3);font-size:16px;font-weight:500;cursor:pointer;transition:all .1s;user-select:none}
+.rpill input:checked+label{border-color:var(--blue-border);background:var(--blue-dim);color:var(--blue)}
+
+/* ─── Toggle ─── */
+.toggle-row{display:flex;align-items:center;gap:14px}
+.toggle-info{flex:1}
+.ti-title{font-size:17px;font-weight:500;color:var(--text1)}
+.ti-sub{font-size:15px;color:var(--text3);margin-top:4px;line-height:1.55}
+.toggle-track{width:48px;height:28px;border-radius:999px;background:var(--surface3);border:1px solid var(--border);cursor:pointer;position:relative;flex-shrink:0;transition:.2s}
+.toggle-track.on{background:#2563eb;border-color:var(--blue)}
+.toggle-thumb{position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:var(--text3);transition:.2s;pointer-events:none}
+.toggle-track.on .toggle-thumb{transform:translateX(20px);background:#fff}
+
+/* ─── Chips ─── */
+.chip{display:inline-block;background:var(--surface3);border:1px solid var(--border2);border-radius:5px;padding:2px 8px;font-family:'Menlo','Consolas',monospace;font-size:13px;color:var(--text2);vertical-align:middle}
+
+/* ─── Callouts ─── */
+.callout{border-radius:9px;padding:15px 20px;font-size:15px;line-height:1.75;margin-bottom:14px}
+.callout strong{font-weight:600}
+.c-blue{background:rgba(59,130,246,.07);border:1px solid rgba(59,130,246,.22);color:#93c5fd}
+.c-green{background:rgba(34,197,94,.07);border:1px solid rgba(34,197,94,.22);color:#86efac}
+.c-amber{background:rgba(245,158,11,.07);border:1px solid rgba(245,158,11,.22);color:#fde68a}
+.c-violet{background:rgba(139,92,246,.07);border:1px solid rgba(139,92,246,.22);color:#c4b5fd}
+.c-red{background:rgba(239,68,68,.07);border:1px solid rgba(239,68,68,.22);color:#fca5a5}
+
+/* ─── Details/summary ─── */
+details summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:8px;font-size:16px;font-weight:600;color:#a78bfa;user-select:none}
+details summary::-webkit-details-marker{display:none}
+details[open] summary{margin-bottom:13px}
+
+/* ─── SMTP cards ─── */
+.smtp-card{background:var(--surface2);border:1px solid var(--border);border-radius:9px;padding:20px;margin-bottom:12px}
+.smtp-card:last-child{margin-bottom:0}
+.smtp-card-hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:15px}
+.smtp-card-num{font-size:15px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.07em}
+.smtp-rm{background:none;border:none;cursor:pointer;color:var(--text4);padding:5px 8px;border-radius:5px;transition:.1s;display:flex;align-items:center;gap:5px;font-size:15px;font-weight:500}
+.smtp-rm:hover{color:var(--red);background:rgba(239,68,68,.1)}
+.smtp-g2{display:grid;gap:11px;grid-template-columns:2fr 1fr;margin-bottom:11px}
+.smtp-g3{display:grid;gap:11px;grid-template-columns:1fr 1fr 1fr;margin-top:11px}
+
+/* ─── Feed panel ─── */
+#feed-panel{width:var(--feed);flex-shrink:0;border-left:1px solid var(--border);display:flex;flex-direction:column;background:var(--surface)}
+#feed-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;padding:14px;border-bottom:1px solid var(--border)}
+.stat-c{text-align:center;padding:13px 6px;background:var(--surface2);border:1px solid var(--border);border-radius:9px}
+.sv{font-size:26px;font-weight:700;line-height:1.2;margin-top:4px}
+.sk{font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--text4)}
+#feed-progress{padding:14px 17px;border-bottom:1px solid var(--border)}
+.fp-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:9px}
+.fp-label{font-size:14px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.07em}
+#feed-bar-pct{font-size:15px;font-weight:700;color:var(--text2)}
+#feed-bar-track{height:5px;background:var(--surface3);border-radius:999px;overflow:hidden;margin-bottom:12px}
+#feed-bar-fill{height:100%;width:0%;background:linear-gradient(90deg,var(--blue),var(--green));transition:width .4s ease}
+.feed-actions{display:flex;gap:8px}
+.feed-actions button{flex:1;font-size:15px;padding:10px 11px}
+#feed-log{flex:1;overflow-y:auto;padding:10px 12px}
+.feed-row{display:grid;grid-template-columns:46px 64px 1fr;gap:6px;padding:6px 8px;border-radius:6px;font-size:13px;line-height:1.65}
+.feed-row:hover{background:var(--surface2)}
+.feed-ts{color:var(--text4);font-family:'Menlo','Consolas',monospace;white-space:nowrap}
+.feed-status{font-weight:700;text-transform:uppercase;font-family:'Menlo','Consolas',monospace;font-size:12px}
+.feed-msg{color:var(--text3);word-break:break-all;font-family:'Menlo','Consolas',monospace}
+.fc-success{color:var(--green)}.fc-failed{color:var(--red)}.fc-invalid{color:#fb923c}
+.fc-relay{color:var(--amber)}.fc-warn{color:#fde047}.fc-rest{color:#38bdf8}.fc-info{color:var(--text3)}
+#feed-empty{font-size:15px;color:var(--text4);font-family:'Menlo','Consolas',monospace;padding:10px 6px}
+#delayPreview{font-size:16px;color:var(--text2);line-height:2.2}
+
+/* ─── Toast ─── */
+#btast{position:fixed;top:20px;left:50%;transform:translateX(-50%) translateY(-100px);z-index:9999;min-width:300px;max-width:480px;padding:16px 26px;border-radius:12px;font-size:16px;font-weight:600;text-align:center;pointer-events:none;transition:transform .3s cubic-bezier(.34,1.56,.64,1),opacity .3s;opacity:0;border:1px solid transparent}
+#btast.show{transform:translateX(-50%) translateY(0);opacity:1}
+#btast.toast-ok{background:rgba(22,163,74,.14);border-color:rgba(34,197,94,.4);color:#86efac;box-shadow:0 8px 28px -4px rgba(22,163,74,.3)}
+#btast.toast-err{background:rgba(185,28,28,.14);border-color:rgba(239,68,68,.4);color:#fca5a5}
+#btast.toast-info{background:rgba(59,130,246,.14);border-color:rgba(59,130,246,.4);color:#93c5fd}
+#btast.toast-warn{background:rgba(234,179,8,.14);border-color:rgba(245,158,11,.4);color:#fde68a}
+</style>
+</head>
+<body>
+<div id="app">
+
+<!-- ─── SIDEBAR ─── -->
+<aside id="sidebar">
+  <div class="sb-brand">
+    <div class="sb-icon">
+      <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2"><path d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+    </div>
+    <div>
+      <div class="sb-name">MailEngine</div>
+      <div class="sb-tag">Pro</div>
+    </div>
+  </div>
+  <nav class="sb-nav">
+    <div class="sb-section">Campaign</div>
+    <div class="sbi on" onclick="switchTab('tab-smtp',this)">
+      <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>SMTP Pool
+    </div>
+    <div class="sbi" onclick="switchTab('tab-recipients',this)">
+      <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>Recipients
+      <span id="recip-badge" class="sbi-badge" style="display:none">0</span>
+    </div>
+    <div class="sbi" onclick="switchTab('tab-content',this)">
+      <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/></svg>Content
+    </div>
+    <div class="sbi" onclick="switchTab('tab-attach',this)">
+      <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>Attachments
+    </div>
+    <div class="sbi" onclick="switchTab('tab-links',this)">
+      <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg>Link Cloaking
+    </div>
+    <div class="sbi" onclick="switchTab('tab-throttle',this)">
+      <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>Throttling
+    </div>
+    <div class="sb-section">Tools</div>
+    <div class="sbi" onclick="switchTab('tab-ai',this)">
+      <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path d="M12 2a10 10 0 100 20A10 10 0 0012 2z"/><path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3"/><circle cx="12" cy="17" r=".5" fill="currentColor"/></svg>AI Variator
+    </div>
+    <div class="sbi" onclick="switchTab('tab-graph',this)">
+      <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path d="M4 5h16v14H4z"/><path d="M4 9h16M9 5v14M15 5v14"/></svg>Graph API
+    </div>
+    <div class="sbi" onclick="switchTab('tab-reputation',this)">
+      <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>Reputation
+    </div>
+  </nav>
+  <div class="sb-foot">
+    <div class="sb-conn">
+      <div id="conn-dot"></div>
+      <span id="conn-label">Disconnected</span>
+    </div>
+  </div>
+</aside>
+
+<!-- ─── MAIN ─── -->
+<div id="main">
+  <div id="topbar">
+    <div id="tb-left">
+      <span id="tab-title">SMTP Pool</span>
+      <span class="tb-sep">/</span>
+      <span id="tab-sub">Sending accounts &amp; from identity</span>
+    </div>
+    <div id="tb-right">
+      <span id="status-pill" class="spl-idle">IDLE</span>
+      <button class="ctrl-btn" id="pause-btn" onclick="batchPause()">
+        <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>Pause
+      </button>
+      <button class="ctrl-btn" id="resume-btn" onclick="batchResume()">
+        <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>Resume
+      </button>
+      <button class="ctrl-btn" id="stop-btn" onclick="batchStop()">
+        <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>Stop
+      </button>
+      <button class="ctrl-btn" id="logout-btn" onclick="logoutNow()">
+        <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>Logout
+      </button>
+      <button id="launch-btn" onclick="handleSend()">
+        <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+        Launch
+      </button>
+    </div>
+  </div>
+
+  <div id="body">
+    <div id="content">
+
+      <!-- ── SMTP TAB ── -->
+      <div id="tab-smtp" class="tab-panel active">
+        <div class="s-hdr">
+          <div class="s-hdr-title">SMTP Pool</div>
+          <div class="s-hdr-sub">Add sending accounts. Each account has its own host, port, credentials and proxy.</div>
+        </div>
+
+        <div class="card card-hi">
+          <div class="field">
+            <div class="lbl">From Name(s) <span class="req">*</span> <span class="hint">— one per line, random per email</span></div>
+            <textarea class="inp" id="fromName" rows="3" placeholder="Type one sender name per line" oninput="saveField(this.id)"></textarea>
+          </div>
+          <div class="g2">
+            <div class="field">
+              <div class="lbl">Global <span class="chip">$tfn</span> Tag Value</div>
+              <input class="inp" id="tfn" type="text" placeholder="Replacement value for $tfn" oninput="saveField(this.id)">
+            </div>
+            <div class="field">
+              <div class="lbl">Rotate Every <span class="hint">(emails / account)</span></div>
+              <input class="inp" id="rotateLimit" type="number" min="1" oninput="saveField(this.id)">
+            </div>
+          </div>
+          <div class="card" style="margin-top:14px;margin-bottom:0;padding:14px">
+            <div class="lbl" style="margin-bottom:10px">Quick Pacing Controls <span class="hint">- syncs with Throttle tab</span></div>
+            <div class="g3" style="margin-bottom:10px">
+              <div class="field">
+                <div class="lbl">Delay Min (sec)</div>
+                <input class="inp" id="quickDelayMin" type="number" min="0" step="0.1" oninput="applyQuickDelayInputs()">
+              </div>
+              <div class="field">
+                <div class="lbl">Delay Max (sec)</div>
+                <input class="inp" id="quickDelayMax" type="number" min="0" step="0.1" oninput="applyQuickDelayInputs()">
+              </div>
+              <div class="field">
+                <div class="lbl">Target Mails / Min</div>
+                <input class="inp" id="quickPerMinute" type="number" min="0" step="0.1" placeholder="e.g. 15" oninput="applyQuickRateInput()">
+              </div>
+            </div>
+            <div style="font-size:12px;color:var(--text4)">Set either delay or mails/min. Mails/min auto-calculates delay and keeps existing jitter logic.</div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:15px">
+            <div class="lbl" style="margin-bottom:0">SMTP Accounts <span class="req">*</span></div>
+            <button class="btn-ghost" onclick="addSmtpSlot()" style="display:flex;align-items:center;gap:7px;font-size:14px;padding:9px 16px">
+              <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>Add Account
+            </button>
+          </div>
+          <div id="smtp-slots"></div>
+          <div class="callout c-blue" style="margin-top:14px;margin-bottom:0">
+            <strong>Password auth:</strong> fill Host, Port, User, Password &nbsp;&middot;&nbsp;
+            <strong>OAuth2:</strong> fill Host, Port, User + Client&nbsp;ID / Secret / Token &nbsp;&middot;&nbsp;
+            <strong>Proxy:</strong> optional socks5 / http field
+          </div>
+        </div>
+
+        <div class="card">
+          <details>
+            <summary>
+              <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+              How to get Microsoft OAuth2 credentials
+            </summary>
+            <div class="callout c-violet" style="margin-bottom:0">
+              <ol style="padding-left:18px;line-height:2.4">
+                <li><strong>portal.azure.com</strong> &rarr; Azure AD &rarr; App Registrations &rarr; New Registration</li>
+                <li>API Permissions &rarr; Microsoft Graph &rarr; <strong>Mail.Send</strong> (Delegated) &rarr; Grant admin consent</li>
+                <li>Certificates &amp; Secrets &rarr; New client secret &rarr; copy <strong>Value</strong></li>
+                <li>Overview &rarr; copy <strong>Application (client) ID</strong></li>
+                <li>Use OAuth2 auth-code flow to obtain <strong>refresh_token</strong></li>
+              </ol>
+            </div>
+          </details>
+        </div>
+      </div>
+
+      <!-- ── RECIPIENTS TAB ── -->
+      <div id="tab-recipients" class="tab-panel">
+        <div class="s-hdr">
+          <div class="s-hdr-title">Recipients</div>
+          <div class="s-hdr-sub">One email per line. Plain email, email|timezone, or full JSON for personalisation.</div>
+        </div>
+        <div class="card">
+          <div class="field">
+            <div class="lbl">Email List <span class="req">*</span> <span class="hint">— one per line</span></div>
+            <textarea class="inp" id="recipients" rows="10"
+              placeholder="alice@company.com&#10;bob@company.com|America/New_York&#10;{&quot;email&quot;:&quot;carol@co.com&quot;,&quot;firstName&quot;:&quot;Carol&quot;,&quot;membershipLevel&quot;:&quot;Gold&quot;,&quot;tz&quot;:&quot;Europe/London&quot;}"
+              oninput="saveField(this.id);updateRecipientCount()"></textarea>
+            <div id="recip-count-line" style="font-size:14px;color:var(--text3);margin-top:9px;display:none">
+              <strong id="recip-count-num" style="color:var(--blue)">0</strong> recipients loaded
+            </div>
+          </div>
+        </div>
+        <div class="card">
+          <div style="font-size:15px;font-weight:600;color:var(--text2);margin-bottom:13px">JSON personalisation fields</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 22px;font-size:14px">
+            <div><span class="chip">email</span> <span style="color:var(--text3)">address (required)</span></div>
+            <div><span class="chip">tz</span> <span style="color:var(--text3)">IANA timezone</span></div>
+            <div><span class="chip">firstName</span> <span style="color:var(--text3)">first name</span></div>
+            <div><span class="chip">lastName</span> <span style="color:var(--text3)">last name</span></div>
+            <div><span class="chip">city</span> <span style="color:var(--text3)">city</span></div>
+            <div><span class="chip">lastOrderDate</span> <span style="color:var(--text3)">ISO date</span></div>
+            <div><span class="chip">membershipLevel</span> <span style="color:var(--text3)">Gold / Silver / New</span></div>
+            <div><span class="chip">referralCode</span> <span style="color:var(--text3)">promo code</span></div>
+          </div>
+          <div style="font-size:13px;color:var(--text4);margin-top:10px">Any extra key is available as <span class="chip">{{yourKey}}</span> in templates.</div>
+        </div>
+        <div class="g2" style="margin-bottom:14px">
+          <div class="card"><div class="field"><div class="lbl">Send Window Start (24h)</div><input class="inp" id="tzSendStart" type="number" min="0" max="23" oninput="saveField(this.id)"></div></div>
+          <div class="card"><div class="field"><div class="lbl">Send Window End (24h)</div><input class="inp" id="tzSendEnd" type="number" min="0" max="23" oninput="saveField(this.id)"></div></div>
+        </div>
+        <div class="card">
+          <div class="lbl" style="margin-bottom:13px">Pre-Send Validation Mode</div>
+          <div class="radio-group">
+            <div class="rpill"><input type="radio" name="validationMode" id="vm-syntax" value="syntax" onchange="saveField('validationMode')"><label for="vm-syntax">Syntax only <span style="color:var(--text4);font-weight:400;font-size:13px">~0ms</span></label></div>
+            <div class="rpill"><input type="radio" name="validationMode" id="vm-mx" value="mx" onchange="saveField('validationMode')"><label for="vm-mx">MX Lookup <span style="color:var(--text4);font-weight:400;font-size:13px">~100ms</span></label></div>
+            <div class="rpill"><input type="radio" name="validationMode" id="vm-deep" value="deep" onchange="saveField('validationMode')"><label for="vm-deep">Deep SMTP Probe <span style="color:var(--text4);font-weight:400;font-size:13px">~500ms</span></label></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── CONTENT TAB ── -->
+      <div id="tab-content" class="tab-panel">
+        <div class="s-hdr">
+          <div class="s-hdr-title">Message Content</div>
+          <div class="s-hdr-sub">Subject lines and HTML body templates. Supports Handlebars <span class="chip">{{var}}</span>, spintax <span class="chip">{a|b|c}</span>, and dynamic tags.</div>
+        </div>
+        <div class="card">
+          <details>
+            <summary>
+              <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
+              Template Variables &amp; Helpers Reference
+            </summary>
+            <div style="margin-top:13px;display:grid;grid-template-columns:1fr 1fr;gap:7px 18px;font-size:14px">
+              <div><span class="chip">{{firstName}}</span> <span style="color:var(--text3)">first name</span></div>
+              <div><span class="chip">{{lastName}}</span> <span style="color:var(--text3)">last name</span></div>
+              <div><span class="chip">{{fullName}}</span> <span style="color:var(--text3)">first + last</span></div>
+              <div><span class="chip">{{email}}</span> <span style="color:var(--text3)">email address</span></div>
+              <div><span class="chip">{{greeting}}</span> <span style="color:var(--text3)">Good morning/evening</span></div>
+              <div><span class="chip">{{formatDate lastOrderDate}}</span> <span style="color:var(--text3)">March 22, 2026</span></div>
+              <div><span class="chip">{{daysAgo lastOrderDate}}</span> <span style="color:var(--text3)">days since date</span></div>
+              <div><span class="chip">{{default val "fallback"}}</span> <span style="color:var(--text3)">value or fallback</span></div>
+            </div>
+            <div style="font-family:'Menlo','Consolas',monospace;font-size:13px;color:#c4b5fd;line-height:2.3;background:var(--surface3);border-radius:8px;padding:13px 16px;margin-top:11px">
+              {{#if (eq membershipLevel "Gold")}} Gold block {{/if}}<br>
+              {{#ifAny membershipLevel "Gold" "Silver"}} VIP block {{/ifAny}}<br>
+              {Hello|Hi|Good day} {{default firstName "there"}}
+            </div>
+          </details>
+        </div>
+        <div class="card">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:11px">
+            <div class="lbl" style="margin-bottom:0">Subject Lines <span class="req">*</span> <span class="hint">— one per line, random pick</span></div>
+            <button class="btn-ghost" style="font-size:13px;padding:7px 14px" onclick="insertExampleSubjects()">Insert Example</button>
+          </div>
+          <textarea class="inp" id="subjects" rows="4"
+            placeholder='{Hello|Hi|Good day} {{default firstName "there"}} — your account update&#10;{{greeting}} {{firstName}}, important notice'
+            oninput="saveField(this.id)"></textarea>
+        </div>
+        <div class="card">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:11px">
+            <div class="lbl" style="margin-bottom:0">HTML Body Templates <span class="req">*</span> <span class="hint">— separate variants with <span class="chip">---</span></span></div>
+            <button class="btn-ghost" style="font-size:13px;padding:7px 14px" onclick="insertExampleTemplates()">Insert Examples</button>
+          </div>
+          <textarea class="inp" id="bodies" rows="14"
+            placeholder="Paste HTML here. Use Handlebars, spintax, and $tags. Click Insert Examples for pre-built templates."
+            oninput="saveField(this.id)"></textarea>
+        </div>
+        <div class="card">
+          <div class="lbl" style="margin-bottom:10px">Invoice / Table Data (JSON) <span class="hint">— use <span class="chip">$invoice_table</span> in body</span></div>
+          <textarea class="inp" id="invoiceData" rows="3"
+            placeholder='[{"item":"Professional Services","qty":3,"price":500}]'
+            oninput="saveField(this.id)"></textarea>
+        </div>
+      </div>
+
+      <!-- ── ATTACHMENTS TAB ── -->
+      <div id="tab-attach" class="tab-panel">
+        <div class="s-hdr">
+          <div class="s-hdr-title">Attachment Builder</div>
+          <div class="s-hdr-sub">Render any HTML as an attachment. Spintax, $tags, and hash randomization applied per recipient.</div>
+        </div>
+        <div class="card">
+          <div class="field">
+            <div class="lbl">Attachment Format</div>
+            <select class="inp" id="attachFormat" onchange="saveField(this.id)" style="max-width:440px">
+              <option value="none">None &#8212; no attachment</option>
+              <option value="pdf">PDF (Puppeteer)</option>
+              <option value="png">PNG (full-page screenshot)</option>
+              <option value="jpeg">JPEG (full-page screenshot)</option>
+              <option value="jpeg-pdf">JPEG-in-PDF &#9733; (filter-resistant)</option>
+            </select>
+          </div>
+        </div>
+        <div class="card">
+          <div class="lbl" style="margin-bottom:10px">Attachment HTML <span class="hint">— all tags and spintax supported</span></div>
+          <textarea class="inp" id="attachHtml" rows="12"
+            placeholder="&lt;html&gt;&lt;body&gt;&#10;  &lt;h1&gt;Receipt #$#SEVEN&lt;/h1&gt;&#10;  &lt;p&gt;Ref: $tfn&lt;/p&gt;&#10;  &lt;p&gt;$invoice_table&lt;/p&gt;&#10;&lt;/body&gt;&lt;/html&gt;"
+            oninput="saveField(this.id)"></textarea>
+        </div>
+        <div class="callout c-amber">
+          <strong>Hash Randomization:</strong> Each render uses unique font-size drift, near-black micro-shifts, and a hidden entropy comment — every file has a different SHA-256 with no visible difference.
+        </div>
+      </div>
+
+      <!-- ── LINK CLOAKING TAB ── -->
+      <div id="tab-links" class="tab-panel">
+        <div class="s-hdr">
+          <div class="s-hdr-title">Link Cloaking &amp; Click Tracking</div>
+          <div class="s-hdr-sub">Every http/https link in body and attachments is wrapped with a <span class="chip">/r/&lt;id&gt;</span> redirect. Clicks logged in real-time.</div>
+        </div>
+        <div class="card">
+          <div class="lbl" style="margin-bottom:10px">Redirect Domains <span class="hint">— one per line, no "https://", round-robin</span></div>
+          <textarea class="inp" id="redirectDomains" rows="4"
+            placeholder="track1.yourdomain.com&#10;track2.yourdomain.com"
+            oninput="saveField(this.id)"></textarea>
+          <div style="font-size:14px;color:var(--text4);margin-top:10px">Leave blank to send raw links. First domain used for unsubscribe links.</div>
+        </div>
+        <div class="callout c-green"><strong>Never cloaked:</strong> <span class="chip">mailto:</span>, <span class="chip">tel:</span>, <span class="chip">cid:</span>, <span class="chip">#</span> anchors, and already-cloaked <span class="chip">/r/</span> paths.</div>
+      </div>
+
+      <!-- ── THROTTLING TAB ── -->
+      <div id="tab-throttle" class="tab-panel">
+        <div class="s-hdr">
+          <div class="s-hdr-title">Throttling &amp; Warm-up</div>
+          <div class="s-hdr-sub">Control send pacing, micro-batch sizes, rest periods, and volume ramping for inbox placement.</div>
+        </div>
+        <div class="card">
+          <div class="toggle-row">
+            <div class="toggle-info">
+              <div class="ti-title">Warm-up Mode</div>
+              <div class="ti-sub">Starts at 10 emails/hr, increases 10% per day. Protects new domains from spam filters.</div>
+            </div>
+            <div id="warmupDayWrap" style="display:none;align-items:center;gap:9px">
+              <input class="inp" id="warmupDay" type="number" min="1"
+                oninput="updateDelayPreview();saveField(this.id)"
+                style="width:85px;padding:11px 13px">
+              <span style="font-size:15px;color:var(--text3)">day</span>
+            </div>
+            <input type="checkbox" id="warmupMode" style="display:none" onchange="updateDelayPreview();saveField('warmupMode')">
+            <div class="toggle-track" id="warmupTrack" onclick="toggleWarmup()"><div class="toggle-thumb"></div></div>
+          </div>
+        </div>
+        <div class="g2" style="margin-bottom:14px">
+          <div class="card"><div class="field"><div class="lbl">Min Delay (seconds)</div><input class="inp" id="minDelay" type="number" min="0" step="1" oninput="updateDelayPreview();saveField(this.id);syncQuickPacingFromDelay()"></div></div>
+          <div class="card"><div class="field"><div class="lbl">Max Delay (seconds)</div><input class="inp" id="maxDelay" type="number" min="0" step="1" oninput="updateDelayPreview();saveField(this.id);syncQuickPacingFromDelay()"></div></div>
+        </div>
+        <div class="card">
+          <div class="lbl" style="margin-bottom:13px">Dynamic Batching <span class="hint">— Batch Size 0 = continuous</span></div>
+          <div class="g3">
+            <div class="field"><div class="lbl">Batch Size</div><input class="inp" id="batchSize" type="number" min="0" step="1" oninput="updateDelayPreview();saveField(this.id)"></div>
+            <div class="field"><div class="lbl">Rest Min (min)</div><input class="inp" id="restPeriodMin" type="number" min="0" step="0.5" oninput="updateDelayPreview();saveField(this.id)"></div>
+            <div class="field"><div class="lbl">Rest Max (min)</div><input class="inp" id="restPeriodMax" type="number" min="0" step="0.5" oninput="updateDelayPreview();saveField(this.id)"></div>
+          </div>
+        </div>
+        <div class="card"><div id="delayPreview"></div></div>
+      </div>
+
+      <!-- ── AI TAB ── -->
+      <div id="tab-ai" class="tab-panel">
+        <div class="s-hdr">
+          <div class="s-hdr-title">AI Content Variator</div>
+          <div class="s-hdr-sub">Uses GPT-4o-mini to rewrite each subject in a unique tone per recipient. Results cached &#8212; no duplicate API calls.</div>
+        </div>
+        <div class="card">
+          <div class="field">
+            <div class="lbl">OpenAI API Key <span class="hint">— leave blank to disable</span></div>
+            <input class="inp" id="llmApiKey" type="password" placeholder="sk-..." oninput="saveField(this.id)" autocomplete="off">
+          </div>
+        </div>
+        <div class="callout c-violet">
+          <strong>Model:</strong> gpt-4o-mini &nbsp;&middot;&nbsp; <strong>Pipeline:</strong> Spintax &rarr; $tags &rarr; LLM rewrite &rarr; Send &nbsp;&middot;&nbsp; On API error the <strong>original subject is used silently</strong>.
+        </div>
+      </div>
+
+      <!-- ── GRAPH API TAB ── -->
+      <div id="tab-graph" class="tab-panel">
+        <div class="s-hdr">
+          <div class="s-hdr-title">Microsoft Graph API</div>
+          <div class="s-hdr-sub">Authenticate with Tenant App credentials and optionally send the full batch through Graph API instead of SMTP.</div>
+        </div>
+        <div class="card">
+          <div class="g2">
+            <div class="field"><div class="lbl">Tenant ID</div><input class="inp" id="graphTenantId" type="text" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" oninput="saveField(this.id)"></div>
+            <div class="field"><div class="lbl">Client ID</div><input class="inp" id="graphClientId" type="text" placeholder="Application (client) ID" oninput="saveField(this.id)"></div>
+          </div>
+          <div class="g2">
+            <div class="field"><div class="lbl">Client Secret</div><input class="inp" id="graphClientSecret" type="password" placeholder="Client secret value" oninput="saveField(this.id)" autocomplete="off"></div>
+            <div class="field"><div class="lbl">Sender Mailbox</div><input class="inp" id="graphSender" type="email" placeholder="sender@yourdomain.com" oninput="saveField(this.id)"></div>
+          </div>
+          <div class="btn-row">
+            <button class="btn-primary" onclick="graphAuthenticate()">Authenticate</button>
+            <button class="btn-ghost" onclick="graphSendTest()">Send Test To First Recipient</button>
+            <span id="graphAuthStatus" style="font-size:15px;color:var(--text3)">Not connected</span>
+          </div>
+        </div>
+        <div class="card">
+          <div class="toggle-row">
+            <div class="toggle-info">
+              <div class="ti-title">Use Graph API for batch sending</div>
+              <div class="ti-sub">When enabled, SMTP pool is bypassed and mail is sent via Microsoft Graph /sendMail.</div>
+            </div>
+            <input type="checkbox" id="graphEnabled" style="display:none" onchange="saveField('graphEnabled')">
+            <div class="toggle-track" id="graphTrack" onclick="toggleGraph()"><div class="toggle-thumb"></div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── REPUTATION TAB ── -->
+      <div id="tab-reputation" class="tab-panel">
+        <div class="s-hdr">
+          <div class="s-hdr-title">Reputation Guard</div>
+          <div class="s-hdr-sub">IMAP bounce monitor scans for NDR/DSN messages every 30 min and automatically blacklists failed recipients.</div>
+        </div>
+        <div class="card">
+          <div class="lbl" style="margin-bottom:10px">IMAP Accounts <span class="hint">— <span class="chip">host|port|user|pass</span></span></div>
+          <textarea class="inp" id="imapAccounts" rows="4"
+            placeholder="imap.office365.com|993|user@company.com|AppPassword&#10;imap.gmail.com|993|user@gmail.com|app-specific-password"
+            oninput="saveField(this.id)"></textarea>
+          <div class="btn-row">
+            <button class="btn-primary" onclick="saveImapAccounts()">Save Accounts</button>
+            <button class="btn-ghost" onclick="runBounce()">Run Scan Now</button>
+            <span style="font-size:15px;color:var(--text3)">Blacklisted: <strong id="blacklistCount" style="color:var(--text2)">--</strong></span>
+          </div>
+        </div>
+        <div class="callout c-red">Blacklisted addresses appear as <span class="chip">[SKIPPED]</span> in the feed and are never sent to again until manually removed from <span class="chip">blacklist.json</span>.</div>
+      </div>
+
+    </div><!-- /content -->
+
+    <!-- ─── LIVE FEED ─── -->
+    <div id="feed-panel">
+      <div id="feed-stats">
+        <div class="stat-c"><div class="sk">Total</div><div class="sv" id="statTotal" style="color:var(--text1)">0</div></div>
+        <div class="stat-c"><div class="sk">Sent</div><div class="sv" id="statSuccess" style="color:var(--green)">0</div></div>
+        <div class="stat-c"><div class="sk">Failed</div><div class="sv" id="statFailed" style="color:var(--red)">0</div></div>
+        <div class="stat-c"><div class="sk">Rate</div><div class="sv" id="statRate" style="color:#38bdf8">--</div></div>
+      </div>
+      <div id="feed-progress">
+        <div class="fp-row"><span class="fp-label">Progress</span><span id="feed-bar-pct">0%</span></div>
+        <div id="feed-bar-track"><div id="feed-bar-fill"></div></div>
+        <div class="feed-actions">
+          <button class="btn-ghost" id="saveLogsBtn" onclick="saveLogs()" disabled>Export CSV</button>
+          <button class="btn-ghost" onclick="clearFeed()">Clear</button>
+        </div>
+      </div>
+      <div id="feed-log"><div id="feed-empty">Waiting for batch...</div></div>
+    </div>
+
+  </div>
+</div>
+</div>
+
+<div id="btast"></div>
+<script src="/socket.io/socket.io.js"></script>
+<script>
+'use strict';
+
+var TAB_META = {
+  'tab-smtp':       ['SMTP Pool',        'Sending accounts & from identity'],
+  'tab-recipients': ['Recipients',       'Target list & delivery time windows'],
+  'tab-content':    ['Content',          'Subject lines, body templates & invoice data'],
+  'tab-attach':     ['Attachments',      'Puppeteer-rendered PDF / JPEG attachments'],
+  'tab-links':      ['Link Cloaking',    'Click tracking & redirect domains'],
+  'tab-throttle':   ['Throttling',       'Pacing, warm-up & batch rest periods'],
+  'tab-ai':         ['AI Variator',      'GPT-4o-mini subject rewriter'],
+  'tab-graph':      ['Graph API',        'Microsoft Graph auth & API-based sending'],
+  'tab-reputation': ['Reputation Guard', 'IMAP bounce monitor & blacklist'],
+};
+
+function switchTab(id, el) {
+  document.querySelectorAll('.tab-panel').forEach(function(p) { p.classList.remove('active'); });
+  document.querySelectorAll('.sbi').forEach(function(n) { n.classList.remove('on'); });
+  var panel = document.getElementById(id);
+  if (panel) panel.classList.add('active');
+  if (el) el.classList.add('on');
+  var m = TAB_META[id] || ['', ''];
+  document.getElementById('tab-title').textContent = m[0];
+  document.getElementById('tab-sub').textContent = m[1];
+}
+
+/* ── SMTP SLOT BUILDER ── */
+var _smtpSlots = [];
+
+function addSmtpSlot(prefill) {
+  _smtpSlots.push(prefill || { provider: 'other', host: '', port: '587', user: '', pass: '', proxy: '', clientId: '', clientSecret: '', refreshToken: '' });
+  renderSmtpSlots();
+}
+
+function removeSmtpSlot(i) {
+  _smtpSlots.splice(i, 1);
+  renderSmtpSlots();
+  saveSmtpSlots();
+}
+
+function smtpFieldChange(el) {
+  var i = parseInt(el.dataset.si, 10), f = el.dataset.f;
+  if (_smtpSlots[i] !== undefined) { _smtpSlots[i][f] = el.value; saveSmtpSlots(); }
+}
+
+function applyProviderPreset(i, provider) {
+  if (_smtpSlots[i] === undefined) return;
+  _smtpSlots[i].provider = provider;
+  if (provider === 'gmail') {
+    _smtpSlots[i].host = 'smtp.gmail.com';
+    _smtpSlots[i].port = '587';
+    _smtpSlots[i].clientId = '';
+    _smtpSlots[i].clientSecret = '';
+    _smtpSlots[i].refreshToken = '';
+  } else if (provider === 'icloud') {
+    _smtpSlots[i].host = 'smtp.mail.me.com';
+    _smtpSlots[i].port = '587';
+    _smtpSlots[i].clientId = '';
+    _smtpSlots[i].clientSecret = '';
+    _smtpSlots[i].refreshToken = '';
+  }
+  saveSmtpSlots();
+  renderSmtpSlots();
+}
+
+function renderSmtpSlots() {
+  var c = document.getElementById('smtp-slots');
+  if (!c) return;
+  if (!_smtpSlots.length) {
+    c.innerHTML = '<div style="text-align:center;padding:22px 0;font-size:15px;color:var(--text4)">No accounts yet &mdash; click <strong style="color:var(--text3)">Add Account</strong> above</div>';
+    return;
+  }
+  function v(val) { return (val || '').replace(/"/g, '&quot;').replace(/'/g, '&#39;'); }
+  c.innerHTML = _smtpSlots.map(function(s, i) {
+    var provider = s.provider || 'other';
+    var lockHost = provider !== 'other';
+    return '<div class="smtp-card">' +
+      '<div class="smtp-card-hdr">' +
+        '<span class="smtp-card-num">Account ' + (i + 1) + '</span>' +
+        '<button class="smtp-rm" onclick="removeSmtpSlot(' + i + ')">' +
+          '<svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg> Remove' +
+        '</button>' +
+      '</div>' +
+      '<div style="margin-bottom:11px"><div class="lbl">Provider</div>' +
+      '<select class="inp" data-si="' + i + '" data-f="provider" onchange="applyProviderPreset(' + i + ', this.value)">' +
+      '<option value="gmail" ' + (provider === 'gmail' ? 'selected' : '') + '>Gmail</option>' +
+      '<option value="icloud" ' + (provider === 'icloud' ? 'selected' : '') + '>iCloud</option>' +
+      '<option value="other" ' + (provider === 'other' ? 'selected' : '') + '>Other (manual)</option>' +
+      '</select></div>' +
+      '<div class="smtp-g2">' +
+        '<div><div class="lbl">Host</div><input class="inp" data-si="' + i + '" data-f="host" type="text" value="' + v(s.host) + '" placeholder="smtp.office365.com" oninput="smtpFieldChange(this)" ' + (lockHost ? 'readonly' : '') + '></div>' +
+        '<div><div class="lbl">Port</div><input class="inp" data-si="' + i + '" data-f="port" type="number" value="' + v(s.port || '587') + '" placeholder="587" oninput="smtpFieldChange(this)" ' + (lockHost ? 'readonly' : '') + '></div>' +
+      '</div>' +
+      '<div class="smtp-g2">' +
+        '<div><div class="lbl">Username / Email</div><input class="inp" data-si="' + i + '" data-f="user" type="email" value="' + v(s.user) + '" placeholder="sender@company.com" oninput="smtpFieldChange(this)"></div>' +
+        '<div><div class="lbl">Password</div><input class="inp" data-si="' + i + '" data-f="pass" type="password" value="' + v(s.pass) + '" placeholder="App password" oninput="smtpFieldChange(this)" autocomplete="new-password"></div>' +
+      '</div>' +
+      '<div style="margin-bottom:11px"><div class="lbl">Proxy <span class="hint">&#8212; optional</span></div><input class="inp" data-si="' + i + '" data-f="proxy" type="text" value="' + v(s.proxy) + '" placeholder="socks5://127.0.0.1:1080" oninput="smtpFieldChange(this)"></div>' +
+      '<div class="lbl" style="margin-bottom:9px">OAuth2 <span class="hint">&#8212; optional, leave blank for password auth</span></div>' +
+      '<div class="smtp-g3">' +
+        '<div><div class="lbl" style="font-size:12px">Client ID</div><input class="inp" data-si="' + i + '" data-f="clientId" type="text" value="' + v(s.clientId) + '" placeholder="Azure client ID" oninput="smtpFieldChange(this)"></div>' +
+        '<div><div class="lbl" style="font-size:12px">Client Secret</div><input class="inp" data-si="' + i + '" data-f="clientSecret" type="password" value="' + v(s.clientSecret) + '" placeholder="Client secret" oninput="smtpFieldChange(this)" autocomplete="new-password"></div>' +
+        '<div><div class="lbl" style="font-size:12px">Refresh Token</div><input class="inp" data-si="' + i + '" data-f="refreshToken" type="password" value="' + v(s.refreshToken) + '" placeholder="Refresh token" oninput="smtpFieldChange(this)" autocomplete="new-password"></div>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+}
+
+function saveSmtpSlots() {
+  try { localStorage.setItem('me_smtpSlots', JSON.stringify(_smtpSlots)); } catch (e) {}
+}
+
+function loadSmtpSlots() {
+  try {
+    var raw = localStorage.getItem('me_smtpSlots');
+    if (raw) {
+      var s = JSON.parse(raw);
+      if (Array.isArray(s) && s.length) {
+        _smtpSlots = s.map(function(x) { x.provider = x.provider || 'other'; return x; });
+        renderSmtpSlots();
+        return;
+      }
+    }
+  } catch (e) {}
+  _smtpSlots = [];
+  renderSmtpSlots();
+}
+
+function buildSmtpArray() {
+  return _smtpSlots.filter(function(s) { return s.host && s.user && (s.pass || s.refreshToken); }).map(function(s) {
+    var o = { host: s.host.trim(), port: s.port || '587', user: s.user.trim(), pass: s.pass || '' };
+    if (s.clientId) o.clientId = s.clientId.trim();
+    if (s.clientSecret) o.clientSecret = s.clientSecret.trim();
+    if (s.refreshToken) o.refreshToken = s.refreshToken.trim();
+    if (s.proxy) o.proxy = s.proxy.trim();
+    return o;
+  });
+}
+
+/* ── PERSISTENCE ── */
+var PIDS = ['rotateLimit', 'tfn', 'fromName', 'recipients', 'tzSendStart', 'tzSendEnd',
+            'subjects', 'bodies', 'invoiceData', 'attachHtml', 'attachFormat',
+            'redirectDomains', 'minDelay', 'maxDelay', 'batchSize',
+            'restPeriodMin', 'restPeriodMax', 'warmupDay', 'llmApiKey', 'imapAccounts',
+            'graphTenantId', 'graphClientId', 'graphClientSecret', 'graphSender'];
+
+function saveField(id) {
+  try {
+    var el = document.getElementById(id);
+    if (!el) return;
+    if (id === 'warmupMode') { localStorage.setItem('me_warmupMode', el.checked ? 'true' : 'false'); return; }
+    if (id === 'graphEnabled') { localStorage.setItem('me_graphEnabled', el.checked ? 'true' : 'false'); return; }
+    localStorage.setItem('me_' + id, el.value);
+  } catch (e) {}
+}
+
+function restoreFields() {
+  // Always open with clean fields by clearing saved form values.
+  try {
+    PIDS.forEach(function(id) { localStorage.removeItem('me_' + id); });
+    localStorage.removeItem('me_validationMode');
+    localStorage.removeItem('me_warmupMode');
+    localStorage.removeItem('me_graphEnabled');
+    localStorage.removeItem('me_smtpSlots');
+  } catch (e) {}
+
+  PIDS.forEach(function(id) {
+    try { var v = localStorage.getItem('me_' + id), el = document.getElementById(id); if (el && v !== null) el.value = v; } catch (e) {}
+  });
+  try {
+    var vm = localStorage.getItem('me_validationMode') || '';
+    var el = vm ? document.querySelector('input[name="validationMode"][value="' + vm + '"]') : null;
+    if (el) el.checked = true;
+  } catch (e) {}
+  try {
+    if (localStorage.getItem('me_warmupMode') === 'true') {
+      document.getElementById('warmupMode').checked = true;
+      document.getElementById('warmupTrack').classList.add('on');
+      document.getElementById('warmupDayWrap').style.display = 'flex';
+    }
+  } catch (e) {}
+
+  syncQuickPacingFromDelay();
+}
+
+document.querySelectorAll('input[name="validationMode"]').forEach(function(el) {
+  el.addEventListener('change', function() { try { localStorage.setItem('me_validationMode', el.value); } catch (e) {} });
+});
+
+/* ── WARMUP TOGGLE ── */
+function toggleWarmup() {
+  var cb = document.getElementById('warmupMode');
+  var t = document.getElementById('warmupTrack');
+  var w = document.getElementById('warmupDayWrap');
+  cb.checked = !cb.checked;
+  t.classList.toggle('on', cb.checked);
+  w.style.display = cb.checked ? 'flex' : 'none';
+  updateDelayPreview();
+  saveField('warmupMode');
+}
+
+/* ── BATCH CONTROLS ── */
+function setBatchRunning(yes) {
+  var pb = document.getElementById('pause-btn');
+  var rb = document.getElementById('resume-btn');
+  var sb = document.getElementById('stop-btn');
+  var lb = document.getElementById('launch-btn');
+  if (yes) {
+    pb.style.display = 'flex'; rb.style.display = 'none'; sb.style.display = 'flex'; lb.disabled = true;
+    lb.innerHTML = '<svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> Sending...';
+  } else {
+    pb.style.display = 'none'; rb.style.display = 'none'; sb.style.display = 'none'; lb.disabled = false;
+    lb.innerHTML = '<svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg> Launch';
+  }
+}
+
+function setBatchPaused(yes) {
+  var pb = document.getElementById('pause-btn');
+  var rb = document.getElementById('resume-btn');
+  if (yes) { pb.style.display = 'none'; rb.style.display = 'flex'; setStatus('PAUSED', 'paused'); }
+  else     { pb.style.display = 'flex'; rb.style.display = 'none'; setStatus('RUNNING', 'running'); }
+}
+
+async function batchPause() {
+  try { await fetch('/api/batch/pause', { method: 'POST' }); setBatchPaused(true); } catch (e) {}
+}
+
+async function batchResume() {
+  try { await fetch('/api/batch/resume', { method: 'POST' }); setBatchPaused(false); } catch (e) {}
+}
+
+async function batchStop() {
+  try {
+    await fetch('/api/batch/stop', { method: 'POST' });
+    setStatus('STOPPED', 'stopped');
+    setBatchRunning(false);
+    feedLine('warn', null, null, '[USER] Stop requested.');
+  } catch (e) {}
+}
+
+/* ── SOCKET.IO ── */
+var sessionLog = [];
+var _firstSend = false;
+var socket = io();
+
+socket.on('connect', function() {
+  var d = document.getElementById('conn-dot'), l = document.getElementById('conn-label');
+  d.className = 'on'; l.textContent = 'Connected'; l.style.color = 'var(--green)';
+});
+socket.on('disconnect', function() {
+  var d = document.getElementById('conn-dot'), l = document.getElementById('conn-label');
+  d.className = 'err'; l.textContent = 'Disconnected'; l.style.color = 'var(--red)';
+});
+socket.on('batch:start', function(d) {
+  _firstSend = false;
+  setBatchRunning(true);
+  setStatus('RUNNING', 'running');
+  document.getElementById('statTotal').textContent = d.total;
+  document.getElementById('statSuccess').textContent = '0';
+  document.getElementById('statFailed').textContent = '0';
+  document.getElementById('statRate').textContent = '--';
+  setProgress(0);
+  document.getElementById('feed-log').innerHTML = '';
+  document.getElementById('saveLogsBtn').disabled = true;
+  feedLine('info', null, null, 'Batch started — ' + d.total + ' recipients queued.');
+});
+socket.on('send:event', function(d) {
+  feedLine(d.status, d.recipient, d.smtp, d.message, d.timestamp);
+  if (['success', 'failed', 'invalid'].includes(d.status)) {
+    sessionLog.push({ timestamp: new Date(d.timestamp).toISOString(), status: d.status.toUpperCase(), recipient: d.recipient || '', smtp: d.smtp || '', messageId: d.messageId || '', message: d.message || '' });
+    // Fast toast: pop up on first send event
+    if (!_firstSend) {
+      _firstSend = true;
+      if (d.status === 'success') {
+        showToast('✓ First email delivered to ' + (d.recipient || ''), 'ok');
+      } else if (d.status === 'failed') {
+        showToast('⚠ First send failed: ' + (d.recipient || ''), 'warn');
+      }
+    }
+  }
+});
+socket.on('batch:progress', function(d) {
+  document.getElementById('statSuccess').textContent = d.success;
+  document.getElementById('statFailed').textContent = d.failed;
+  var done = d.success + d.failed, pct = d.total ? Math.round(done / d.total * 100) : 0;
+  setProgress(pct);
+  document.getElementById('statRate').textContent = done ? Math.round(d.success / done * 100) + '%' : '0%';
+});
+socket.on('batch:complete', function(d) {
+  clearInterval(_pauseTimer);
+  var ok = d.failed === 0;
+  setStatus(ok ? 'COMPLETE' : 'ERRORS', ok ? 'success' : 'error');
+  feedLine(ok ? 'success' : 'warn', null, null, 'Batch complete — ' + d.success + ' sent, ' + d.failed + ' failed.');
+  setProgress(100);
+  if (sessionLog.length) document.getElementById('saveLogsBtn').disabled = false;
+  setBatchRunning(false);
+  showToast(ok ? '✓ Batch complete — ' + d.success + ' delivered' : '⚠ Done — ' + d.success + ' sent, ' + d.failed + ' failed', ok ? 'ok' : 'err');
+});
+socket.on('batch:paused', function(d) {
+  var r = d.reason === 'warmup' ? 'Warm-up cap' : d.reason === '421' ? '421 Rate Limit' : 'Batch rest';
+  feedLine('warn', null, null, r + ' — pausing ' + Math.ceil(d.duration / 60000) + ' min.');
+  startPauseCountdown(d.duration);
+});
+socket.on('bounce:update', function(d) { feedLine('success', null, null, '[REPUTATION] ' + d.account + ' — ' + d.added + ' blacklisted.', d.timestamp); refreshBlacklistCount(); });
+socket.on('bounce:error',  function(d) { feedLine('failed',  null, null, '[REPUTATION] ' + d.account + ': ' + d.message, d.timestamp); });
+socket.on('link:click',    function(d) { feedLine('info',    null, null, '[CLICK] ' + d.id + ' → ' + d.url + ' (×' + d.clicks + ')', d.timestamp); });
+
+var _pauseTimer = null;
+function startPauseCountdown(ms) {
+  clearInterval(_pauseTimer);
+  var end = Date.now() + ms;
+  setStatus('PAUSED', 'paused');
+  _pauseTimer = setInterval(function() {
+    var left = Math.max(0, end - Date.now());
+    var m = Math.floor(left / 60000), s = Math.floor(left % 60000 / 1000);
+    setStatus('PAUSED ' + m + 'm ' + String(s).padStart(2, '0') + 's', 'paused');
+    if (left <= 0) { clearInterval(_pauseTimer); setStatus('RUNNING', 'running'); }
+  }, 1000);
+}
+
+function setStatus(label, tone) {
+  var p = document.getElementById('status-pill');
+  p.className = 'spl-' + (tone || 'idle');
+  p.textContent = label;
+}
+function setProgress(pct) {
+  document.getElementById('feed-bar-fill').style.width = pct + '%';
+  document.getElementById('feed-bar-pct').textContent = pct + '%';
+}
+
+/* ── FEED ── */
+var FC = { success: 'fc-success', failed: 'fc-failed', invalid: 'fc-invalid', relay: 'fc-relay', warn: 'fc-warn', rest: 'fc-rest', info: 'fc-info' };
+
+function relTime(ts) {
+  var d = Math.floor((Date.now() - ts) / 1000);
+  if (d < 5) return 'now'; if (d < 60) return d + 's'; if (d < 3600) return Math.floor(d / 60) + 'm';
+  return new Date(ts).toLocaleTimeString();
+}
+setInterval(function() {
+  document.querySelectorAll('.feed-row[data-ts]').forEach(function(row) {
+    var ft = row.querySelector('.feed-ts'); if (ft) ft.textContent = relTime(parseInt(row.dataset.ts, 10));
+  });
+}, 15000);
+
+function feedLine(status, recipient, smtp, message, ts) {
+  var log = document.getElementById('feed-log');
+  var empty = document.getElementById('feed-empty');
+  if (empty) empty.remove();
+  var now = ts || Date.now(), cls = FC[status] || FC.info, row = document.createElement('div');
+  row.className = 'feed-row'; row.dataset.ts = now;
+  row.innerHTML = '<span class="feed-ts">' + eh(relTime(now)) + '</span><span class="feed-status ' + cls + '">' + eh(status) + '</span><span class="feed-msg">' + eh(message) + '</span>';
+  log.appendChild(row); log.scrollTop = log.scrollHeight;
+}
+
+function saveLogs() {
+  if (!sessionLog.length) return;
+  var hdr = ['Timestamp', 'Status', 'Recipient', 'SMTP Host', 'Message-ID', 'Message'];
+  var rows = sessionLog.map(function(r) {
+    return [r.timestamp, r.status, r.recipient, r.smtp, r.messageId, r.message]
+      .map(function(v) { return '"' + String(v).replace(/"/g, '""') + '"'; }).join(',');
+  });
+  var csv = [hdr.join(',')].concat(rows).join('\r\n');
+  var blob = new Blob([csv], { type: 'text/csv' });
+  var url = URL.createObjectURL(blob), a = document.createElement('a');
+  a.href = url; a.download = 'send_log_' + new Date().toISOString().replace(/[:.]/g, '-') + '.csv'; a.click(); URL.revokeObjectURL(url);
+}
+
+function clearFeed() {
+  sessionLog = [];
+  document.getElementById('feed-log').innerHTML = '<div id="feed-empty">Waiting for batch...</div>';
+  setProgress(0);
+  ['statTotal', 'statSuccess', 'statFailed'].forEach(function(id) { document.getElementById(id).textContent = '0'; });
+  document.getElementById('statRate').textContent = '--';
+  document.getElementById('saveLogsBtn').disabled = true;
+  setStatus('IDLE', 'idle');
+}
+
+/* ── PARSERS ── */
+function parseRecipients(text) {
+  return text.split('\n').map(function(line) {
+    line = line.trim(); if (!line) return null;
+    if (line.charAt(0) === '{') {
+      try { var obj = JSON.parse(line); if (!obj.email || !obj.email.includes('@')) return null; obj.email = obj.email.trim().toLowerCase(); return obj; } catch (e) { return null; }
+    }
+    var p = line.split('|'), email = p[0].trim(), tz = (p[1] || '').trim();
+    if (!email || !email.includes('@')) return null;
+    return tz ? { email: email, tz: tz } : email;
+  }).filter(Boolean);
+}
+
+function parseImapAccounts(text) {
+  return text.split('\n').map(function(l) { return l.trim(); }).filter(Boolean).map(function(line) {
+    var p = line.split('|').map(function(x) { return x.trim(); });
+    if (p.length < 4) return null;
+    return { host: p[0], port: p[1] || '993', user: p[2], pass: p[3], secure: true };
+  }).filter(Boolean);
+}
+
+async function saveImapAccounts() {
+  var accounts = parseImapAccounts(document.getElementById('imapAccounts').value);
+  try {
+    var res = await fetch('/api/imap-accounts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(accounts) });
+    var data = await res.json();
+    feedLine(res.ok ? 'success' : 'failed', null, null, res.ok ? '[IMAP] ' + data.saved + ' account(s) saved.' : '[IMAP] ' + data.error);
+  } catch (e) { feedLine('failed', null, null, '[IMAP] ' + e.message); }
+}
+
+async function runBounce() {
+  feedLine('info', null, null, '[REPUTATION] Running scan...');
+  try {
+    var res = await fetch('/api/bounce-scan', { method: 'POST' });
+    var data = await res.json();
+    feedLine(res.ok ? 'success' : 'failed', null, null, res.ok ? '[REPUTATION] ' + data.added + ' blacklisted.' : '[REPUTATION] ' + data.error);
+    if (res.ok) refreshBlacklistCount();
+  } catch (e) { feedLine('failed', null, null, '[REPUTATION] ' + e.message); }
+}
+
+async function refreshBlacklistCount() {
+  try {
+    var res = await fetch('/api/blacklist'), data = await res.json();
+    var el = document.getElementById('blacklistCount');
+    if (el) el.textContent = data.count + ' address' + (data.count !== 1 ? 'es' : '');
+  } catch (e) {}
+}
+
+/* ── DELAY PREVIEW ── */
+function syncQuickPacingFromDelay() {
+  var minEl = document.getElementById('minDelay');
+  var maxEl = document.getElementById('maxDelay');
+  var qMin = document.getElementById('quickDelayMin');
+  var qMax = document.getElementById('quickDelayMax');
+  var qRate = document.getElementById('quickPerMinute');
+  if (!minEl || !maxEl || !qMin || !qMax || !qRate) return;
+
+  if (!String(minEl.value || '').trim() && !String(maxEl.value || '').trim()) {
+    qMin.value = '';
+    qMax.value = '';
+    qRate.value = '';
+    return;
+  }
+
+  var minD = Math.max(0, parseFloat(minEl.value) || 0);
+  var maxD = Math.max(minD, parseFloat(maxEl.value) || 0);
+  qMin.value = String(minD);
+  qMax.value = String(maxD);
+
+  var avg = (minD + maxD) / 2;
+  qRate.value = avg > 0 ? (60 / avg).toFixed(1) : '';
+}
+
+function applyQuickDelayInputs() {
+  var qMin = document.getElementById('quickDelayMin');
+  var qMax = document.getElementById('quickDelayMax');
+  var minEl = document.getElementById('minDelay');
+  var maxEl = document.getElementById('maxDelay');
+  if (!qMin || !qMax || !minEl || !maxEl) return;
+
+  var minD = Math.max(0, parseFloat(qMin.value) || 0);
+  var maxD = Math.max(minD, parseFloat(qMax.value) || 0);
+
+  minEl.value = String(minD);
+  maxEl.value = String(maxD);
+  saveField('minDelay');
+  saveField('maxDelay');
+  updateDelayPreview();
+  syncQuickPacingFromDelay();
+}
+
+function applyQuickRateInput() {
+  var qRate = document.getElementById('quickPerMinute');
+  var minEl = document.getElementById('minDelay');
+  var maxEl = document.getElementById('maxDelay');
+  if (!qRate || !minEl || !maxEl) return;
+
+  var rpm = Math.max(0, parseFloat(qRate.value) || 0);
+  if (rpm <= 0) return;
+
+  var center = 60 / rpm;
+  var minD = Math.max(0, +(center * 0.85).toFixed(2));
+  var maxD = Math.max(minD, +(center * 1.15).toFixed(2));
+
+  minEl.value = String(minD);
+  maxEl.value = String(maxD);
+  saveField('minDelay');
+  saveField('maxDelay');
+  updateDelayPreview();
+  syncQuickPacingFromDelay();
+}
+
+function updateDelayPreview() {
+  var minD = parseFloat(document.getElementById('minDelay').value) || 0;
+  var maxD = Math.max(minD, parseFloat(document.getElementById('maxDelay').value) || 0);
+  var batch = parseInt(document.getElementById('batchSize').value, 10) || 0;
+  var rMin = parseFloat(document.getElementById('restPeriodMin').value) || 0;
+  var rMax = Math.max(rMin, parseFloat(document.getElementById('restPeriodMax').value) || 0);
+  var parts = [];
+  if (minD === 0 && maxD === 0) {
+    parts.push('Pacing <strong style="color:var(--text1)">disabled</strong> — sending as fast as SMTP allows.');
+  } else {
+    parts.push('Delay: <strong style="color:var(--text1)">' + (minD * 0.8).toFixed(0) + '–' + (maxD * 1.2).toFixed(0) + 's</strong> effective (base ' + minD + '–' + maxD + 's ±20% jitter)');
+    var avgRate = 60 / ((minD + maxD) / 2);
+    parts.push('Target throughput: <strong style="color:var(--text1)">~' + avgRate.toFixed(1) + ' emails/min</strong>');
+  }
+  parts.push(batch > 0
+    ? 'Batch: ~<strong style="color:var(--text1)">' + batch + '</strong> emails then rest <strong style="color:var(--text1)">' + rMin + '–' + rMax + ' min</strong>'
+    : 'Batching: <strong style="color:var(--text1)">continuous</strong>');
+  var rc = (document.getElementById('recipients').value || '').split('\n').filter(function(l) { return l.trim(); }).length;
+  if (rc > 1 && (minD > 0 || maxD > 0)) {
+    var avg = (minD + maxD) / 2;
+    var rs = batch > 0 ? ((rMin + rMax) / 2 * 60) * Math.floor(rc / Math.max(1, batch)) : 0;
+    var eta = rc * avg + rs;
+    var es = eta >= 3600 ? (eta / 3600).toFixed(1) + ' hr' : eta >= 60 ? Math.ceil(eta / 60) + ' min' : Math.ceil(eta) + ' sec';
+    parts.push('ETA (' + rc + ' recips): <strong style="color:var(--amber)">~' + es + '</strong>');
+  }
+  if (document.getElementById('warmupMode').checked) {
+    var day = parseInt(document.getElementById('warmupDay').value, 10) || 1;
+    var cap = Math.max(1, Math.floor(10 * Math.pow(1.1, day - 1)));
+    parts.push('Warm-up cap: <strong style="color:var(--text1)">' + cap + '/hr</strong> (Day ' + day + ')');
+  }
+  document.getElementById('delayPreview').innerHTML = parts.join('<br>');
+}
+
+/* ── EXAMPLE TEMPLATES ── */
+function insertExampleSubjects() {
+  document.getElementById('subjects').value = [
+    '{Hello|Hi|Good day} {{default firstName "there"}} — your {{membershipLevel}} account update',
+    '{{greeting}} {{firstName}}, important notice re: your membership',
+    'Your {exclusive|personal} {offer|update} is ready, {{default firstName "valued member"}}'
+  ].join('\n');
+  saveField('subjects');
+}
+
+function insertExampleTemplates() {
+  var welcome = '<!DOCTYPE html><html><head><meta charset="UTF-8"><style>body{font-family:Arial,sans-serif;background:#f8fafc;margin:0;padding:0}.wrap{max-width:600px;margin:32px auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,.08)}.hdr{background:linear-gradient(135deg,#1e3a5f,#2563eb);padding:28px 32px;color:#fff}.hdr h1{margin:0;font-size:20px;font-weight:700}.body{padding:24px 32px}.body p{color:#374151;font-size:14px;line-height:1.7;margin:0 0 14px}.cta{display:inline-block;background:#2563eb;color:#fff;text-decoration:none;padding:11px 24px;border-radius:8px;font-weight:700;font-size:14px}.ftr{background:#f8fafc;padding:12px 32px;font-size:11px;color:#9ca3af;border-top:1px solid #e5e7eb}</style></head><body><div class="wrap"><div class="hdr"><h1>{{greeting}}, {{default firstName "Valued Member"}}!</h1></div><div class="body"><p>Hi <strong>{{fullName}}</strong>,</p><p>Your {membership|account} update is ready.</p><a href="https://example.com/dashboard" class="cta">Open Dashboard</a></div><div class="ftr">{{email}}</div></div></body></html>';
+  var invoice = '<!DOCTYPE html><html><head><meta charset="UTF-8"><style>body{font-family:Arial,sans-serif;background:#f8fafc;margin:0;padding:0}.wrap{max-width:620px;margin:26px auto;background:#fff;border-radius:10px;overflow:hidden;border:1px solid #e5e7eb}.hdr{background:#0f172a;padding:22px 28px;color:#fff}.body{padding:22px 28px}.meta{font-size:13px;color:#475569;margin-bottom:14px}.ftr{background:#f8fafc;padding:12px 28px;font-size:11px;color:#94a3b8;border-top:1px solid #e5e7eb}</style></head><body><div class="wrap"><div class="hdr"><h2 style="margin:0">Invoice #$#SEVEN</h2></div><div class="body"><div class="meta">Customer: {{fullName}} ({{email}})</div>$invoice_table</div><div class="ftr">Generated for {{email}}</div></div></body></html>';
+  document.getElementById('bodies').value = welcome + '\n---\n' + invoice;
+  document.getElementById('attachHtml').value = invoice;
+  saveField('bodies');
+  saveField('attachHtml');
+}
+
+
+function updateRecipientCount() {
+  var raw = (document.getElementById('recipients').value || '').split('\n').map(function(x) { return x.trim(); }).filter(Boolean);
+  var n = raw.length;
+  var line = document.getElementById('recip-count-line');
+  var num = document.getElementById('recip-count-num');
+  var badge = document.getElementById('recip-badge');
+  if (num) num.textContent = String(n);
+  if (line) line.style.display = n > 0 ? 'block' : 'none';
+  if (badge) { badge.style.display = n > 0 ? 'inline-block' : 'none'; badge.textContent = String(n); }
+}
+
+function toggleGraph() {
+  var cb = document.getElementById('graphEnabled');
+  var t = document.getElementById('graphTrack');
+  cb.checked = !cb.checked;
+  t.classList.toggle('on', cb.checked);
+  saveField('graphEnabled');
+}
+
+function readGraphConfigFromUi() {
+  return {
+    enabled: !!document.getElementById('graphEnabled').checked,
+    tenantId: (document.getElementById('graphTenantId').value || '').trim(),
+    clientId: (document.getElementById('graphClientId').value || '').trim(),
+    clientSecret: (document.getElementById('graphClientSecret').value || '').trim(),
+    sender: (document.getElementById('graphSender').value || '').trim(),
+  };
+}
+
+async function graphAuthenticate() {
+  var cfg = readGraphConfigFromUi();
+  if (!cfg.tenantId || !cfg.clientId || !cfg.clientSecret || !cfg.sender) {
+    showToast('Graph: fill Tenant ID, Client ID, Secret, and Sender mailbox', 'warn');
+    return;
+  }
+  var st = document.getElementById('graphAuthStatus');
+  if (st) st.textContent = 'Connecting...';
+  try {
+    var res = await fetch('/api/graph/authenticate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(cfg)
+    });
+    var data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Auth failed');
+    if (st) st.textContent = 'Connected: ' + (data.sender || cfg.sender);
+    showToast('Graph authenticated', 'ok');
+  } catch (e) {
+    if (st) st.textContent = 'Auth failed';
+    showToast('Graph auth failed: ' + e.message, 'err');
+  }
+}
+
+async function graphSendTest() {
+  var cfg = readGraphConfigFromUi();
+  var first = parseRecipients(document.getElementById('recipients').value || '')[0];
+  var to = typeof first === 'string' ? first : (first && first.email ? first.email : '');
+  if (!to) {
+    showToast('Graph test: add at least one recipient', 'warn');
+    return;
+  }
+  try {
+    var res = await fetch('/api/graph/send-test', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        tenantId: cfg.tenantId,
+        clientId: cfg.clientId,
+        clientSecret: cfg.clientSecret,
+        sender: cfg.sender,
+        recipient: to,
+        subject: 'Graph API test',
+        html: '<p>Graph API test mail from MailEngine.</p>'
+      })
+    });
+    var data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Send test failed');
+    showToast('Graph test sent to ' + to, 'ok');
+    feedLine('success', to, 'graph-api', '[GRAPH] Test email sent via Graph API.');
+  } catch (e) {
+    showToast('Graph test failed: ' + e.message, 'err');
+    feedLine('failed', to || null, 'graph-api', '[GRAPH] ' + e.message);
+  }
+}
+
+function showToast(msg, type) {
+  var el = document.getElementById('btast');
+  if (!el) return;
+  el.className = '';
+  el.textContent = msg || '';
+  el.classList.add('show');
+  el.classList.add(type === 'ok' ? 'toast-ok' : type === 'warn' ? 'toast-warn' : type === 'info' ? 'toast-info' : 'toast-err');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(function() { el.classList.remove('show'); }, 2200);
+}
+
+async function handleSend() {
+  try {
+    var smtps = buildSmtpArray();
+    var recips = parseRecipients(document.getElementById('recipients').value || '');
+    var subjects = (document.getElementById('subjects').value || '').split('\n').map(function(x) { return x.trim(); }).filter(Boolean);
+    var bodies = (document.getElementById('bodies').value || '').split(/\n\s*---\s*\n/g).map(function(x) { return x.trim(); }).filter(Boolean);
+    var fromNames = (document.getElementById('fromName').value || '').split('\n').map(function(x) { return x.trim(); }).filter(Boolean);
+    var graphConfig = readGraphConfigFromUi();
+
+    if (!graphConfig.enabled && smtps.length === 0) {
+      showToast('Add at least one SMTP account', 'warn');
+      switchTab('tab-smtp', document.querySelector('.sbi[onclick*="tab-smtp"]'));
+      return;
+    }
+    if (graphConfig.enabled && (!graphConfig.tenantId || !graphConfig.clientId || !graphConfig.clientSecret || !graphConfig.sender)) {
+      showToast('Graph mode enabled but Graph credentials are incomplete', 'warn');
+      return;
+    }
+    if (!recips.length) { showToast('Recipients list is empty', 'warn'); return; }
+    if (!subjects.length) { showToast('Subject lines are required', 'warn'); return; }
+    if (!bodies.length) { showToast('At least one body template is required', 'warn'); return; }
+
+    var invoiceData = [];
+    var invoiceText = (document.getElementById('invoiceData').value || '').trim();
+    if (invoiceText) {
+      try { invoiceData = JSON.parse(invoiceText); }
+      catch (e) { showToast('Invoice JSON is invalid: ' + e.message, 'err'); return; }
+    }
+
+    var payload = {
+      smtps: smtps,
+      recipients: recips,
+      subjects: subjects,
+      bodies: bodies,
+      rotateLimit: parseInt(document.getElementById('rotateLimit').value, 10) || 5,
+      tfn: (document.getElementById('tfn').value || '').trim(),
+      fromName: fromNames[0] || '',
+      fromNames: fromNames,
+      minDelay: parseFloat(document.getElementById('minDelay').value) || 0,
+      maxDelay: parseFloat(document.getElementById('maxDelay').value) || 0,
+      warmupMode: !!document.getElementById('warmupMode').checked,
+      warmupDay: parseInt(document.getElementById('warmupDay').value, 10) || 1,
+      llmApiKey: (document.getElementById('llmApiKey').value || '').trim(),
+      attachHtml: (document.getElementById('attachHtml').value || '').trim(),
+      attachFormat: document.getElementById('attachFormat').value,
+      validationMode: (document.querySelector('input[name="validationMode"]:checked') || {}).value || 'syntax',
+      redirectDomains: (document.getElementById('redirectDomains').value || '').split('\n').map(function(d) { return d.trim(); }).filter(Boolean),
+      tzSendStart: parseInt(document.getElementById('tzSendStart').value, 10) || 9,
+      tzSendEnd: parseInt(document.getElementById('tzSendEnd').value, 10) || 17,
+      batchSize: parseInt(document.getElementById('batchSize').value, 10) || 0,
+      restPeriodMin: parseFloat(document.getElementById('restPeriodMin').value) || 0,
+      restPeriodMax: parseFloat(document.getElementById('restPeriodMax').value) || 0,
+      invoiceData: invoiceData,
+      graphConfig: graphConfig,
+    };
+
+    var res = await fetch('/api/send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) {
+      var data = await res.json();
+      setBatchRunning(false);
+      showToast(data.error || 'Server error', 'err');
+      feedLine('failed', null, null, data.error || 'Server error');
+    }
+  } catch (e) {
+    setBatchRunning(false);
+    showToast('Request failed: ' + e.message, 'err');
+    feedLine('failed', null, null, 'Request failed: ' + e.message);
+  }
+}
+
+function eh(s) {
+  return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+async function logoutNow() {
+  try {
+    await fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' });
+  } catch (e) {}
+  window.location.replace('/login');
+}
+
+async function ensureAuth() {
+  try {
+    var res = await fetch('/api/auth/status', { credentials: 'same-origin' });
+    var data = await res.json().catch(function() { return {}; });
+    if (!data || data.authenticated !== true) {
+      window.location.replace('/login');
+      return false;
+    }
+    return true;
+  } catch (e) {
+    window.location.replace('/login');
+    return false;
+  }
+}
+
+async function initDashboard() {
+  var ok = await ensureAuth();
+  if (!ok) return;
+
+  restoreFields();
+  loadSmtpSlots();
+  updateDelayPreview();
+  updateRecipientCount();
+  refreshBlacklistCount();
+
+  if (localStorage.getItem('me_graphEnabled') === 'true') {
+    document.getElementById('graphEnabled').checked = true;
+    document.getElementById('graphTrack').classList.add('on');
+  }
+}
+
+initDashboard();
+
+document.addEventListener('keydown', function(e) {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+    var btn = document.getElementById('launch-btn');
+    if (btn && !btn.disabled) btn.click();
+  }
+});
+</script>
+</body>
+</html>

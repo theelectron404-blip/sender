@@ -1,0 +1,921 @@
+const express = require('express');
+const path = require('path');
+const fs = require('fs');
+const crypto = require('crypto');
+const { sendMail, applyTags, spinText, randomizeHtml } = require('./services/mailer');
+const { renderAttachment, processInvoicePdf } = require('./services/renderer');
+const { rewriteText } = require('./services/variator');
+const { validateRecipient, clearCaches } = require('./services/validator');
+const { renderTemplate, clearTemplateCache } = require('./services/templater');
+const bounceMonitor = require('./services/bounceMonitor');
+
+const BLACKLIST_PATH = path.join(__dirname, 'blacklist.json');
+
+function loadBlacklist() {
+    try {
+        const raw = JSON.parse(fs.readFileSync(BLACKLIST_PATH, 'utf8'));
+        return new Set(Array.isArray(raw) ? raw.map(e => e.toLowerCase()) : []);
+    } catch {
+        return new Set();
+    }
+}
+
+// ── Dynamic Link Cloaking ──────────────────────────────────────────────────────
+// In-memory store: redirectId → { url, createdAt, clicks }
+// Persisted to click-log.json so clicks survive server restarts.
+const _redirectStore = new Map();
+const CLICK_LOG_PATH = path.join(__dirname, 'click-log.json');
+
+function _loadClickLog() {
+    try {
+        const entries = JSON.parse(fs.readFileSync(CLICK_LOG_PATH, 'utf8'));
+        if (Array.isArray(entries)) {
+            for (const e of entries) _redirectStore.set(e.id, e);
+        }
+    } catch { /* first run — file doesn't exist yet */ }
+}
+_loadClickLog();
+
+function _saveClickLog() {
+    const entries = [..._redirectStore.values()];
+    try { fs.writeFileSync(CLICK_LOG_PATH, JSON.stringify(entries, null, 2), 'utf8'); }
+    catch { /* non-fatal */ }
+}
+
+/**
+ * Register a destination URL under a new random ID.
+ * domain is one of the user's redirect domains chosen by the rotation logic.
+ * Returns the full cloaked URL: https://domain/r/id
+ */
+function registerRedirect(finalUrl, domain) {
+    const id = crypto.randomBytes(9).toString('base64url'); // 12-char URL-safe
+    _redirectStore.set(id, { id, url: finalUrl, domain, clicks: 0, createdAt: Date.now() });
+    _saveClickLog();
+    return `https://${domain}/r/${id}`;
+}
+
+/**
+ * Replace all href="...", src="...", and action="..." attribute values in HTML
+ * with cloaked redirect URLs, using round-robin domain rotation.
+ *
+ * Built-in URL schemes (mailto:, tel:, cid:) and # anchors are left untouched.
+ * The function is idempotent: already-cloaked /r/ paths are not double-wrapped.
+ *
+ * @param {string} html         - Fully resolved HTML for one recipient.
+ * @param {string[]} domains    - Array of redirect domains (non-empty).
+ * @returns {string}            - HTML with all external links cloaked.
+ */
+let _domainRoundRobin = 0;
+function cloakLinks(html, domains) {
+    if (!domains || domains.length === 0) return html;
+    return html.replace(
+        /(href|src|action)=["']([^"']+)["']/g,
+        (match, attr, url) => {
+            // Skip non-navigable or already-cloaked URLs
+            if (/^(mailto:|tel:|cid:|#|\/r\/)/i.test(url)) return match;
+            // Only cloak http/https links
+            if (!/^https?:\/\//i.test(url)) return match;
+            const domain = domains[_domainRoundRobin % domains.length];
+            _domainRoundRobin++;
+            const cloaked = registerRedirect(url, domain);
+            return `${attr}="${cloaked}"`;
+        }
+    );
+}
+
+async function getGraphAccessToken(graphConfig) {
+    const tenantId = String(graphConfig.tenantId || '').trim();
+    const clientId = String(graphConfig.clientId || '').trim();
+    const clientSecret = String(graphConfig.clientSecret || '').trim();
+    if (!tenantId || !clientId || !clientSecret) {
+        throw new Error('Graph credentials are incomplete.');
+    }
+
+    const tokenUrl = `https://login.microsoftonline.com/${encodeURIComponent(tenantId)}/oauth2/v2.0/token`;
+    const body = new URLSearchParams({
+        client_id: clientId,
+        client_secret: clientSecret,
+        grant_type: 'client_credentials',
+        scope: 'https://graph.microsoft.com/.default',
+    });
+
+    const tokenRes = await fetch(tokenUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body,
+    });
+    const tokenData = await tokenRes.json().catch(() => ({}));
+    if (!tokenRes.ok || !tokenData.access_token) {
+        throw new Error(tokenData.error_description || tokenData.error || 'Unable to obtain Graph access token.');
+    }
+    return tokenData.access_token;
+}
+
+async function sendGraphMail({ graphConfig, recipient, subject, html }) {
+    const sender = String(graphConfig.sender || '').trim();
+    if (!sender) throw new Error('Graph sender mailbox is required.');
+
+    const accessToken = await getGraphAccessToken(graphConfig);
+    const sendUrl = `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(sender)}/sendMail`;
+
+    const payload = {
+        message: {
+            subject: subject || '(No subject)',
+            body: { contentType: 'HTML', content: html || '' },
+            toRecipients: [{ emailAddress: { address: recipient } }],
+        },
+        saveToSentItems: true,
+    };
+
+    const sendRes = await fetch(sendUrl, {
+        method: 'POST',
+        headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+    });
+
+    if (!sendRes.ok) {
+        const errBody = await sendRes.text().catch(() => '');
+        throw new Error(`Graph send failed (${sendRes.status}): ${errBody || sendRes.statusText}`);
+    }
+}
+
+const app = express();
+
+// Speed controls for adaptive throttling after provider rate limits.
+// Keep defaults fast while still backing off when 421/454 responses appear.
+const SMTP_COOLDOWN_MS = Math.max(30000, parseInt(process.env.SMTP_COOLDOWN_MS || '180000', 10));
+const ADAPTIVE_DELAY_MAX = Math.max(1, parseFloat(process.env.ADAPTIVE_DELAY_MAX || '2'));
+const ADAPTIVE_DELAY_STEP_UP = Math.max(0.05, parseFloat(process.env.ADAPTIVE_DELAY_STEP_UP || '0.25'));
+const ADAPTIVE_DELAY_RECOVERY = Math.min(0.99, Math.max(0.5, parseFloat(process.env.ADAPTIVE_DELAY_RECOVERY || '0.9')));
+
+// Basic dashboard authentication (cookie + HMAC token).
+const LOGIN_ENABLED = String(process.env.LOGIN_ENABLED || 'true').toLowerCase() !== 'false';
+const AUTH_COOKIE_NAME = 'as_auth';
+const AUTH_TOKEN_TTL_MS = Math.max(5 * 60 * 1000, parseInt(process.env.AUTH_TOKEN_TTL_MS || String(24 * 60 * 60 * 1000), 10));
+const AUTH_USER = String(process.env.APP_LOGIN_USER || 'douxkali').trim();
+const AUTH_PASS = String(process.env.APP_LOGIN_PASS || 'Douxkali').trim();
+const AUTH_SECRET = String(process.env.APP_LOGIN_SECRET || '').trim() || crypto.randomBytes(32).toString('hex');
+
+// Socket.io instance — injected by server.js after the http server is created
+let io = null;
+function setIo(instance) { io = instance; }
+
+
+let _batchState = 'idle';
+
+function emit(event, data) {
+    if (io) io.emit(event, data);
+}
+
+function parseCookies(req) {
+    const raw = String(req.headers.cookie || '');
+    if (!raw) return {};
+    return raw.split(';').reduce((acc, part) => {
+        const i = part.indexOf('=');
+        if (i <= 0) return acc;
+        const k = part.slice(0, i).trim();
+        const v = decodeURIComponent(part.slice(i + 1).trim());
+        acc[k] = v;
+        return acc;
+    }, {});
+}
+
+function signAuthPayload(payload) {
+    return crypto.createHmac('sha256', AUTH_SECRET).update(payload).digest('base64url');
+}
+
+function createAuthToken(username) {
+    const exp = Date.now() + AUTH_TOKEN_TTL_MS;
+    const payload = Buffer.from(JSON.stringify({ u: username, exp }), 'utf8').toString('base64url');
+    const sig = signAuthPayload(payload);
+    return `${payload}.${sig}`;
+}
+
+function verifyAuthToken(token) {
+    try {
+        if (!token || typeof token !== 'string') return false;
+        const parts = token.split('.');
+        if (parts.length !== 2) return false;
+        const payload = parts[0];
+        const sig = parts[1];
+        const expected = signAuthPayload(payload);
+        if (sig !== expected) return false;
+        const decoded = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
+        if (!decoded || typeof decoded.exp !== 'number') return false;
+        if (Date.now() >= decoded.exp) return false;
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+function isAuthenticated(req) {
+    if (!LOGIN_ENABLED) return true;
+    const cookies = parseCookies(req);
+    return verifyAuthToken(cookies[AUTH_COOKIE_NAME]);
+}
+
+function authCookie(token, maxAgeSec) {
+    const secure = String(process.env.NODE_ENV || '').toLowerCase() === 'production' ? '; Secure' : '';
+    return `${AUTH_COOKIE_NAME}=${encodeURIComponent(token)}; HttpOnly; Path=/; SameSite=Lax; Max-Age=${maxAgeSec}${secure}`;
+}
+
+function requireAuth(req, res, next) {
+    if (isAuthenticated(req)) return next();
+    if (req.path.startsWith('/api/')) {
+        return res.status(401).json({ error: 'Unauthorized' });
+    }
+    return res.redirect('/login');
+}
+
+// --- Middleware ---
+app.use(express.json());
+
+app.post('/api/auth/login', (req, res) => {
+    if (!LOGIN_ENABLED) return res.json({ ok: true, authenticated: true, loginEnabled: false });
+    const username = String(req.body?.username || '').trim();
+    const password = String(req.body?.password || '');
+    if (!username || !password) {
+        return res.status(400).json({ error: 'Username and password are required.' });
+    }
+    if (username !== AUTH_USER || password !== AUTH_PASS) {
+        return res.status(401).json({ error: 'Invalid username or password.' });
+    }
+    const token = createAuthToken(username);
+    res.setHeader('Set-Cookie', authCookie(token, Math.floor(AUTH_TOKEN_TTL_MS / 1000)));
+    return res.json({ ok: true, authenticated: true, loginEnabled: true });
+});
+
+app.post('/api/auth/logout', (req, res) => {
+    res.setHeader('Set-Cookie', authCookie('', 0));
+    return res.json({ ok: true });
+});
+
+app.get('/api/auth/status', (req, res) => {
+    res.json({ authenticated: isAuthenticated(req), loginEnabled: LOGIN_ENABLED });
+});
+
+app.get('/login', (req, res) => {
+    if (isAuthenticated(req)) return res.redirect('/dashboard');
+    return res.sendFile(path.join(__dirname, 'public', 'login.html'));
+});
+
+app.get('/', (req, res) => {
+    if (!isAuthenticated(req)) return res.redirect('/login');
+    return res.redirect('/dashboard');
+});
+
+app.get('/dashboard', requireAuth, (req, res) => {
+    return res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+app.use((req, res, next) => {
+    if (req.path === '/unsub' || req.path.startsWith('/r/')) return next();
+    if (req.path === '/login.html') return res.redirect('/login');
+    if (req.path.startsWith('/api/auth')) return next();
+
+    const isDashboardPage = req.path === '/index.html' || req.path === '/dashboard';
+    const isApiCall = req.path.startsWith('/api/');
+    if (isDashboardPage || isApiCall) return requireAuth(req, res, next);
+    return next();
+});
+
+app.use(express.static(path.join(__dirname, 'public')));
+
+
+app.get('/r/:id', (req, res) => {
+    const entry = _redirectStore.get(req.params.id);
+    if (!entry) return res.status(404).send('Link not found.');
+    entry.clicks++;
+    _saveClickLog();
+    if (io) io.emit('link:click', { id: req.params.id, url: entry.url, domain: entry.domain, clicks: entry.clicks, timestamp: Date.now() });
+    return res.redirect(302, entry.url);
+});
+
+// GET /api/click-log — return all tracked links and their click counts.
+app.get('/api/click-log', (_req, res) => {
+    const log = [..._redirectStore.values()].sort((a, b) => b.createdAt - a.createdAt);
+    res.json(log);
+});
+
+// GET /unsub?e=<base64url-encoded-email> — RFC 8058 one-click unsubscribe endpoint.
+// Called by mail clients (Gmail, Apple Mail) when the user clicks "Unsubscribe".
+// Immediately adds the address to blacklist.json and emits a bounce:update event
+// so the live feed shows the removal in real time.
+app.get('/unsub', (req, res) => {
+    try {
+        const raw = Buffer.from(String(req.query.e || ''), 'base64url').toString('utf8').trim().toLowerCase();
+        if (!raw || !raw.includes('@') || !raw.includes('.')) {
+            return res.status(400).send('Invalid unsubscribe link.');
+        }
+        let list = [];
+        try { list = JSON.parse(fs.readFileSync(BLACKLIST_PATH, 'utf8')); if (!Array.isArray(list)) list = []; } catch { list = []; }
+        if (!list.includes(raw)) {
+            list.push(raw);
+            fs.writeFileSync(BLACKLIST_PATH, JSON.stringify(list, null, 2), 'utf8');
+        }
+        if (io) io.emit('bounce:update', { account: 'unsubscribe', added: 1, timestamp: Date.now() });
+        const safe = raw.replace(/[<>&"]/g, c => ({ '<':'&lt;', '>':'&gt;', '&':'&amp;', '"':'&quot;' })[c]);
+        return res.send(
+            `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Unsubscribed</title>` +
+            `<style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:system-ui,sans-serif;` +
+            `display:flex;align-items:center;justify-content:center;height:100vh;background:#f8fafc;color:#334155}` +
+            `h2{color:#16a34a;margin-bottom:12px;font-size:22px}p{color:#64748b;font-size:14px}</style></head>` +
+            `<body><div style="text-align:center;padding:40px"><h2>&#10003; Unsubscribed</h2>` +
+            `<p><strong>${safe}</strong> has been removed from future mailings.</p></div></body></html>`
+        );
+    } catch {
+        return res.status(400).send('Invalid unsubscribe link.');
+    }
+});
+
+// --- Routes ---
+app.post('/api/send', async (req, res) => {
+    const {
+        smtps, recipients, subjects, bodies,
+        rotateLimit, tfn, fromName, fromNames,
+        minDelay, maxDelay,
+        warmupMode, warmupDay,
+        llmApiKey,
+        attachHtml, attachFormat,
+        invoiceData,
+        validationMode,
+        batchSize, restPeriodMin, restPeriodMax,
+        redirectDomains,
+        tzSendStart, tzSendEnd,
+        graphConfig,
+    } = req.body;
+
+    const graphEnabled = !!(graphConfig && graphConfig.enabled);
+    const resolvedFromNames = Array.isArray(fromNames)
+        ? fromNames.map((x) => String(x || '').trim()).filter(Boolean)
+        : [];
+
+    if (graphEnabled) {
+        if (!graphConfig.tenantId || !graphConfig.clientId || !graphConfig.clientSecret || !graphConfig.sender) {
+            return res.status(400).json({ error: 'Graph mode requires tenantId, clientId, clientSecret, and sender.' });
+        }
+    }
+
+    // Validate SMTP pool
+    if (!graphEnabled) {
+        if (!Array.isArray(smtps) || smtps.length === 0) {
+            return res.status(400).json({ error: 'At least one SMTP account is required.' });
+        }
+        for (let i = 0; i < smtps.length; i++) {
+            const s = smtps[i];
+            const hasAuth = s.pass || (s.clientId && s.clientSecret && s.refreshToken);
+            if (!s.host || !s.port || !s.user || !hasAuth) {
+                return res.status(400).json({ error: `SMTP entry ${i + 1} is missing required fields (host, port, user, and either pass or OAuth2 credentials).` });
+            }
+        }
+    }
+
+    // Validate recipients
+    if (!Array.isArray(recipients) || recipients.length === 0) {
+        return res.status(400).json({ error: 'At least one recipient is required.' });
+    }
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    for (const r of recipients) {
+        const rawEmail = (typeof r === 'object' && r !== null) ? (r.email || '') : String(r);
+        if (!emailRegex.test(rawEmail.trim())) {
+            return res.status(400).json({ error: `Invalid email: ${rawEmail}` });
+        }
+    }
+
+    // Normalise the validation mode — default to 'mx' when not supplied.
+    // 'syntax' → regex only | 'mx' → +DNS MX | 'deep' → +SMTP probe
+    const vMode = ['syntax', 'mx', 'deep'].includes(validationMode) ? validationMode : 'mx';
+
+    if (!Array.isArray(subjects) || subjects.length === 0) {
+        return res.status(400).json({ error: 'At least one subject line is required.' });
+    }
+    if (!Array.isArray(bodies) || bodies.length === 0) {
+        return res.status(400).json({ error: 'At least one HTML body template is required.' });
+    }
+
+    const limit = Math.max(1, parseInt(rotateLimit, 10) || 5);
+    const results = { success: 0, failed: 0, logs: [] };
+
+    // Load blacklist once per batch — addresses added by the bounce monitor
+    // during a long batch will not take effect until the next batch, which is
+    // the correct and expected behaviour.
+    const blacklistSet = loadBlacklist();
+
+    // Clear DNS/SMTP validation caches so stale results from a previous batch
+    // do not bleed into this one. Caches are re-populated as the loop runs.
+    clearCaches();
+
+    // Clear the Handlebars compiled-template cache so any edits to the template
+    // in the UI take effect for this batch without a server restart.
+    clearTemplateCache();
+
+    // Pre-parse invoice items once per batch — same array shared across all
+    // recipient sends. express.json() already decoded the payload, so invoiceData
+    // arrives as a native array. $invoice_table in body/attachment HTML is
+    // replaced per send inside applyTags().
+    const parsedInvoiceItems = Array.isArray(invoiceData) && invoiceData.length > 0
+        ? invoiceData
+        : [];
+
+    // ── Warm-up rate tracking ────────────────────────────────────────────────
+    // Hourly cap = floor(10 × 1.1^(day-1)):  day1→10, day2→11, day7→17, day30→174
+    const warmupHourlyLimit = warmupMode
+        ? Math.max(1, Math.floor(10 * Math.pow(1.1, Math.max(0, (parseInt(warmupDay, 10) || 1) - 1))))
+        : null;
+    let warmupSentThisHour = 0;
+    let warmupHourStart = Date.now();
+
+    // ── Adaptive pacing + per-SMTP cooldown state ───────────────────────────
+    // When an SMTP returns 421, that specific account is cooled down for 15 min
+    // and the global pacing multiplier is increased to slow future sends.
+    const smtpCooldownUntil = Array.isArray(smtps) ? smtps.map(() => 0) : [];
+    let adaptiveDelayFactor = 1;
+
+    // sendCounter tracks sends on the current SMTP; resets on every rotation
+    let sendCounter = 0;
+    let smtpIndex = 0;
+
+    // ── Dynamic Batching ─────────────────────────────────────────────────────
+    // batchSendCount tracks how many emails have been sent in the current micro-
+    // batch. When it reaches a random size in [batchMin, batchMax], the loop
+    // pauses for a random rest period in [restPeriodMin, restPeriodMax] minutes.
+    // The bounce monitor (IMAP engagement) is triggered manually during the rest
+    // to simulate account activity — a human reads mail while taking a break.
+    //
+    // Both the batch boundary and the rest duration are randomised independently
+    // so no two sending sessions share an identical cadence fingerprint.
+    const batchMin = Math.max(0, parseInt(batchSize, 10) || 0);
+    // If only one value is provided (batchSize), treat it as both min and max.
+    // The UI sends a single batchSize value; a batchMax field may be added later.
+    const batchMax = batchMin;
+    const restMin  = Math.max(0, parseFloat(restPeriodMin) || 0);   // minutes
+    const restMax  = Math.max(restMin, parseFloat(restPeriodMax) || 0);
+    const batchingEnabled = batchMin > 0;
+    let batchSendCount = 0;
+    // Randomise the first batch boundary within ±25% so the very first batch
+    // size is not predictable.
+    let nextBatchLimit = batchMin > 0
+        ? Math.max(1, Math.round(batchMin * (0.75 + Math.random() * 0.5)))
+        : Infinity;
+
+    // Build the clean sorted redirect domain list once per batch.
+    const activeDomains = Array.isArray(redirectDomains)
+        ? redirectDomains.map(d => d.trim()).filter(Boolean)
+        : [];
+
+    // Business-hours window for timezone scheduling (24-h, defaults 9–17).
+    const sendStartHour = Math.max(0,  Math.min(23, parseInt(tzSendStart, 10) || 9));
+    const sendEndHour   = Math.max(0,  Math.min(23, parseInt(tzSendEnd,   10) || 17));
+
+    _batchState = 'running';
+    emit('batch:start', { total: recipients.length, timestamp: Date.now() });
+
+    for (const recipientRaw of recipients) {
+        // ── User stop/pause guard ─────────────────────────────────────────────
+        if (_batchState === 'stopped') {
+            emit('send:event', { status: 'warn', recipient: null, smtp: null, message: '[STOPPED] Batch stopped by user request.', timestamp: Date.now() });
+            break;
+        }
+        while (_batchState === 'paused') {
+            await new Promise((r) => setTimeout(r, 300));
+        }
+        // ── Per-SMTP cooldown selector (421/454 recovery) ───────────────────
+        if (!graphEnabled && smtps.length > 0) {
+            let attempts = 0;
+            const now = Date.now();
+            while (attempts < smtps.length && smtpCooldownUntil[smtpIndex] > now) {
+                smtpIndex = (smtpIndex + 1) % smtps.length;
+                sendCounter = 0;
+                attempts++;
+            }
+
+            // If every account is currently cooling down, wait for the earliest one.
+            if (attempts >= smtps.length && smtpCooldownUntil[smtpIndex] > now) {
+                const earliest = Math.min(...smtpCooldownUntil);
+                const waitMs = Math.max(0, earliest - now);
+                if (waitMs > 0) {
+                    const msg = `[COOLDOWN] All SMTP accounts cooling down. Waiting ${Math.ceil(waitMs / 1000)}s.`;
+                    results.logs.push(msg);
+                    emit('send:event', { status: 'rest', recipient: null, smtp: null, message: msg, timestamp: Date.now() });
+                    await new Promise((r) => setTimeout(r, waitMs));
+                }
+            }
+        }
+
+        // ── Timezone-aware scheduling ─────────────────────────────────────────
+        // recipientRaw may be a plain string (no timezone) or an object with
+        // { email, tz } shape. When a timezone is present, we check whether
+        // the current moment falls inside the [sendStartHour, sendEndHour) window
+        // in that timezone. If not, we sleep until the next window opens.
+        // recipientRaw may be:
+        //   • a plain string  "alice@example.com"            (legacy)
+        //   • a pipe string   "alice@example.com|America/NYC" (legacy)
+        //   • a rich object   { email, tz, firstName, lastName, city,
+        //                       lastOrderDate, membershipLevel, referralCode, ... }
+        //   The UI now sends rich objects when JSON lines are parsed by
+        //   parseRecipients(); plain strings are kept for backward compat.
+        let recipientEmail, recipientTz, recipientData;
+        if (typeof recipientRaw === 'object' && recipientRaw !== null) {
+            recipientEmail = (recipientRaw.email || '').trim();
+            recipientTz    = (recipientRaw.tz    || '').trim();
+            recipientData  = recipientRaw;               // full schema for Handlebars
+        } else {
+            recipientEmail = String(recipientRaw).trim();
+            recipientTz    = '';
+            recipientData  = { email: recipientEmail };  // minimal context
+        }
+
+        if (recipientTz) {
+            const msUntilWindow = msUntilSendWindow(recipientTz, sendStartHour, sendEndHour);
+            if (msUntilWindow > 0) {
+                const hh = (msUntilWindow / 3600000).toFixed(2);
+                const tzMsg = `[TZ-QUEUE] ${recipientEmail} (${recipientTz}) — outside send window. Waiting ${hh}h.`;
+                results.logs.push(tzMsg);
+                emit('send:event', { status: 'rest', recipient: recipientEmail, smtp: null, message: tzMsg, timestamp: Date.now() });
+                await new Promise((r) => setTimeout(r, msUntilWindow));
+                emit('send:event', { status: 'info', recipient: recipientEmail, smtp: null, message: `[TZ-QUEUE] Window opened for ${recipientEmail}. Sending now.`, timestamp: Date.now() });
+            }
+        }
+
+        const recipient = recipientEmail;  // clean email string used for all downstream logic
+
+        // ── Blacklist guard ───────────────────────────────────────────────────
+        if (blacklistSet.has(recipient.toLowerCase())) {
+            const skipMsg = `[SKIPPED] ${recipient} is blacklisted (bounce/DSN detected).`;
+            results.logs.push(skipMsg);
+            emit('send:event', { status: 'warn', recipient, smtp: null, message: skipMsg, timestamp: Date.now() });
+            emit('batch:progress', { success: results.success, failed: results.failed, total: recipients.length, timestamp: Date.now() });
+            continue;
+        }
+
+        // ── Pre-send validation ───────────────────────────────────────────────
+        // Runs after the blacklist check to avoid wasting network calls on
+        // already-known-bad addresses. DNS/SMTP results are cached per domain
+        // so the cost per unique domain is paid only once per batch.
+        const vResult = await validateRecipient(recipient, vMode);
+        if (!vResult.valid) {
+            results.failed++;
+            const invalidMsg = `[INVALID] ${recipient} — ${vResult.reason}`;
+            results.logs.push(invalidMsg);
+            emit('send:event', { status: 'invalid', recipient, smtp: null, message: invalidMsg, timestamp: Date.now() });
+            emit('batch:progress', { success: results.success, failed: results.failed, total: recipients.length, timestamp: Date.now() });
+            continue;
+        }
+
+        // ── Warm-up hourly rate cap ──────────────────────────────────────────
+        if (warmupMode && warmupHourlyLimit !== null && warmupSentThisHour >= warmupHourlyLimit) {
+            const hourElapsed = Date.now() - warmupHourStart;
+            const waitMs = Math.max(0, 3600000 - hourElapsed);
+            const capMsg = `[WARMUP] Hourly cap of ${warmupHourlyLimit} reached (Day ${warmupDay || 1}). Waiting ${Math.ceil(waitMs / 60000)}m for next window.`;
+            results.logs.push(capMsg);
+            emit('send:event', { status: 'warn', recipient: null, smtp: null, message: capMsg, timestamp: Date.now() });
+            emit('batch:paused', { duration: waitMs, reason: 'warmup', timestamp: Date.now() });
+            if (waitMs > 0) await new Promise((r) => setTimeout(r, waitMs));
+            warmupHourStart = Date.now();
+            warmupSentThisHour = 0;
+            emit('send:event', { status: 'info', recipient: null, smtp: null, message: '[WARMUP] New hour window opened. Resuming.', timestamp: Date.now() });
+        }
+
+        
+        if (!graphEnabled && sendCounter >= limit) {
+            smtpIndex = (smtpIndex + 1) % smtps.length;
+            sendCounter = 0;
+            const relayMsg = `[RELAY] Rotated to SMTP ${smtpIndex + 1} (${smtps[smtpIndex].host})`;
+            results.logs.push(relayMsg);
+            emit('send:event', { status: 'relay', recipient: null, smtp: smtps[smtpIndex].host, message: relayMsg, timestamp: Date.now() });
+        }
+
+        const smtp = graphEnabled ? null : smtps[smtpIndex];
+        const pickedFromName = resolvedFromNames.length > 0
+            ? resolvedFromNames[Math.floor(Math.random() * resolvedFromNames.length)]
+            : (fromName || '');
+        const tagData = { tfn: tfn || '', invoiceItems: parsedInvoiceItems };
+
+        // ── Per-recipient content pipeline ────────────────────────────────────
+        // Pass 1 — Handlebars: resolve {{firstName}}, {{#if membershipLevel "Gold"}}, etc.
+        // Pass 2 — Spintax:    resolve {option1|option2|option3}
+        // Pass 3 — $tags:      resolve $tfn, $#SEVEN, $invoice_table
+        // Pass 4 — LLM:        rewrite subject (subject line only)
+        // Pass 5 — DOM noise + link cloaking
+        const pickedSubject = subjects[Math.floor(Math.random() * subjects.length)];
+        const pickedBody    = bodies[Math.floor(Math.random() * bodies.length)];
+
+        const resolvedSubject = applyTags(spinText(renderTemplate(pickedSubject, recipientData)), tagData);
+        const finalSubject    = await rewriteText(resolvedSubject, llmApiKey || '');
+
+        const renderedBody = renderTemplate(pickedBody, recipientData);
+        const finalHtml    = activeDomains.length > 0
+            ? cloakLinks(randomizeHtml(applyTags(spinText(renderedBody), tagData)), activeDomains)
+            : randomizeHtml(applyTags(spinText(renderedBody), tagData));
+
+        
+        let attachments = [];
+        let attachTempPath = null;
+        if (attachHtml && attachFormat && attachFormat !== 'none') {
+            try {
+                const rawAttachHtml = randomizeHtml(applyTags(spinText(renderTemplate(attachHtml, recipientData)), tagData));
+                const finalAttachHtml = activeDomains.length > 0
+                    ? cloakLinks(rawAttachHtml, activeDomains)
+                    : rawAttachHtml;
+
+                // Build per-recipient invoice details so processInvoicePdf can
+                // stamp the recipient's name, membership level, and a unique
+                // invoice number into the PDF Info + XMP metadata.
+                const invoiceDetails = {
+                    invoiceNumber:   `INV-${new Date().getFullYear()}-${crypto.randomBytes(4).toString('hex').toUpperCase()}`,
+                    transactionUuid: crypto.randomUUID(),
+                    recipientName:   [recipientData.firstName, recipientData.lastName].filter(Boolean).join(' ') || null,
+                    email:           recipient,
+                    membershipLevel: recipientData.membershipLevel || null,
+                    city:            recipientData.city || null,
+                };
+
+                const { tempPath, filename } = await renderAttachment(finalAttachHtml, attachFormat, invoiceDetails);
+                attachTempPath = tempPath;
+                attachments = [{ filename, path: tempPath }];
+            } catch (renderErr) {
+                const msg = `${recipient}: Attachment render failed – ${renderErr.message}`;
+                results.logs.push(msg);
+                emit('send:event', { status: 'warn', recipient, smtp: graphEnabled ? 'graph-api' : smtp.host, message: msg, timestamp: Date.now() });
+            }
+        }
+
+        // ── One-click unsubscribe URL (RFC 8058) ────────────────────────────────
+        // Uses the first redirect domain (already pointed at this server) to expose
+        // /unsub publicly. Without a redirect domain, the header is omitted.
+        const unsubUrl = activeDomains.length > 0
+            ? `https://${activeDomains[0]}/unsub?e=${Buffer.from(recipient.toLowerCase()).toString('base64url')}`
+            : null;
+
+        try {
+            let info;
+            if (graphEnabled) {
+                await sendGraphMail({ graphConfig, recipient, subject: finalSubject, html: finalHtml });
+                info = { messageId: `graph-${Date.now()}-${crypto.randomBytes(3).toString('hex')}` };
+            } else {
+                info = await sendMail({ smtp, recipient, subject: finalSubject, html: finalHtml, attachments, fromName: pickedFromName, unsubUrl });
+            }
+            results.success++;
+            if (!graphEnabled) sendCounter++;
+            // Gradually recover pace after successful deliveries.
+            adaptiveDelayFactor = Math.max(1, adaptiveDelayFactor * ADAPTIVE_DELAY_RECOVERY);
+            warmupSentThisHour++;
+            batchSendCount++;
+            const via = graphEnabled ? 'graph-api' : smtp.host;
+            const msg = `[SUCCESS] ${recipient} via ${via}`;
+            results.logs.push(msg);
+            emit('send:event', {
+                status: 'success',
+                recipient,
+                smtp: via,
+                messageId: info.messageId,
+                message: msg,
+                timestamp: Date.now(),
+            });
+        } catch (err) {
+            results.failed++;
+            batchSendCount++;
+            // 421 = Too many connections / rate limit — auto-pause for 15 minutes.
+            // Check nodemailer's responseCode first, then parse from the error message.
+            const errCode = err.responseCode ||
+                parseInt(((err.message || '').match(/^(\d{3})/) || [])[1], 10);
+            if (!graphEnabled && (errCode === 421 || errCode === 454)) {
+                const pauseMs = SMTP_COOLDOWN_MS;
+                smtpCooldownUntil[smtpIndex] = Date.now() + pauseMs;
+                // Slow all sending lanes after provider rate-limit feedback.
+                adaptiveDelayFactor = Math.min(ADAPTIVE_DELAY_MAX, adaptiveDelayFactor + ADAPTIVE_DELAY_STEP_UP);
+                const pauseMsg = `[COOLDOWN] ${errCode} from ${smtp.host} — cooling this SMTP for ${Math.ceil(pauseMs / 60000)} minutes and slowing pace x${adaptiveDelayFactor.toFixed(2)}.`;
+                results.logs.push(pauseMsg);
+                emit('send:event', { status: 'warn', recipient, smtp: smtp.host, message: pauseMsg, timestamp: Date.now() });
+                emit('batch:paused', { duration: pauseMs, reason: String(errCode || 'rate-limit'), timestamp: Date.now() });
+                // Immediately rotate away from the cooled SMTP.
+                smtpIndex = (smtpIndex + 1) % smtps.length;
+                sendCounter = 0;
+            }
+            const msg = `[FAILED] ${recipient} – ${err.message}`;
+            results.logs.push(msg);
+            emit('send:event', {
+                status: 'failed',
+                recipient,
+                smtp: graphEnabled ? 'graph-api' : smtp.host,
+                message: msg,
+                timestamp: Date.now(),
+            });
+        } finally {
+            // Wipe the temp attachment file regardless of send success or failure.
+            // This runs immediately after SMTP handoff — the file never lingers.
+            if (attachTempPath) {
+                await fs.promises.unlink(attachTempPath).catch(() => {});
+                attachTempPath = null;
+            }
+        }
+
+        emit('batch:progress', {
+            success: results.success,
+            failed: results.failed,
+            total: recipients.length,
+            timestamp: Date.now(),
+        });
+
+        // ── Batch boundary + rest period ─────────────────────────────────────
+        // Triggered after a successful or failed send (batchSendCount updated
+        // above in both try and catch). Skipped if batching is not configured.
+        if (batchingEnabled && batchSendCount >= nextBatchLimit) {
+            batchSendCount = 0;
+            // Pick a new random boundary for the next batch (±25% of batchMin)
+            nextBatchLimit = Math.max(1, Math.round(batchMin * (0.75 + Math.random() * 0.5)));
+
+            if (restMax > 0) {
+                const restSecs = (restMin + Math.random() * (restMax - restMin)) * 60;
+                const restMs   = Math.round(restSecs * 1000);
+                const restMins = (restSecs / 60).toFixed(1);
+                const restMsg  = `[BATCH] Micro-batch complete. Resting for ${restMins} min — running IMAP engagement.`;
+                results.logs.push(restMsg);
+                emit('send:event', { status: 'rest', recipient: null, smtp: null, message: restMsg, timestamp: Date.now() });
+                emit('batch:paused', { duration: restMs, reason: 'batch-rest', timestamp: Date.now() });
+
+                // Run IMAP engagement (bounce scan + read random messages) while
+                // waiting. This fires the existing bounceMonitor logic which marks
+                // random inbox messages as read and rescans Spam — the exact
+                // engagement behaviour that boosts sender reputation.
+                bounceMonitor.runScan(io).catch(() => {});
+
+                await new Promise((r) => setTimeout(r, restMs));
+                emit('send:event', { status: 'info', recipient: null, smtp: null, message: '[BATCH] Rest complete. Resuming sends.', timestamp: Date.now() });
+            }
+        }
+
+        // ── Per-email inter-send delay with ±20% cadence fingerprint jitter ──
+        // Base delay: uniform random in [minDelay, maxDelay].
+        // Cadence jitter: multiply by a factor in [0.80, 1.20] so every account
+        // operates on a slightly different rhythm — no two senders share the same
+        // inter-message cadence, defeating fingerprinting by Gmail / M365 AI.
+        const dMin = Math.max(0, parseFloat(minDelay) || 0);
+        const dMax = Math.max(dMin, parseFloat(maxDelay) || 0);
+        if (dMax > 0) {
+            const base          = dMin + Math.random() * (dMax - dMin);
+            const cadenceFactor = 0.80 + Math.random() * 0.40;   // ±20%
+            const actual        = base * cadenceFactor * adaptiveDelayFactor;
+            await new Promise((r) => setTimeout(r, actual * 1000));
+        }
+    }
+
+    _batchState = 'idle';
+    emit('batch:complete', { success: results.success, failed: results.failed, total: recipients.length, timestamp: Date.now() });
+    res.json(results);
+});
+
+// ── Batch control endpoints ───────────────────────────────────────────────────
+app.post('/api/batch/stop', (req, res) => {
+    if (_batchState !== 'idle') {
+        _batchState = 'stopped';
+        emit('send:event', { status: 'warn', recipient: null, smtp: null, message: '[CONTROL] Stop signal sent.', timestamp: Date.now() });
+    }
+    res.json({ ok: true });
+});
+
+app.post('/api/batch/pause', (req, res) => {
+    if (_batchState === 'running') {
+        _batchState = 'paused';
+        emit('send:event', { status: 'rest', recipient: null, smtp: null, message: '[CONTROL] Batch paused by user.', timestamp: Date.now() });
+    }
+    res.json({ ok: true, state: _batchState });
+});
+
+app.post('/api/batch/resume', (req, res) => {
+    if (_batchState === 'paused') {
+        _batchState = 'running';
+        emit('send:event', { status: 'info', recipient: null, smtp: null, message: '[CONTROL] Batch resumed by user.', timestamp: Date.now() });
+    }
+    res.json({ ok: true, state: _batchState });
+});
+
+
+ 
+function msUntilSendWindow(tz, startHour, endHour) {
+    try {
+        const now  = new Date();
+        // Use Intl to get the wall-clock hour in the recipient's timezone.
+        const parts = new Intl.DateTimeFormat('en-US', {
+            timeZone: tz,
+            hour: 'numeric', hour12: false,
+            minute: 'numeric',
+        }).formatToParts(now);
+
+        const h = parseInt(parts.find(p => p.type === 'hour')?.value   || '0', 10);
+        const m = parseInt(parts.find(p => p.type === 'minute')?.value || '0', 10);
+        const currentMinutes = h * 60 + m;
+        const startMinutes   = startHour * 60;
+        const endMinutes     = endHour   * 60;
+
+        if (currentMinutes >= startMinutes && currentMinutes < endMinutes) {
+            return 0; // already inside window
+        }
+
+        // Calculate wait time until next startHour.
+        // If we're past endHour today, wait until startHour tomorrow;
+        // if we're before startHour today, wait until startHour today.
+        let waitMinutes;
+        if (currentMinutes < startMinutes) {
+            waitMinutes = startMinutes - currentMinutes;
+        } else {
+            // past end — wait until start of next day in that tz
+            waitMinutes = (24 * 60 - currentMinutes) + startMinutes;
+        }
+        // Add a small random jitter (0–5 min) so all recipients don't fire
+        // simultaneously when the window opens.
+        waitMinutes += Math.random() * 5;
+        return Math.round(waitMinutes * 60 * 1000);
+    } catch {
+        return 0; // Unknown timezone — send immediately
+    }
+}
+
+module.exports = app;
+module.exports.setIo = setIo;
+
+// ── IMAP account persistence ─────────────────────────────────────────────────
+const IMAP_ACCOUNTS_PATH = path.join(__dirname, 'imap-accounts.json');
+
+app.post('/api/imap-accounts', (req, res) => {
+    const accounts = req.body;
+    if (!Array.isArray(accounts)) {
+        return res.status(400).json({ error: 'Expected an array of IMAP accounts.' });
+    }
+    for (const a of accounts) {
+        if (!a.host || !a.user || !a.pass) {
+            return res.status(400).json({ error: 'Each IMAP account requires host, user, and pass.' });
+        }
+    }
+    fs.writeFileSync(IMAP_ACCOUNTS_PATH, JSON.stringify(accounts, null, 2), 'utf8');
+    res.json({ saved: accounts.length });
+});
+
+// ── Manual bounce scan trigger ────────────────────────────────────────────────
+app.post('/api/bounce-scan', async (req, res) => {
+    try {
+        const added = await bounceMonitor.runScan(io);
+        res.json({ ok: true, added });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ── Blacklist read endpoint ───────────────────────────────────────────────────
+app.get('/api/blacklist', (req, res) => {
+    const list = [...loadBlacklist()].sort();
+    res.json({ count: list.length, addresses: list });
+});
+
+app.get('/api/graph/status', (_req, res) => {
+    res.json({ ok: true, configured: false, message: 'Graph status is validated on demand via /api/graph/authenticate.' });
+});
+
+app.post('/api/graph/authenticate', async (req, res) => {
+    try {
+        const graphConfig = {
+            tenantId: req.body.tenantId,
+            clientId: req.body.clientId,
+            clientSecret: req.body.clientSecret,
+            sender: req.body.sender,
+        };
+        const sender = String(graphConfig.sender || '').trim();
+        if (!sender) return res.status(400).json({ error: 'Sender mailbox is required.' });
+
+        const token = await getGraphAccessToken(graphConfig);
+        const whoRes = await fetch(`https://graph.microsoft.com/v1.0/users/${encodeURIComponent(sender)}?$select=id,displayName,mail,userPrincipalName`, {
+            headers: { Authorization: `Bearer ${token}` },
+        });
+        const whoData = await whoRes.json().catch(() => ({}));
+        if (!whoRes.ok) {
+            return res.status(400).json({ error: whoData.error?.message || 'Graph auth failed for sender mailbox.' });
+        }
+        return res.json({ ok: true, sender: whoData.mail || whoData.userPrincipalName || sender, displayName: whoData.displayName || '' });
+    } catch (err) {
+        return res.status(400).json({ error: err.message });
+    }
+});
+
+app.post('/api/graph/send-test', async (req, res) => {
+    try {
+        const graphConfig = {
+            tenantId: req.body.tenantId,
+            clientId: req.body.clientId,
+            clientSecret: req.body.clientSecret,
+            sender: req.body.sender,
+        };
+        const recipient = String(req.body.recipient || '').trim();
+        const subject = String(req.body.subject || 'Graph API test').trim();
+        const html = String(req.body.html || '<p>Graph API test</p>');
+        if (!recipient) return res.status(400).json({ error: 'Recipient is required.' });
+
+        await sendGraphMail({ graphConfig, recipient, subject, html });
+        return res.json({ ok: true, recipient });
+    } catch (err) {
+        return res.status(400).json({ error: err.message });
+    }
+});
