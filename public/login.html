@@ -138,7 +138,7 @@
   </style>
 </head>
 <body>
-  <form class="card" id="loginForm">
+  <form class="card" id="loginForm" action="/api/auth/login" method="POST">
     <div class="brand">
       <div class="brand-mark">AS</div>
       <div class="brand-text">Angry Sender</div>
@@ -160,53 +160,23 @@
   </form>
 
   <script>
-    (async function boot() {
+    // Show server-side error from query param (set when form POST fails)
+    (function showError() {
       try {
-        var st = await fetch('/api/auth/status', { credentials: 'same-origin' });
-        var data = await st.json();
-        if (data && data.authenticated) {
-          window.location.replace('/dashboard');
-          return;
-        }
+        var params = new URLSearchParams(window.location.search);
+        var err = params.get('error');
+        if (err) document.getElementById('msg').textContent = err;
       } catch (e) {}
     })();
 
-    document.getElementById('loginForm').addEventListener('submit', async function (e) {
-      e.preventDefault();
-      var btn = document.getElementById('submitBtn');
-      var msg = document.getElementById('msg');
-      msg.textContent = '';
-      btn.disabled = true;
-
+    // If already authenticated, skip the login page
+    (async function boot() {
       try {
-        var payload = {
-          username: document.getElementById('username').value.trim(),
-          password: document.getElementById('password').value
-        };
-
-        var res = await fetch('/api/auth/login', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'same-origin',
-          body: JSON.stringify(payload)
-        });
-
-        var data = await res.json().catch(function () { return {}; });
-        if (!res.ok) throw new Error(data.error || 'Login failed');
-
         var st = await fetch('/api/auth/status', { credentials: 'same-origin', cache: 'no-store' });
-        var sdata = await st.json().catch(function () { return {}; });
-        if (!sdata || sdata.authenticated !== true) {
-          throw new Error('Login cookie was not saved by the browser. Clear site data and retry.');
-        }
-
-        window.location.replace('/dashboard');
-      } catch (err) {
-        msg.textContent = err.message || 'Login failed';
-      } finally {
-        btn.disabled = false;
-      }
-    });
+        var data = await st.json();
+        if (data && data.authenticated) window.location.replace('/dashboard');
+      } catch (e) {}
+    })();
   </script>
 </body>
 </html>
