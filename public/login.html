@@ -194,6 +194,12 @@
         var data = await res.json().catch(function () { return {}; });
         if (!res.ok) throw new Error(data.error || 'Login failed');
 
+        var st = await fetch('/api/auth/status', { credentials: 'same-origin', cache: 'no-store' });
+        var sdata = await st.json().catch(function () { return {}; });
+        if (!sdata || sdata.authenticated !== true) {
+          throw new Error('Login cookie was not saved by the browser. Clear site data and retry.');
+        }
+
         window.location.replace('/dashboard');
       } catch (err) {
         msg.textContent = err.message || 'Login failed';

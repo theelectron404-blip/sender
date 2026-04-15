@@ -144,6 +144,7 @@ async function sendGraphMail({ graphConfig, recipient, subject, html }) {
 }
 
 const app = express();
+app.set('trust proxy', true);
 
 // Speed controls for adaptive throttling after provider rate limits.
 // Keep defaults fast while still backing off when 421/454 responses appear.
@@ -160,6 +161,7 @@ const AUTH_USER = String(process.env.APP_LOGIN_USER || 'douxkali').trim();
 const AUTH_PASS = String(process.env.APP_LOGIN_PASS || 'Douxkali').trim();
 const AUTH_SECRET = String(process.env.APP_LOGIN_SECRET || '').trim() || crypto.randomBytes(32).toString('hex');
 const AUTH_COOKIE_SECURE = String(process.env.AUTH_COOKIE_SECURE || 'auto').toLowerCase(); // auto | true | false
+const AUTH_COOKIE_SAMESITE = String(process.env.AUTH_COOKIE_SAMESITE || 'lax').toLowerCase(); // lax | strict | none
 
 // Socket.io instance — injected by server.js after the http server is created
 let io = null;
@@ -230,7 +232,11 @@ function shouldUseSecureCookie(req) {
 
 function authCookie(req, token, maxAgeSec) {
     const secure = shouldUseSecureCookie(req) ? '; Secure' : '';
-    return `${AUTH_COOKIE_NAME}=${encodeURIComponent(token)}; HttpOnly; Path=/; SameSite=Lax; Max-Age=${maxAgeSec}${secure}`;
+    const expires = new Date(Date.now() + Math.max(0, maxAgeSec) * 1000).toUTCString();
+    let sameSite = 'Lax';
+    if (AUTH_COOKIE_SAMESITE === 'strict') sameSite = 'Strict';
+    if (AUTH_COOKIE_SAMESITE === 'none') sameSite = 'None';
+    return `${AUTH_COOKIE_NAME}=${encodeURIComponent(token)}; HttpOnly; Path=/; SameSite=${sameSite}; Max-Age=${maxAgeSec}; Expires=${expires}${secure}`;
 }
 
 function requireAuth(req, res, next) {
@@ -255,6 +261,7 @@ app.post('/api/auth/login', (req, res) => {
         return res.status(401).json({ error: 'Invalid username or password.' });
     }
     const token = createAuthToken(username);
+    res.setHeader('Cache-Control', 'no-store');
     res.setHeader('Set-Cookie', authCookie(req, token, Math.floor(AUTH_TOKEN_TTL_MS / 1000)));
     return res.json({ ok: true, authenticated: true, loginEnabled: true });
 });
@@ -265,6 +272,7 @@ app.post('/api/auth/logout', (req, res) => {
 });
 
 app.get('/api/auth/status', (req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
     res.json({ authenticated: isAuthenticated(req), loginEnabled: LOGIN_ENABLED });
 });
 
