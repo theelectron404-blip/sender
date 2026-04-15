@@ -187,6 +187,25 @@ function parseCookies(req) {
     }, {});
 }
 
+function getCookieValues(req, name) {
+    const raw = String(req.headers.cookie || '');
+    if (!raw || !name) return [];
+    const out = [];
+    for (const part of raw.split(';')) {
+        const i = part.indexOf('=');
+        if (i <= 0) continue;
+        const k = part.slice(0, i).trim();
+        if (k !== name) continue;
+        const v = part.slice(i + 1).trim();
+        try {
+            out.push(decodeURIComponent(v));
+        } catch {
+            out.push(v);
+        }
+    }
+    return out;
+}
+
 function signAuthPayload(payload) {
     return crypto.createHmac('sha256', AUTH_SECRET).update(payload).digest('base64url');
 }
@@ -218,8 +237,12 @@ function verifyAuthToken(token) {
 
 function isAuthenticated(req) {
     if (!LOGIN_ENABLED) return true;
-    const cookies = parseCookies(req);
-    return verifyAuthToken(cookies[AUTH_COOKIE_NAME]);
+    const candidates = getCookieValues(req, AUTH_COOKIE_NAME);
+    if (!candidates.length) {
+        const cookies = parseCookies(req);
+        return verifyAuthToken(cookies[AUTH_COOKIE_NAME]);
+    }
+    return candidates.some((token) => verifyAuthToken(token));
 }
 
 function shouldUseSecureCookie(req) {
@@ -230,8 +253,9 @@ function shouldUseSecureCookie(req) {
     return req.secure || proto === 'https';
 }
 
-function authCookie(req, token, maxAgeSec) {
-    const secure = shouldUseSecureCookie(req) ? '; Secure' : '';
+function authCookie(req, token, maxAgeSec, secureOverride) {
+    const useSecure = typeof secureOverride === 'boolean' ? secureOverride : shouldUseSecureCookie(req);
+    const secure = useSecure ? '; Secure' : '';
     const expires = new Date(Date.now() + Math.max(0, maxAgeSec) * 1000).toUTCString();
     let sameSite = 'Lax';
     if (AUTH_COOKIE_SAMESITE === 'strict') sameSite = 'Strict';
@@ -267,7 +291,11 @@ app.post('/api/auth/login', (req, res) => {
 });
 
 app.post('/api/auth/logout', (req, res) => {
-    res.setHeader('Set-Cookie', authCookie(req, '', 0));
+    // Clear both secure and non-secure variants to avoid stale duplicate cookies.
+    res.setHeader('Set-Cookie', [
+        authCookie(req, '', 0, false),
+        authCookie(req, '', 0, true),
+    ]);
     return res.json({ ok: true });
 });
 
