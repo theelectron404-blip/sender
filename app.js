@@ -158,6 +158,7 @@ const AUTH_TOKEN_TTL_MS = Math.max(5 * 60 * 1000, parseInt(process.env.AUTH_TOKE
 const AUTH_USER = String(process.env.APP_LOGIN_USER || 'douxkali').trim();
 const AUTH_PASS = String(process.env.APP_LOGIN_PASS || 'Douxkali').trim();
 const AUTH_SECRET = String(process.env.APP_LOGIN_SECRET || '').trim() || crypto.randomBytes(32).toString('hex');
+const AUTH_COOKIE_SECURE = String(process.env.AUTH_COOKIE_SECURE || 'auto').toLowerCase(); // auto | true | false
 
 // Socket.io instance — injected by server.js after the http server is created
 let io = null;
@@ -218,8 +219,16 @@ function isAuthenticated(req) {
     return verifyAuthToken(cookies[AUTH_COOKIE_NAME]);
 }
 
-function authCookie(token, maxAgeSec) {
-    const secure = String(process.env.NODE_ENV || '').toLowerCase() === 'production' ? '; Secure' : '';
+function shouldUseSecureCookie(req) {
+    if (AUTH_COOKIE_SECURE === 'true' || AUTH_COOKIE_SECURE === '1') return true;
+    if (AUTH_COOKIE_SECURE === 'false' || AUTH_COOKIE_SECURE === '0') return false;
+    // auto mode: secure only when the current request is HTTPS.
+    const proto = String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim().toLowerCase();
+    return req.secure || proto === 'https';
+}
+
+function authCookie(req, token, maxAgeSec) {
+    const secure = shouldUseSecureCookie(req) ? '; Secure' : '';
     return `${AUTH_COOKIE_NAME}=${encodeURIComponent(token)}; HttpOnly; Path=/; SameSite=Lax; Max-Age=${maxAgeSec}${secure}`;
 }
 
@@ -245,12 +254,12 @@ app.post('/api/auth/login', (req, res) => {
         return res.status(401).json({ error: 'Invalid username or password.' });
     }
     const token = createAuthToken(username);
-    res.setHeader('Set-Cookie', authCookie(token, Math.floor(AUTH_TOKEN_TTL_MS / 1000)));
+    res.setHeader('Set-Cookie', authCookie(req, token, Math.floor(AUTH_TOKEN_TTL_MS / 1000)));
     return res.json({ ok: true, authenticated: true, loginEnabled: true });
 });
 
 app.post('/api/auth/logout', (req, res) => {
-    res.setHeader('Set-Cookie', authCookie('', 0));
+    res.setHeader('Set-Cookie', authCookie(req, '', 0));
     return res.json({ ok: true });
 });
 
