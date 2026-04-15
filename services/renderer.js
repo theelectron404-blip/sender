@@ -311,7 +311,31 @@ async function renderAttachment(html, format, invoiceDetails = {}) {
     const htmlWithNoise     = injectHashNoise(html);
     const htmlWithWatermark = injectWatermark(htmlWithNoise, tag);
 
-    const browser = await puppeteer.launch({ headless: 'new' });
+    const launchOptions = {
+        headless: 'new',
+        args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-gpu',
+            '--no-zygote',
+        ],
+    };
+    if (process.env.PUPPETEER_EXECUTABLE_PATH) {
+        launchOptions.executablePath = process.env.PUPPETEER_EXECUTABLE_PATH;
+    }
+
+    let browser;
+    try {
+        browser = await puppeteer.launch(launchOptions);
+    } catch (err) {
+        const hint = [
+            'Puppeteer launch failed in this runtime.',
+            'Set PUPPETEER_EXECUTABLE_PATH if Chromium is custom-installed.',
+            'On Railway, keep NODE_ENV=production and ensure Puppeteer browser download is not disabled.',
+        ].join(' ');
+        throw new Error(`${hint} Original error: ${err.message}`);
+    }
     try {
         const page = await browser.newPage();
 
@@ -387,7 +411,7 @@ async function renderAttachment(html, format, invoiceDetails = {}) {
 
         return { tempPath, filename };
     } finally {
-        await browser.close();
+        if (browser) await browser.close();
     }
 }
 
