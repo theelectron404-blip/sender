@@ -2,7 +2,7 @@ const express = require('express');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
-require('dotenv').config();
+require('dotenv').config({ path: path.join(__dirname, '.env') });
 const { sendMail, applyTags, spinText, randomizeHtml } = require('./services/mailer');
 const { renderAttachment, processInvoicePdf } = require('./services/renderer');
 const { rewriteText } = require('./services/variator');
