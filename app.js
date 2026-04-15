@@ -151,10 +151,29 @@ async function sendGraphMail({ graphConfig, recipient, subject, html }) {
     const clientId = String(graphConfig.clientId || '').trim();
     const stored = clientId ? _graphTokenStore.get(clientId) : null;
     const sender = String(graphConfig.sender || (stored && stored.senderEmail) || '').trim();
-    if (!sender) throw new Error('Graph sender mailbox is required. Connect with Microsoft first.');
+    const isDelegated = stored && stored.refreshToken;
 
     const accessToken = await getGraphAccessToken(graphConfig);
-    const sendUrl = `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(sender)}/sendMail`;
+
+    // For delegated auth (personal accounts), use /me/sendMail — no sender email needed
+    // For client_credentials (work accounts), use /users/{sender}/sendMail
+    let sendUrl;
+    if (isDelegated) {
+        sendUrl = 'https://graph.microsoft.com/v1.0/me/sendMail';
+        // Try to fill senderEmail if we don't have it yet
+        if (!stored.senderEmail) {
+            try {
+                const meRes = await fetch('https://graph.microsoft.com/v1.0/me', {
+                    headers: { Authorization: `Bearer ${accessToken}` },
+                });
+                const meData = await meRes.json().catch(() => ({}));
+                stored.senderEmail = meData.mail || meData.userPrincipalName || '';
+            } catch { /* non-fatal */ }
+        }
+    } else {
+        if (!sender) throw new Error('Graph sender mailbox is required.');
+        sendUrl = `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(sender)}/sendMail`;
+    }
 
     const payload = {
         message: {
@@ -496,6 +515,16 @@ app.post('/api/graph/device-poll', async (req, res) => {
                 senderEmail = pl.preferred_username || pl.email || pl.unique_name || '';
             }
         } catch { /* non-fatal */ }
+        // If id_token didn't give us an email, fetch from /me
+        if (!senderEmail && tokenData.access_token) {
+            try {
+                const meRes = await fetch('https://graph.microsoft.com/v1.0/me', {
+                    headers: { Authorization: `Bearer ${tokenData.access_token}` },
+                });
+                const meData = await meRes.json().catch(() => ({}));
+                senderEmail = meData.mail || meData.userPrincipalName || '';
+            } catch { /* non-fatal */ }
+        }
         _graphTokenStore.set(clientId, {
             clientId,
             clientSecret,
