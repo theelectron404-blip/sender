@@ -339,7 +339,8 @@ app.get('/dashboard', requireAuth, (req, res) => {
 // ── Microsoft Graph OAuth routes (public — no auth cookie required) ──────────
 
 // Returns a Microsoft login URL for the delegated OAuth2 flow.
-app.get('/api/graph/auth-url', requireAuth, (req, res) => {
+// No auth required — generates a public OAuth authorize URL; security is in the state CSRF token.
+app.get('/api/graph/auth-url', (req, res) => {
     const clientId     = String(req.query.clientId     || '').trim();
     const clientSecret = String(req.query.clientSecret || '').trim();
     const redirectUri  = String(req.query.redirectUri  || '').trim();
@@ -418,7 +419,7 @@ app.get('/api/graph/callback', async (req, res) => {
 });
 
 // Returns current connection status for a given clientId.
-app.get('/api/graph/token-status', requireAuth, (req, res) => {
+app.get('/api/graph/token-status', (req, res) => {
     const clientId = String(req.query.clientId || '').trim();
     const stored = _graphTokenStore.get(clientId);
     if (!stored) return res.json({ connected: false });
