@@ -557,24 +557,27 @@ details[open] summary{margin-bottom:13px}
           <div class="s-hdr-sub">Send via your Microsoft account — personal (@outlook.com) or work/org accounts.</div>
         </div>
 
-        <!-- ── Personal account (delegated OAuth) ── -->
+        <!-- ── Personal account (device code flow) ── -->
         <div class="card">
-          <div class="lbl" style="margin-bottom:12px">Personal Account <span class="hint">— @outlook.com · @hotmail.com · @live.com (delegated login)</span></div>
+          <div class="lbl" style="margin-bottom:12px">Personal Account <span class="hint">— @outlook.com · @hotmail.com · @live.com (device code login)</span></div>
           <div class="g2">
-            <div class="field"><div class="lbl">Client ID</div><input class="inp" id="graphClientId" type="text" placeholder="Application (client) ID" oninput="saveField(this.id);onGraphClientIdChange()"></div>
-            <div class="field"><div class="lbl">Client Secret <span class="hint">— optional for public apps</span></div><input class="inp" id="graphClientSecret" type="password" placeholder="Client secret value" oninput="saveField(this.id)" autocomplete="off"></div>
-          </div>
-          <div class="field" style="margin-bottom:14px">
-            <div class="lbl">Redirect URI <span class="hint">— copy this into your Azure app registration</span></div>
-            <input class="inp" id="graphRedirectUri" readonly style="font-family:monospace;font-size:13px;color:var(--text2)">
+            <div class="field"><div class="lbl">Client ID</div><input class="inp" id="graphClientId" type="text" placeholder="Application (client) ID" oninput="saveField(this.id)"></div>
+            <div class="field"><div class="lbl">Client Secret <span class="hint">— optional</span></div><input class="inp" id="graphClientSecret" type="password" placeholder="Client secret value (leave blank for public)" oninput="saveField(this.id)" autocomplete="off"></div>
           </div>
           <div class="btn-row">
-            <button class="btn-primary" onclick="graphConnectPersonal()">▶ Connect with Microsoft</button>
+            <button class="btn-primary" id="graphDeviceBtn" onclick="graphDeviceCodeStart()">▶ Connect with Microsoft</button>
             <button class="btn-ghost" onclick="graphSendTest()">Send Test</button>
             <span id="graphAuthStatus" style="font-size:15px;color:var(--text3)">Not connected</span>
           </div>
+          <!-- Device code display (hidden until Connect clicked) -->
+          <div id="graphDeviceCodeBox" style="display:none;margin-top:14px;padding:16px 20px;border-radius:10px;background:rgba(139,92,246,0.08);border:1px solid rgba(139,92,246,0.22);text-align:center">
+            <div style="font-size:14px;color:var(--text3);margin-bottom:10px">Go to this link and enter the code:</div>
+            <a id="graphDeviceLink" href="https://microsoft.com/devicelogin" target="_blank" style="font-size:18px;font-weight:700;color:#a78bfa;text-decoration:underline">microsoft.com/devicelogin</a>
+            <div style="margin-top:12px;font-size:36px;font-weight:800;letter-spacing:6px;color:var(--text1);font-family:'Menlo','Consolas',monospace" id="graphDeviceCode">------</div>
+            <div style="margin-top:10px;font-size:13px;color:var(--text4)" id="graphDeviceWait">Waiting for you to sign in...</div>
+          </div>
           <div style="margin-top:14px;padding:10px 14px;border-radius:8px;background:rgba(59,130,246,0.08);border:1px solid rgba(59,130,246,0.18);font-size:13px;color:var(--text3);line-height:1.6">
-            <strong style="color:var(--text2)">Azure setup:</strong> App registration → Supported account types: <em>Personal Microsoft accounts</em> → Redirect URI (Web): paste the URI above → API permissions → Microsoft Graph → <strong>Delegated</strong> → Mail.Send.
+            <strong style="color:var(--text2)">Azure setup:</strong> App registration → Supported account types: <em>Personal Microsoft accounts</em> → Enable <strong>Allow public client flows: Yes</strong> → API permissions → Microsoft Graph → <strong>Delegated</strong> → Mail.Send. <strong>No redirect URI needed.</strong>
           </div>
         </div>
 
@@ -1222,78 +1225,92 @@ function readGraphConfigFromUi() {
   };
 }
 
-// Auto-fill Redirect URI when the page loads or when clientId changes
-function onGraphClientIdChange() {
-  var el = document.getElementById('graphRedirectUri');
-  if (el) el.value = window.location.origin + '/api/graph/callback';
-}
-
-// Called on tab-graph reveal / page init
-(function initGraphRedirectUri() {
+// Check connection status on page load
+(function initGraphStatus() {
   window.addEventListener('DOMContentLoaded', function() {
-    onGraphClientIdChange();
-    // Restore persisted connection status
     var clientId = localStorage.getItem('graphClientId') || '';
     if (clientId) {
       fetch('/api/graph/token-status?clientId=' + encodeURIComponent(clientId))
-        .then(r => r.json()).then(d => {
+        .then(function(r) { return r.json(); }).then(function(d) {
           if (d.connected) {
             var st = document.getElementById('graphAuthStatus');
             if (st) st.textContent = '✓ Connected as ' + d.sender;
           }
-        }).catch(() => {});
+        }).catch(function() {});
     }
   });
 })();
 
-async function graphConnectPersonal() {
+var _graphPollTimer = null;
+
+async function graphDeviceCodeStart() {
   var clientId = (document.getElementById('graphClientId').value || '').trim();
   var clientSecret = (document.getElementById('graphClientSecret').value || '').trim();
-  if (!clientId) {
-    showToast('Graph: enter your Client ID first', 'warn');
-    return;
-  }
-  var redirectUri = window.location.origin + '/api/graph/callback';
+  if (!clientId) { showToast('Enter your Client ID first', 'warn'); return; }
+
+  var btn = document.getElementById('graphDeviceBtn');
   var st = document.getElementById('graphAuthStatus');
-  if (st) st.textContent = 'Opening Microsoft login…';
+  var box = document.getElementById('graphDeviceCodeBox');
+  if (btn) btn.disabled = true;
+  if (st) st.textContent = 'Requesting code…';
+
   try {
-    var res = await fetch('/api/graph/auth-url?'
-      + 'clientId=' + encodeURIComponent(clientId)
-      + '&clientSecret=' + encodeURIComponent(clientSecret)
-      + '&redirectUri=' + encodeURIComponent(redirectUri));
-    var raw = await res.text();
-    var data;
-    try { data = JSON.parse(raw); } catch(e) {
-      throw new Error('Server not updated yet — restart the server on your VPS (git pull && pm2 restart)');
-    }
-    if (!res.ok) throw new Error(data.error || 'Could not generate auth URL');
-    // Open OAuth popup
-    var popup = window.open(data.url, 'ms-graph-auth', 'width=520,height=640,menubar=no,toolbar=no');
-    if (!popup) {
-      // Fallback: redirect in same tab
-      window.location.href = data.url;
-      return;
-    }
-    // Listen for result from popup
-    var handleMsg = function(event) {
-      if (!event.data || !event.data.type) return;
-      if (event.data.type === 'graph-auth-success') {
-        window.removeEventListener('message', handleMsg);
-        var sender = event.data.sender || '';
-        if (st) st.textContent = '✓ Connected as ' + sender;
-        // Auto-fill sender mailbox for work section too
-        var senderEl = document.getElementById('graphSender');
-        if (senderEl && !senderEl.value) { senderEl.value = sender; saveField('graphSender'); }
-        showToast('Microsoft account connected: ' + sender, 'ok');
-      } else if (event.data.type === 'graph-auth-error') {
-        window.removeEventListener('message', handleMsg);
-        if (st) st.textContent = 'Auth failed';
-        showToast('Graph auth failed: ' + event.data.error, 'err');
+    var res = await fetch('/api/graph/device-code', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ clientId: clientId })
+    });
+    var data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to get device code');
+
+    // Show the code box
+    document.getElementById('graphDeviceCode').textContent = data.userCode;
+    document.getElementById('graphDeviceLink').href = data.verificationUri;
+    document.getElementById('graphDeviceLink').textContent = data.verificationUri.replace('https://','');
+    document.getElementById('graphDeviceWait').textContent = 'Waiting for you to sign in…';
+    box.style.display = '';
+    if (st) st.textContent = 'Enter the code at the link below';
+
+    // Start polling
+    if (_graphPollTimer) clearInterval(_graphPollTimer);
+    var interval = (data.interval || 5) * 1000;
+    var deviceCode = data.deviceCode;
+    _graphPollTimer = setInterval(async function() {
+      try {
+        var pr = await fetch('/api/graph/device-poll', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ clientId: clientId, clientSecret: clientSecret, deviceCode: deviceCode })
+        });
+        var pd = await pr.json();
+        if (pd.status === 'pending') return; // keep waiting
+        if (pd.status === 'slow_down') return; // keep waiting, slower
+        clearInterval(_graphPollTimer);
+        _graphPollTimer = null;
+        if (pd.status === 'success') {
+          box.style.display = 'none';
+          if (st) st.textContent = '✓ Connected as ' + pd.sender;
+          var senderEl = document.getElementById('graphSender');
+          if (senderEl && !senderEl.value) { senderEl.value = pd.sender; saveField('graphSender'); }
+          showToast('Microsoft account connected: ' + pd.sender, 'ok');
+        } else {
+          box.style.display = 'none';
+          if (st) st.textContent = 'Failed';
+          showToast('Graph auth failed: ' + (pd.error || 'expired'), 'err');
+        }
+        if (btn) btn.disabled = false;
+      } catch (e) {
+        clearInterval(_graphPollTimer);
+        _graphPollTimer = null;
+        box.style.display = 'none';
+        if (st) st.textContent = 'Error';
+        if (btn) btn.disabled = false;
+        showToast('Poll error: ' + e.message, 'err');
       }
-    };
-    window.addEventListener('message', handleMsg);
+    }, interval);
   } catch (e) {
     if (st) st.textContent = 'Error';
+    if (btn) btn.disabled = false;
     showToast('Graph connect error: ' + e.message, 'err');
   }
 }

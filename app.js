@@ -426,6 +426,90 @@ app.get('/api/graph/token-status', (req, res) => {
     return res.json({ connected: true, sender: stored.senderEmail });
 });
 
+// ── Device Code Flow (microsoft.com/devicelogin) ──────────────────────────
+// Step 1: Request a device code from Microsoft
+app.post('/api/graph/device-code', async (req, res) => {
+    const clientId = String(req.body.clientId || '').trim();
+    if (!clientId) return res.status(400).json({ error: 'clientId is required.' });
+    try {
+        const dcRes = await fetch('https://login.microsoftonline.com/common/oauth2/v2.0/devicecode', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams({
+                client_id: clientId,
+                scope: 'https://graph.microsoft.com/Mail.Send offline_access',
+            }),
+        });
+        const dcData = await dcRes.json().catch(() => ({}));
+        if (!dcRes.ok || !dcData.device_code) {
+            throw new Error(dcData.error_description || dcData.error || 'Failed to get device code.');
+        }
+        return res.json({
+            userCode: dcData.user_code,
+            verificationUri: dcData.verification_uri,
+            deviceCode: dcData.device_code,
+            expiresIn: dcData.expires_in || 900,
+            interval: dcData.interval || 5,
+        });
+    } catch (e) {
+        return res.status(500).json({ error: e.message });
+    }
+});
+
+// Step 2: Poll until user completes login at microsoft.com/devicelogin
+app.post('/api/graph/device-poll', async (req, res) => {
+    const clientId = String(req.body.clientId || '').trim();
+    const clientSecret = String(req.body.clientSecret || '').trim();
+    const deviceCode = String(req.body.deviceCode || '').trim();
+    if (!clientId || !deviceCode) return res.status(400).json({ error: 'clientId and deviceCode required.' });
+    try {
+        const tokenRes = await fetch('https://login.microsoftonline.com/common/oauth2/v2.0/token', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams({
+                client_id: clientId,
+                ...(clientSecret ? { client_secret: clientSecret } : {}),
+                grant_type: 'urn:ietf:params:oauth:grant-type:device_code',
+                device_code: deviceCode,
+            }),
+        });
+        const tokenData = await tokenRes.json().catch(() => ({}));
+        // Still waiting for user to login
+        if (tokenData.error === 'authorization_pending') {
+            return res.json({ status: 'pending' });
+        }
+        if (tokenData.error === 'slow_down') {
+            return res.json({ status: 'slow_down' });
+        }
+        if (tokenData.error === 'expired_token') {
+            return res.json({ status: 'expired', error: 'Code expired. Try again.' });
+        }
+        if (!tokenRes.ok || !tokenData.access_token) {
+            throw new Error(tokenData.error_description || tokenData.error || 'Token exchange failed.');
+        }
+        // Success — extract email and store tokens
+        let senderEmail = '';
+        try {
+            const parts = (tokenData.id_token || '').split('.');
+            if (parts[1]) {
+                const pl = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8'));
+                senderEmail = pl.preferred_username || pl.email || pl.unique_name || '';
+            }
+        } catch { /* non-fatal */ }
+        _graphTokenStore.set(clientId, {
+            clientId,
+            clientSecret,
+            refreshToken: tokenData.refresh_token || '',
+            accessToken: tokenData.access_token,
+            expiresAt: Date.now() + (tokenData.expires_in || 3600) * 1000,
+            senderEmail,
+        });
+        return res.json({ status: 'success', sender: senderEmail });
+    } catch (e) {
+        return res.status(500).json({ error: e.message });
+    }
+});
+
 app.use((req, res, next) => {
     if (req.path === '/unsub' || req.path.startsWith('/r/') || req.path === '/api/graph/callback') return next();
     if (req.path === '/login.html') return res.redirect('/login');
