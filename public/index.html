@@ -1261,7 +1261,11 @@ async function graphConnectPersonal() {
       + 'clientId=' + encodeURIComponent(clientId)
       + '&clientSecret=' + encodeURIComponent(clientSecret)
       + '&redirectUri=' + encodeURIComponent(redirectUri));
-    var data = await res.json();
+    var raw = await res.text();
+    var data;
+    try { data = JSON.parse(raw); } catch(e) {
+      throw new Error('Server not updated yet — restart the server on your VPS (git pull && pm2 restart)');
+    }
     if (!res.ok) throw new Error(data.error || 'Could not generate auth URL');
     // Open OAuth popup
     var popup = window.open(data.url, 'ms-graph-auth', 'width=520,height=640,menubar=no,toolbar=no');
