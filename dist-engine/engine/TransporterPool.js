@@ -36,6 +36,14 @@ class TransporterPool {
                     refreshToken: account.refreshToken,
                 }
                 : { user: account.user, pass: account.pass },
+            // RFC 5321 persistent connections: nodemailer reuses a single TCP/TLS
+            // session for multiple messages rather than opening a new connection per
+            // send. maxConnections caps the pool per account; maxMessages prevents
+            // a single long-lived connection from accumulating too many sends before
+            // being recycled (reduces greylisting risk on major providers).
+            pool: true,
+            maxConnections: 1,
+            maxMessages: 100,
             tls: { minVersion: 'TLSv1.2', rejectUnauthorized: true },
         };
     }

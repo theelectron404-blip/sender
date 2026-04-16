@@ -57,9 +57,9 @@ class MissionControl {
         const account = node.account;
         const transporter = this.pool.getTransporter(account.id);
         const sentByAccount = this.pool.sentCount(account.id);
-        const delaySeconds = (0, utils_js_1.currentDelaySeconds)(sentByAccount, this.config.pacing);
-        if (delaySeconds > 0) {
-            await sleep(delaySeconds * 1000);
+        const delayMs = (0, utils_js_1.currentDelayMs)(sentByAccount, this.config.pacing);
+        if (delayMs > 0) {
+            await sleep(delayMs);
         }
         const recipientEmail = payload.recipient.email;
         const msgId = (0, utils_js_1.generateMessageId)(account.fromDomain);

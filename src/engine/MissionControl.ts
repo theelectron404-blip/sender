@@ -4,7 +4,7 @@ import IORedis from 'ioredis';
 import type { SendMailOptions } from 'nodemailer';
 import { TransporterPool } from './TransporterPool.js';
 import {
-  currentDelaySeconds,
+  currentDelayMs,
   generateEntityRefId,
   generateMessageId,
   normalizeUnsubscribeHeaders,
@@ -77,9 +77,9 @@ export class MissionControl {
     const transporter = this.pool.getTransporter(account.id);
 
     const sentByAccount = this.pool.sentCount(account.id);
-    const delaySeconds = currentDelaySeconds(sentByAccount, this.config.pacing);
-    if (delaySeconds > 0) {
-      await sleep(delaySeconds * 1000);
+    const delayMs = currentDelayMs(sentByAccount, this.config.pacing);
+    if (delayMs > 0) {
+      await sleep(delayMs);
     }
 
     const recipientEmail = payload.recipient.email;
