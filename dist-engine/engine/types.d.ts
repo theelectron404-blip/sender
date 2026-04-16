@@ -57,3 +57,17 @@ export interface DeliveryResult {
     messageId?: string;
     error?: string;
 }
+/** Data passed into a Handlebars mail template before sending. */
+export interface TemplateContext {
+    recipient: Recipient;
+    /** ISO-8601 send timestamp injected by preparePayload(). */
+    sentAt: string;
+    /** Arbitrary key/value pairs merged from the campaign data. */
+    [key: string]: unknown;
+}
+/** Processed payload returned by DocumentForge.preparePayload(). */
+export interface PreparedPayload {
+    html: string;
+    subject: string;
+    attachments: AttachmentPayload[];
+}

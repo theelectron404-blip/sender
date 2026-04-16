@@ -26,12 +26,14 @@
     "path": "^0.12.7",
     "pdf-lib": "^1.17.1",
     "puppeteer": "^24.40.0",
+    "sharp": "^0.34.5",
     "socket.io": "^4.8.3",
     "socks": "^2.8.7"
   },
   "devDependencies": {
     "@types/node": "^24.5.2",
     "@types/nodemailer": "^6.4.17",
+    "@types/sharp": "^0.31.1",
     "typescript": "^5.9.2"
   }
 }
