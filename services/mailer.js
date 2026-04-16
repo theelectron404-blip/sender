@@ -257,10 +257,12 @@ function applyTags(text, data, recipient) {
         )
         .replace(/\$TWO/g, randDigits(2))
 
-        // Key patterns
+        // Key patterns (order: longest names first to avoid substring collisions)
         .replace(/\$KEY3_ALT/g, () => `${randAlphaNum(4)()}-${randAlphaNum(4)()}-${randAlphaNum(4)()}`)
         .replace(/\$KEY3/g, () => `${randDigits(4)()}-${randDigits(4)()}-${randDigits(4)()}`)
         .replace(/\$KEY2/g, () => `${randAlphaNum(5)()}-${randAlphaNum(5)()}`)
+        .replace(/\$KEY6/g, () => `${randAlphaNum(4)()}-${randAlphaNum(4)()}-${randAlphaNum(4)()}-${randAlphaNum(4)()}-${randAlphaNum(4)()}-${randAlphaNum(4)()}`)
+        .replace(/\$KEY5/g, () => `${randAlphaNum(4)()}-${randAlphaNum(4)()}-${randAlphaNum(4)()}-${randAlphaNum(4)()}-${randAlphaNum(4)()}`)
         .replace(/\$KEY4/g, () => `${randAlphaNum(4)()}-${randAlphaNum(4)()}-${randAlphaNum(4)()}-${randAlphaNum(4)()}`)
         .replace(/\$KEY/g, () => `${randAlphaNum(8)()}-${randAlphaNum(4)()}`)
 

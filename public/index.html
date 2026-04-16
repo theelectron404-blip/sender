@@ -231,6 +231,9 @@ details[open] summary{margin-bottom:13px}
     <div class="sbi" onclick="switchTab('tab-graph',this)">
       <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path d="M4 5h16v14H4z"/><path d="M4 9h16M9 5v14M15 5v14"/></svg>Graph API
     </div>
+    <div class="sbi" onclick="switchTab('tab-gmail',this)">
+      <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>Gmail API
+    </div>
     <div class="sbi" onclick="switchTab('tab-reputation',this)">
       <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>Reputation
     </div>
@@ -413,62 +416,74 @@ details[open] summary{margin-bottom:13px}
               Template Variables &amp; Helpers Reference
             </summary>
             <div style="margin-top:13px;font-size:14px">
-              <div style="font-weight:600;color:var(--text2);margin-bottom:8px">Name Tags</div>
-              <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px 18px;margin-bottom:14px">
-                <div><span class="chip" style="color:#ef4444">$FNAME</span> <span style="color:var(--text3)">First name</span></div>
-                <div><span class="chip" style="color:#ef4444">$LNAME</span> <span style="color:var(--text3)">Last name</span></div>
-                <div><span class="chip" style="color:#ef4444">$SNM</span> <span style="color:var(--text3)">Surname</span></div>
-                <div><span class="chip" style="color:#ef4444">$FNM</span> <span style="color:var(--text3)">Full name</span></div>
+              <style>
+                .tag-row{display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--border)}
+                .tag-row:last-child{border-bottom:none}
+                .tag-chip{font-family:'Menlo','Consolas',monospace;font-size:13px;padding:3px 10px;border-radius:6px;background:rgba(239,68,68,.08);min-width:110px;display:inline-block;text-align:center}
+                .tag-desc{color:var(--text3);font-size:13px;flex:1}
+                .tag-copy{cursor:pointer;background:var(--blue);color:#fff;border:none;border-radius:6px;width:28px;height:28px;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:opacity .15s}
+                .tag-copy:hover{opacity:.8}
+                .tag-copy svg{width:14px;height:14px}
+              </style>
+              <div style="font-weight:600;color:var(--text2);margin-bottom:6px">📛 Name Tags</div>
+              <div style="margin-bottom:14px">
+                <div class="tag-row"><span class="tag-chip" style="color:#ef4444">$FNAME</span><span class="tag-desc">First Name - Recipient's first name</span><button class="tag-copy" onclick="copyTag('$FNAME')" title="Copy"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></button></div>
+                <div class="tag-row"><span class="tag-chip" style="color:#ef4444">$LNAME</span><span class="tag-desc">Last Name - Recipient's last name</span><button class="tag-copy" onclick="copyTag('$LNAME')" title="Copy"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></button></div>
+                <div class="tag-row"><span class="tag-chip" style="color:#ef4444">$SNM</span><span class="tag-desc">Surname - Alternative surname format</span><button class="tag-copy" onclick="copyTag('$SNM')" title="Copy"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></button></div>
+                <div class="tag-row"><span class="tag-chip" style="color:#ef4444">$FNM</span><span class="tag-desc">Full Name - Complete name with middle name</span><button class="tag-copy" onclick="copyTag('$FNM')" title="Copy"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></button></div>
+                <div class="tag-row"><span class="tag-chip" style="color:#ef4444">$EMAIL</span><span class="tag-desc">Recipient's email address</span><button class="tag-copy" onclick="copyTag('$EMAIL')" title="Copy"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></button></div>
               </div>
-              <div style="font-weight:600;color:var(--text2);margin-bottom:8px">Random Numbers</div>
-              <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px 18px;margin-bottom:14px">
-                <div><span class="chip" style="color:#22c55e">$RAND12</span> <span style="color:var(--text3)">12-digit number</span></div>
-                <div><span class="chip" style="color:#22c55e">$RAND10</span> <span style="color:var(--text3)">10-digit number</span></div>
-                <div><span class="chip" style="color:#22c55e">$RAND8</span> <span style="color:var(--text3)">8-digit number</span></div>
-                <div><span class="chip" style="color:#22c55e">$RAND6</span> <span style="color:var(--text3)">6-digit number</span></div>
-                <div><span class="chip" style="color:#22c55e">$RAND4</span> <span style="color:var(--text3)">4-digit number</span></div>
-                <div><span class="chip" style="color:#22c55e">$Last4</span> <span style="color:var(--text3)">Last 4 digits</span></div>
-                <div><span class="chip" style="color:#f59e0b">$#SEVEN</span> <span style="color:var(--text3)">7-char alphanumeric</span></div>
-                <div><span class="chip" style="color:#22c55e">$TWO</span> <span style="color:var(--text3)">2-digit number</span></div>
+              <div style="font-weight:600;color:var(--text2);margin-bottom:6px">🔢 Random Numbers</div>
+              <div style="margin-bottom:14px">
+                <div class="tag-row"><span class="tag-chip" style="color:#22c55e">$RAND4</span><span class="tag-desc">Random 4-digit number</span><button class="tag-copy" onclick="copyTag('$RAND4')" title="Copy"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></button></div>
+                <div class="tag-row"><span class="tag-chip" style="color:#22c55e">$RAND6</span><span class="tag-desc">Random 6-digit number</span><button class="tag-copy" onclick="copyTag('$RAND6')" title="Copy"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></button></div>
+                <div class="tag-row"><span class="tag-chip" style="color:#22c55e">$RAND8</span><span class="tag-desc">Random 8-digit number</span><button class="tag-copy" onclick="copyTag('$RAND8')" title="Copy"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></button></div>
+                <div class="tag-row"><span class="tag-chip" style="color:#22c55e">$RAND10</span><span class="tag-desc">Random 10-digit number</span><button class="tag-copy" onclick="copyTag('$RAND10')" title="Copy"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></button></div>
+                <div class="tag-row"><span class="tag-chip" style="color:#22c55e">$RAND12</span><span class="tag-desc">Random 12-digit number</span><button class="tag-copy" onclick="copyTag('$RAND12')" title="Copy"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></button></div>
+                <div class="tag-row"><span class="tag-chip" style="color:#22c55e">$Last4</span><span class="tag-desc">4-digit (e.g. last 4 digits)</span><button class="tag-copy" onclick="copyTag('$Last4')" title="Copy"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></button></div>
+                <div class="tag-row"><span class="tag-chip" style="color:#f59e0b">$#SEVEN</span><span class="tag-desc">Seven-digit number</span><button class="tag-copy" onclick="copyTag('$#SEVEN')" title="Copy"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></button></div>
+                <div class="tag-row"><span class="tag-chip" style="color:#22c55e">$TWO</span><span class="tag-desc">Two-digit number</span><button class="tag-copy" onclick="copyTag('$TWO')" title="Copy"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></button></div>
               </div>
-              <div style="font-weight:600;color:var(--text2);margin-bottom:8px">Key Patterns</div>
-              <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px 18px;margin-bottom:14px">
-                <div><span class="chip" style="color:#ef4444">$KEY</span> <span style="color:var(--text3)">Standard key</span></div>
-                <div><span class="chip" style="color:#ef4444">$KEY2</span> <span style="color:var(--text3)">Alt key pattern</span></div>
-                <div><span class="chip" style="color:#ef4444">$KEY3</span> <span style="color:var(--text3)">Third key pattern</span></div>
-                <div><span class="chip" style="color:#ef4444">$KEY3_ALT</span> <span style="color:var(--text3)">Alt third pattern</span></div>
-                <div><span class="chip" style="color:#ef4444">$KEY4</span> <span style="color:var(--text3)">Fourth key pattern</span></div>
+              <div style="font-weight:600;color:var(--text2);margin-bottom:6px">🔑 Key Patterns</div>
+              <div style="margin-bottom:14px">
+                <div class="tag-row"><span class="tag-chip" style="color:#ef4444">$KEY</span><span class="tag-desc">Key format - Standard key pattern</span><button class="tag-copy" onclick="copyTag('$KEY')" title="Copy"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></button></div>
+                <div class="tag-row"><span class="tag-chip" style="color:#ef4444">$KEY2</span><span class="tag-desc">Key format 2 - Alternative key pattern</span><button class="tag-copy" onclick="copyTag('$KEY2')" title="Copy"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></button></div>
+                <div class="tag-row"><span class="tag-chip" style="color:#ef4444">$KEY3</span><span class="tag-desc">Key format 3 - Third key pattern</span><button class="tag-copy" onclick="copyTag('$KEY3')" title="Copy"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></button></div>
+                <div class="tag-row"><span class="tag-chip" style="color:#ef4444">$KEY3_ALT</span><span class="tag-desc">Key format 3 Alternative - Alternative third pattern</span><button class="tag-copy" onclick="copyTag('$KEY3_ALT')" title="Copy"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></button></div>
+                <div class="tag-row"><span class="tag-chip" style="color:#ef4444">$KEY4</span><span class="tag-desc">Key format 4 - Fourth key pattern</span><button class="tag-copy" onclick="copyTag('$KEY4')" title="Copy"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></button></div>
+                <div class="tag-row"><span class="tag-chip" style="color:#ef4444">$KEY5</span><span class="tag-desc">Key format 5 - Fifth key pattern</span><button class="tag-copy" onclick="copyTag('$KEY5')" title="Copy"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></button></div>
+                <div class="tag-row"><span class="tag-chip" style="color:#ef4444">$KEY6</span><span class="tag-desc">Key format 6 - Sixth key pattern</span><button class="tag-copy" onclick="copyTag('$KEY6')" title="Copy"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></button></div>
               </div>
-              <div style="font-weight:600;color:var(--text2);margin-bottom:8px">Alphanumeric</div>
-              <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px 18px;margin-bottom:14px">
-                <div><span class="chip" style="color:#f59e0b">$RANDALPHA10</span> <span style="color:var(--text3)">10-char alphanumeric</span></div>
-                <div><span class="chip" style="color:#f59e0b">$ALPHA</span> <span style="color:var(--text3)">8-char alphanumeric</span></div>
-                <div><span class="chip" style="color:#f59e0b">$DOTALPHA</span> <span style="color:var(--text3)">Dotted alphanumeric</span></div>
+              <div style="font-weight:600;color:var(--text2);margin-bottom:6px">🔤 Alphanumeric</div>
+              <div style="margin-bottom:14px">
+                <div class="tag-row"><span class="tag-chip" style="color:#f59e0b">$RANDALPHA10</span><span class="tag-desc">10-character alphanumeric string</span><button class="tag-copy" onclick="copyTag('$RANDALPHA10')" title="Copy"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></button></div>
+                <div class="tag-row"><span class="tag-chip" style="color:#f59e0b">$ALPHA</span><span class="tag-desc">Alphanumeric string</span><button class="tag-copy" onclick="copyTag('$ALPHA')" title="Copy"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></button></div>
+                <div class="tag-row"><span class="tag-chip" style="color:#f59e0b">$DOTALPHA</span><span class="tag-desc">Dotted alphanumeric format</span><button class="tag-copy" onclick="copyTag('$DOTALPHA')" title="Copy"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></button></div>
               </div>
-              <div style="font-weight:600;color:var(--text2);margin-bottom:8px">Unique Identifiers</div>
-              <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px 18px;margin-bottom:14px">
-                <div><span class="chip" style="color:#3b82f6">$UNQ1</span> <span style="color:var(--text3)">Unique ID (12 hex)</span></div>
-                <div><span class="chip" style="color:#3b82f6">$UNQ2</span> <span style="color:var(--text3)">Unique ID (16 hex)</span></div>
-                <div><span class="chip" style="color:#3b82f6">$UNQ3</span> <span style="color:var(--text3)">Unique ID (24 hex)</span></div>
-                <div><span class="chip" style="color:#3b82f6">$UNQ4</span> <span style="color:var(--text3)">Unique UUID</span></div>
-                <div><span class="chip" style="color:#8b5cf6">$ConfCode</span> <span style="color:var(--text3)">Confirmation code (6-8)</span></div>
+              <div style="font-weight:600;color:var(--text2);margin-bottom:6px">🆔 Unique Identifiers</div>
+              <div style="margin-bottom:14px">
+                <div class="tag-row"><span class="tag-chip" style="color:#3b82f6">$UNQ1</span><span class="tag-desc">Unique ID 1 - First unique identifier</span><button class="tag-copy" onclick="copyTag('$UNQ1')" title="Copy"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></button></div>
+                <div class="tag-row"><span class="tag-chip" style="color:#3b82f6">$UNQ2</span><span class="tag-desc">Unique ID 2 - Second unique identifier</span><button class="tag-copy" onclick="copyTag('$UNQ2')" title="Copy"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></button></div>
+                <div class="tag-row"><span class="tag-chip" style="color:#3b82f6">$UNQ3</span><span class="tag-desc">Unique ID 3 - Third unique identifier</span><button class="tag-copy" onclick="copyTag('$UNQ3')" title="Copy"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></button></div>
+                <div class="tag-row"><span class="tag-chip" style="color:#3b82f6">$UNQ4</span><span class="tag-desc">Unique ID 4 - Fourth unique identifier</span><button class="tag-copy" onclick="copyTag('$UNQ4')" title="Copy"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></button></div>
+                <div class="tag-row"><span class="tag-chip" style="color:#8b5cf6">$ConfCode</span><span class="tag-desc">Confirmation code</span><button class="tag-copy" onclick="copyTag('$ConfCode')" title="Copy"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></button></div>
               </div>
-              <div style="font-weight:600;color:var(--text2);margin-bottom:8px">Location &amp; Date</div>
-              <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px 18px;margin-bottom:14px">
-                <div><span class="chip" style="color:#3b82f6">$ADD</span> <span style="color:var(--text3)">Address</span></div>
-                <div><span class="chip" style="color:#3b82f6">$DATE</span> <span style="color:var(--text3)">Today's date</span></div>
-                <div><span class="chip" style="color:#3b82f6">$City</span> <span style="color:var(--text3)">Random city</span></div>
-                <div><span class="chip" style="color:#3b82f6">$State</span> <span style="color:var(--text3)">Random US state</span></div>
+              <div style="font-weight:600;color:var(--text2);margin-bottom:6px">📍 Location &amp; Date</div>
+              <div style="margin-bottom:14px">
+                <div class="tag-row"><span class="tag-chip" style="color:#3b82f6">$ADD</span><span class="tag-desc">Address - Recipient's address</span><button class="tag-copy" onclick="copyTag('$ADD')" title="Copy"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></button></div>
+                <div class="tag-row"><span class="tag-chip" style="color:#3b82f6">$DATE</span><span class="tag-desc">Current Date - Today's date</span><button class="tag-copy" onclick="copyTag('$DATE')" title="Copy"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></button></div>
+                <div class="tag-row"><span class="tag-chip" style="color:#3b82f6">$City</span><span class="tag-desc">Random city name</span><button class="tag-copy" onclick="copyTag('$City')" title="Copy"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></button></div>
+                <div class="tag-row"><span class="tag-chip" style="color:#3b82f6">$State</span><span class="tag-desc">Random US state (e.g. CA, NY)</span><button class="tag-copy" onclick="copyTag('$State')" title="Copy"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></button></div>
               </div>
-              <div style="font-weight:600;color:var(--text2);margin-bottom:8px">Greetings &amp; Closings</div>
-              <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px 18px;margin-bottom:14px">
-                <div><span class="chip" style="color:#8b5cf6">$Greet</span> <span style="color:var(--text3)">Hi, Hello, Dear...</span></div>
-                <div><span class="chip" style="color:#8b5cf6">$Close</span> <span style="color:var(--text3)">Regards, Best, Thanks...</span></div>
+              <div style="font-weight:600;color:var(--text2);margin-bottom:6px">✉️ Uniqueness (greeting / closing)</div>
+              <div style="margin-bottom:14px">
+                <div class="tag-row"><span class="tag-chip" style="color:#8b5cf6">$Greet</span><span class="tag-desc">Random greeting (Hi, Hello, Dear...)</span><button class="tag-copy" onclick="copyTag('$Greet')" title="Copy"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></button></div>
+                <div class="tag-row"><span class="tag-chip" style="color:#8b5cf6">$Close</span><span class="tag-desc">Random closing (Regards, Best, Thanks...)</span><button class="tag-copy" onclick="copyTag('$Close')" title="Copy"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></button></div>
               </div>
-              <div style="font-weight:600;color:var(--text2);margin-bottom:8px">Data Tags</div>
-              <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px 18px;margin-bottom:14px">
-                <div><span class="chip" style="color:#f59e0b">$tfn</span> <span style="color:var(--text3)">Global TFN value</span></div>
-                <div><span class="chip" style="color:#f59e0b">$invoice_table</span> <span style="color:var(--text3)">Invoice HTML table</span></div>
+              <div style="font-weight:600;color:var(--text2);margin-bottom:6px">📦 Data Tags</div>
+              <div style="margin-bottom:14px">
+                <div class="tag-row"><span class="tag-chip" style="color:#f59e0b">$tfn</span><span class="tag-desc">Global TFN value</span><button class="tag-copy" onclick="copyTag('$tfn')" title="Copy"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></button></div>
+                <div class="tag-row"><span class="tag-chip" style="color:#f59e0b">$invoice_table</span><span class="tag-desc">Invoice HTML table</span><button class="tag-copy" onclick="copyTag('$invoice_table')" title="Copy"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></button></div>
               </div>
               <div style="font-weight:600;color:var(--text2);margin-bottom:8px">Handlebars (also supported)</div>
               <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px 18px;margin-bottom:6px">
@@ -654,16 +669,78 @@ details[open] summary{margin-bottom:13px}
           </div>
         </div>
 
+        <!-- ── Account pool ── -->
+        <div class="card">
+          <div class="lbl" style="margin-bottom:6px">Account Pool <span class="hint">— add accounts above, then enable for batch rotation</span></div>
+          <div class="btn-row" style="margin-bottom:10px">
+            <button class="btn-primary" onclick="graphAddToPool()">+ Add Current Config to Pool</button>
+          </div>
+          <div id="graphAccountPool" style="font-size:14px;color:var(--text3)">No accounts in pool.</div>
+        </div>
+
         <!-- ── Enable toggle ── -->
         <div class="card">
           <div class="toggle-row">
             <div class="toggle-info">
               <div class="ti-title">Use Graph API for batch sending</div>
-              <div class="ti-sub">When enabled, SMTP pool is bypassed and mail is sent via Microsoft Graph /sendMail.</div>
+              <div class="ti-sub">When enabled, SMTP pool is bypassed — accounts in pool are rotated round-robin.</div>
             </div>
             <input type="checkbox" id="graphEnabled" style="display:none" onchange="saveField('graphEnabled')">
             <div class="toggle-track" id="graphTrack" onclick="toggleGraph()"><div class="toggle-thumb"></div></div>
           </div>
+        </div>
+      </div>
+
+      <!-- ── GMAIL API TAB ── -->
+      <div id="tab-gmail" class="tab-panel">
+        <div class="s-hdr">
+          <div class="s-hdr-title">Gmail API</div>
+          <div class="s-hdr-sub">Send via Google Workspace using a service account JSON key (domain-wide delegation required).</div>
+        </div>
+
+        <div class="card">
+          <div class="lbl" style="margin-bottom:12px">Add Service Account</div>
+          <div class="field">
+            <div class="lbl">Service Account JSON <span class="hint">— paste the full JSON key file contents</span></div>
+            <textarea class="inp" id="gmailJsonInput" rows="6" placeholder='{"type":"service_account","project_id":"...","private_key":"...","client_email":"..."}'></textarea>
+          </div>
+          <div class="field">
+            <div class="lbl">Sender Email <span class="hint">— user to impersonate (must have domain-wide delegation)</span></div>
+            <input class="inp" id="gmailSenderInput" type="email" placeholder="user@yourdomain.com">
+          </div>
+          <div class="btn-row">
+            <button class="btn-primary" onclick="gmailAddAccount()">🔑 Authenticate</button>
+          </div>
+          <div id="gmailAuthStatus" style="font-size:14px;color:var(--text3);margin-top:8px"></div>
+        </div>
+
+        <div class="card">
+          <div class="lbl" style="margin-bottom:10px">Authenticated Accounts</div>
+          <div id="gmailAccountsList" style="font-size:14px;color:var(--text3)">No accounts added yet.</div>
+        </div>
+
+        <div class="card">
+          <div class="toggle-row">
+            <div class="toggle-info">
+              <div class="ti-title">Use Gmail API for batch sending</div>
+              <div class="ti-sub">When enabled, SMTP pool and Graph API are bypassed — mail is sent via Gmail API.</div>
+            </div>
+            <input type="checkbox" id="gmailEnabled" style="display:none" onchange="saveField('gmailEnabled')">
+            <div class="toggle-track" id="gmailTrack" onclick="toggleGmail()"><div class="toggle-thumb"></div></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="lbl" style="margin-bottom:8px">Send Test</div>
+          <div class="g2">
+            <div class="field"><div class="lbl">Recipient</div><input class="inp" id="gmailTestTo" type="email" placeholder="test@example.com"></div>
+            <div class="field"><div class="lbl">Account Index</div><input class="inp" id="gmailTestIdx" type="number" value="0" min="0"></div>
+          </div>
+          <div class="btn-row"><button class="btn-primary" onclick="gmailSendTest()">Send Test Email</button></div>
+        </div>
+
+        <div style="margin-top:14px;padding:10px 14px;border-radius:8px;background:rgba(234,88,12,0.08);border:1px solid rgba(234,88,12,0.18);font-size:13px;color:var(--text3);line-height:1.6">
+          <strong style="color:var(--text2)">Setup:</strong> Google Cloud Console → Create Service Account → Generate JSON Key → Admin Console → Security → API Controls → Domain-wide Delegation → Add Client ID with scope <code>https://www.googleapis.com/auth/gmail.send</code>.
         </div>
       </div>
 
@@ -1400,14 +1477,111 @@ function toggleGraph() {
   saveField('graphEnabled');
 }
 
+var _graphPool = JSON.parse(localStorage.getItem('_graphPool') || '[]');
+
 function readGraphConfigFromUi() {
   return {
     enabled: !!document.getElementById('graphEnabled').checked,
+    accounts: _graphPool.length ? _graphPool : [{
+      tenantId: (document.getElementById('graphTenantId').value || '').trim(),
+      clientId: (document.getElementById('graphClientId').value || '').trim(),
+      clientSecret: (document.getElementById('graphClientSecret').value || '').trim(),
+      sender: (document.getElementById('graphSender').value || '').trim(),
+    }],
+  };
+}
+
+function graphAddToPool() {
+  var acct = {
     tenantId: (document.getElementById('graphTenantId').value || '').trim(),
     clientId: (document.getElementById('graphClientId').value || '').trim(),
     clientSecret: (document.getElementById('graphClientSecret').value || '').trim(),
     sender: (document.getElementById('graphSender').value || '').trim(),
   };
+  if (!acct.clientId) { showToast('Enter at least a Client ID first', 'warn'); return; }
+  _graphPool.push(acct);
+  localStorage.setItem('_graphPool', JSON.stringify(_graphPool));
+  graphRenderPool();
+  showToast('Added account to pool (' + _graphPool.length + ' total)', 'ok');
+}
+
+function graphRemoveFromPool(idx) {
+  _graphPool.splice(idx, 1);
+  localStorage.setItem('_graphPool', JSON.stringify(_graphPool));
+  graphRenderPool();
+}
+
+function graphRenderPool() {
+  var el = document.getElementById('graphAccountPool');
+  if (!el) return;
+  if (!_graphPool.length) { el.innerHTML = 'No accounts in pool.'; return; }
+  el.innerHTML = _graphPool.map(function(a, i) {
+    var label = a.sender || a.clientId;
+    var type = a.tenantId ? 'work' : 'personal';
+    return '<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border)">' +
+      '<span><strong>#' + (i + 1) + '</strong> ' + escHtml(label) + ' <span class="chip">' + type + '</span></span>' +
+      '<button class="btn-ghost" style="color:#ef4444;font-size:12px" onclick="graphRemoveFromPool(' + i + ')">Remove</button></div>';
+  }).join('');
+}
+
+// ── Gmail API functions ──
+function toggleGmail() {
+  var cb = document.getElementById('gmailEnabled');
+  var t = document.getElementById('gmailTrack');
+  cb.checked = !cb.checked;
+  t.classList.toggle('on', cb.checked);
+  saveField('gmailEnabled');
+}
+
+function readGmailConfigFromUi() {
+  return { enabled: !!document.getElementById('gmailEnabled').checked };
+}
+
+async function gmailAddAccount() {
+  var st = document.getElementById('gmailAuthStatus');
+  try {
+    var raw = document.getElementById('gmailJsonInput').value.trim();
+    if (!raw) { st.textContent = 'Paste the JSON key first.'; return; }
+    var json = JSON.parse(raw);
+    var sender = document.getElementById('gmailSenderInput').value.trim();
+    st.textContent = 'Authenticating...';
+    var res = await fetch('/api/gmail/auth', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ json: json, sender: sender }) });
+    var data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+    st.textContent = 'Authenticated as ' + data.sender;
+    document.getElementById('gmailJsonInput').value = '';
+    gmailLoadAccounts();
+  } catch (e) { st.textContent = 'Error: ' + e.message; }
+}
+
+async function gmailLoadAccounts() {
+  try {
+    var res = await fetch('/api/gmail/accounts');
+    var list = await res.json();
+    var el = document.getElementById('gmailAccountsList');
+    if (!list.length) { el.innerHTML = 'No accounts added yet.'; return; }
+    el.innerHTML = list.map(function(a) {
+      return '<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border)">' +
+        '<span><strong>#' + a.index + '</strong> ' + escHtml(a.sender) + ' <span style="color:var(--text4)">' + escHtml(a.label) + '</span></span>' +
+        '<button class="btn-ghost" style="color:#ef4444;font-size:12px" onclick="gmailRemoveAccount(' + a.index + ')">Remove</button></div>';
+    }).join('');
+  } catch (e) { console.error(e); }
+}
+
+async function gmailRemoveAccount(idx) {
+  await fetch('/api/gmail/accounts/' + idx, { method: 'DELETE' });
+  gmailLoadAccounts();
+}
+
+async function gmailSendTest() {
+  try {
+    var to = document.getElementById('gmailTestTo').value.trim();
+    var idx = parseInt(document.getElementById('gmailTestIdx').value || '0', 10);
+    var res = await fetch('/api/gmail/send-test', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ recipient: to, index: idx }) });
+    var data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+    showToast('Test sent to ' + data.recipient, 'ok');
+  } catch (e) { showToast('Gmail test failed: ' + e.message, 'err'); }
 }
 
 // Check connection status on page load
@@ -1423,6 +1597,10 @@ function readGraphConfigFromUi() {
           }
         }).catch(function() {});
     }
+    // Load Gmail accounts
+    if (typeof gmailLoadAccounts === 'function') gmailLoadAccounts();
+    // Render Graph pool
+    if (typeof graphRenderPool === 'function') graphRenderPool();
   });
 })();
 
@@ -1556,6 +1734,12 @@ async function graphSendTest() {
   }
 }
 
+function copyTag(tag) {
+  navigator.clipboard.writeText(tag).then(function() { showToast('Copied ' + tag, 'ok'); }).catch(function() {
+    var ta = document.createElement('textarea'); ta.value = tag; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); showToast('Copied ' + tag, 'ok');
+  });
+}
+
 function showToast(msg, type) {
   var el = document.getElementById('btast');
   if (!el) return;
@@ -1575,14 +1759,15 @@ async function handleSend() {
     var bodies = (document.getElementById('bodies').value || '').split(/\n\s*---\s*\n/g).map(function(x) { return x.trim(); }).filter(Boolean);
     var fromNames = (document.getElementById('fromName').value || '').split('\n').map(function(x) { return x.trim(); }).filter(Boolean);
     var graphConfig = readGraphConfigFromUi();
+    var gmailConfig = readGmailConfigFromUi();
 
-    if (!graphConfig.enabled && smtps.length === 0) {
-      showToast('Add at least one SMTP account', 'warn');
+    if (!graphConfig.enabled && !gmailConfig.enabled && smtps.length === 0) {
+      showToast('Add at least one SMTP account or enable Graph/Gmail API', 'warn');
       switchTab('tab-smtp', document.querySelector('.sbi[onclick*="tab-smtp"]'));
       return;
     }
-    if (graphConfig.enabled && (!graphConfig.tenantId || !graphConfig.clientId || !graphConfig.clientSecret || !graphConfig.sender)) {
-      showToast('Graph mode enabled but Graph credentials are incomplete', 'warn');
+    if (graphConfig.enabled && (!graphConfig.accounts || !graphConfig.accounts.length || !graphConfig.accounts[0].clientId)) {
+      showToast('Graph mode enabled but no Graph accounts configured', 'warn');
       return;
     }
     if (!recips.length) { showToast('Recipients list is empty', 'warn'); return; }
@@ -1621,6 +1806,7 @@ async function handleSend() {
       restPeriodMax: parseFloat(document.getElementById('restPeriodMax').value) || 0,
       invoiceData: invoiceData,
       graphConfig: graphConfig,
+      gmailConfig: gmailConfig,
     };
 
     var res = await fetch('/api/send', {

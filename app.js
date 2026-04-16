@@ -33,6 +33,11 @@ const _graphOAuthState = new Map();
 // Token store: clientId → { refreshToken, accessToken, expiresAt, senderEmail, clientId, clientSecret }
 const _graphTokenStore = new Map();
 
+// ── Gmail API ────────────────────────────────────────────────────────────────
+const { google } = require('googleapis');
+// In-memory store: slotIndex → { auth, senderEmail, label }
+const _gmailAccounts = [];
+
 function _loadClickLog() {
     try {
         const entries = JSON.parse(fs.readFileSync(CLICK_LOG_PATH, 'utf8'));
@@ -733,21 +738,35 @@ app.post('/api/send', async (req, res) => {
         redirectDomains,
         tzSendStart, tzSendEnd,
         graphConfig,
+        gmailConfig,
     } = req.body;
 
-    const graphEnabled = !!(graphConfig && graphConfig.enabled);
+    // Support multi-account Graph: graphConfig.accounts is an array
+    const graphAccounts = (graphConfig && graphConfig.enabled && Array.isArray(graphConfig.accounts) && graphConfig.accounts.length)
+        ? graphConfig.accounts
+        // Legacy: single config with tenantId/clientId at top level
+        : (graphConfig && graphConfig.enabled && graphConfig.clientId) ? [graphConfig] : [];
+    const graphEnabled = graphAccounts.length > 0;
+    const gmailEnabled = !!(gmailConfig && gmailConfig.enabled);
     const resolvedFromNames = Array.isArray(fromNames)
         ? fromNames.map((x) => String(x || '').trim()).filter(Boolean)
         : [];
 
     if (graphEnabled) {
-        if (!graphConfig.tenantId || !graphConfig.clientId || !graphConfig.clientSecret || !graphConfig.sender) {
-            return res.status(400).json({ error: 'Graph mode requires tenantId, clientId, clientSecret, and sender.' });
+        for (let gi = 0; gi < graphAccounts.length; gi++) {
+            const ga = graphAccounts[gi];
+            if (!ga.clientId) {
+                return res.status(400).json({ error: `Graph account #${gi + 1} is missing Client ID.` });
+            }
         }
     }
 
+    if (gmailEnabled && _gmailAccounts.length === 0) {
+        return res.status(400).json({ error: 'Gmail mode enabled but no Gmail accounts authenticated.' });
+    }
+
     // Validate SMTP pool
-    if (!graphEnabled) {
+    if (!graphEnabled && !gmailEnabled) {
         if (!Array.isArray(smtps) || smtps.length === 0) {
             return res.status(400).json({ error: 'At least one SMTP account is required.' });
         }
@@ -1040,18 +1059,24 @@ app.post('/api/send', async (req, res) => {
         try {
             let info;
             if (graphEnabled) {
-                await sendGraphMail({ graphConfig, recipient, subject: finalSubject, html: finalHtml });
+                const pickedGraph = graphAccounts[i % graphAccounts.length];
+                await sendGraphMail({ graphConfig: pickedGraph, recipient, subject: finalSubject, html: finalHtml });
                 info = { messageId: `graph-${Date.now()}-${crypto.randomBytes(3).toString('hex')}` };
+            } else if (gmailEnabled) {
+                const gmailIdx = i % _gmailAccounts.length;
+                const account = _gmailAccounts[gmailIdx];
+                await sendGmail({ account, recipient, subject: finalSubject, html: finalHtml, fromName: pickedFromName });
+                info = { messageId: `gmail-${Date.now()}-${crypto.randomBytes(3).toString('hex')}` };
             } else {
                 info = await sendMail({ smtp, recipient, subject: finalSubject, html: finalHtml, attachments, fromName: pickedFromName, unsubUrl });
             }
             results.success++;
-            if (!graphEnabled) sendCounter++;
+            if (!graphEnabled && !gmailEnabled) sendCounter++;
             // Gradually recover pace after successful deliveries.
             adaptiveDelayFactor = Math.max(1, adaptiveDelayFactor * ADAPTIVE_DELAY_RECOVERY);
             warmupSentThisHour++;
             batchSendCount++;
-            const via = graphEnabled ? 'graph-api' : smtp.host;
+            const via = graphEnabled ? `graph-${graphAccounts[i % graphAccounts.length]?.sender || 'api'}` : gmailEnabled ? `gmail-${_gmailAccounts[i % _gmailAccounts.length]?.senderEmail || 'api'}` : smtp.host;
             const msg = `[SUCCESS] ${recipient} via ${via}`;
             results.logs.push(msg);
             emit('send:event', {
@@ -1305,3 +1330,77 @@ app.post('/api/graph/send-test', async (req, res) => {
         return res.status(400).json({ error: err.message });
     }
 });
+
+// ── Gmail API routes ─────────────────────────────────────────────────────────
+app.post('/api/gmail/auth', async (req, res) => {
+    try {
+        const { json } = req.body; // service account JSON object
+        if (!json || !json.client_email || !json.private_key) {
+            return res.status(400).json({ error: 'Invalid service account JSON. Needs client_email and private_key.' });
+        }
+        const senderEmail = String(req.body.sender || json.client_email).trim();
+        const auth = new google.auth.JWT({
+            email: json.client_email,
+            key: json.private_key,
+            scopes: ['https://www.googleapis.com/auth/gmail.send'],
+            subject: senderEmail, // impersonate
+        });
+        await auth.authorize(); // test auth
+        const slot = { auth, senderEmail, label: json.client_email };
+        _gmailAccounts.push(slot);
+        return res.json({ ok: true, index: _gmailAccounts.length - 1, sender: senderEmail });
+    } catch (err) {
+        return res.status(400).json({ error: 'Gmail auth failed: ' + err.message });
+    }
+});
+
+app.get('/api/gmail/accounts', (req, res) => {
+    return res.json(_gmailAccounts.map((a, i) => ({ index: i, sender: a.senderEmail, label: a.label })));
+});
+
+app.delete('/api/gmail/accounts/:index', (req, res) => {
+    const idx = parseInt(req.params.index, 10);
+    if (idx >= 0 && idx < _gmailAccounts.length) {
+        _gmailAccounts.splice(idx, 1);
+        return res.json({ ok: true });
+    }
+    return res.status(404).json({ error: 'Account not found.' });
+});
+
+app.post('/api/gmail/send-test', async (req, res) => {
+    try {
+        const idx = parseInt(req.body.index || '0', 10);
+        const account = _gmailAccounts[idx];
+        if (!account) return res.status(400).json({ error: 'No Gmail account at index ' + idx });
+        const recipient = String(req.body.recipient || '').trim();
+        if (!recipient) return res.status(400).json({ error: 'Recipient required.' });
+        const subject = String(req.body.subject || 'Gmail API test');
+        const html = String(req.body.html || '<p>Gmail API test</p>');
+        await sendGmail({ account, recipient, subject, html });
+        return res.json({ ok: true, recipient });
+    } catch (err) {
+        return res.status(400).json({ error: err.message });
+    }
+});
+
+async function sendGmail({ account, recipient, subject, html, fromName }) {
+    const boundary = 'boundary_' + crypto.randomBytes(8).toString('hex');
+    const from = fromName ? `"${fromName}" <${account.senderEmail}>` : account.senderEmail;
+    const raw = [
+        `From: ${from}`,
+        `To: ${recipient}`,
+        `Subject: ${subject}`,
+        `MIME-Version: 1.0`,
+        `Content-Type: multipart/alternative; boundary="${boundary}"`,
+        ``,
+        `--${boundary}`,
+        `Content-Type: text/html; charset=UTF-8`,
+        `Content-Transfer-Encoding: base64`,
+        ``,
+        Buffer.from(html).toString('base64'),
+        `--${boundary}--`,
+    ].join('\r\n');
+    const encodedMessage = Buffer.from(raw).toString('base64url');
+    const gmail = google.gmail({ version: 'v1', auth: account.auth });
+    await gmail.users.messages.send({ userId: 'me', requestBody: { raw: encodedMessage } });
+}
