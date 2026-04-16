@@ -804,12 +804,15 @@ function adminLoadUsers() {
     var cols = isAdmin ? '<th style="padding:6px 10px;width:90px">Action</th>' : '';
     var html = '<table style="width:100%;border-collapse:collapse">';
     html += '<tr style="text-align:left;color:var(--text3);font-size:13px"><th style="padding:6px 10px">Username</th><th style="padding:6px 10px">Role</th>' + cols + '</tr>';
+    function escHtml(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
     data.users.forEach(function(u) {
+      var safeUser = escHtml(u.username);
+      var safeRole = escHtml(u.role);
       html += '<tr style="border-top:1px solid var(--border)">';
-      html += '<td style="padding:8px 10px;color:var(--text1)">' + u.username + '</td>';
-      html += '<td style="padding:8px 10px"><span class="chip">' + u.role + '</span></td>';
+      html += '<td style="padding:8px 10px;color:var(--text1)">' + safeUser + '</td>';
+      html += '<td style="padding:8px 10px"><span class="chip">' + safeRole + '</span></td>';
       if (isAdmin) {
-        html += '<td style="padding:8px 10px"><button class="btn-ghost" style="color:var(--red);font-size:12px;padding:3px 10px" onclick="adminDeleteUser(\'' + u.username.replace(/'/g, "\\'") + '\')">Delete</button></td>';
+        html += '<td style="padding:8px 10px"><button class="btn-ghost" style="color:var(--red);font-size:12px;padding:3px 10px" onclick="adminDeleteUser(\'' + safeUser.replace(/'/g, "\\'") + '\')">Delete</button></td>';
       }
       html += '</tr>';
     });

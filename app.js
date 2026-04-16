@@ -298,7 +298,9 @@ function verifyAuthToken(token) {
         const payload = parts[0];
         const sig = parts[1];
         const expected = signAuthPayload(payload);
-        if (sig !== expected) return false;
+        const sigBuf = Buffer.from(sig, 'utf8');
+        const expBuf = Buffer.from(expected, 'utf8');
+        if (sigBuf.length !== expBuf.length || !crypto.timingSafeEqual(sigBuf, expBuf)) return false;
         const decoded = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
         if (!decoded || typeof decoded.exp !== 'number') return false;
         if (Date.now() >= decoded.exp) return false;
@@ -488,11 +490,13 @@ app.get('/api/graph/callback', async (req, res) => {
     const state   = String(req.query.state || '');
     const errMsg  = String(req.query.error_description || req.query.error || '');
 
+    const esc = (s) => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
     const page = (type, payload) => {
         const bg = type === 'graph-auth-success' ? '#0a3d1f' : '#3d0a0a';
         const icon = type === 'graph-auth-success' ? '✓' : '✗';
-        const msg  = type === 'graph-auth-success' ? `Connected as ${payload.sender}` : payload.error;
-        return `<!DOCTYPE html><html><head><title>Microsoft Auth</title></head><body style="margin:0;display:grid;place-items:center;height:100vh;background:${bg};font-family:sans-serif;color:#e2e8f0"><div style="text-align:center;padding:32px"><div style="font-size:40px;margin-bottom:12px">${icon}</div><p style="font-size:18px;font-weight:600">${msg}</p><p style="color:#94a3b8;font-size:14px">You can close this window.</p></div><script>try{window.opener.postMessage(${JSON.stringify({ type, ...payload })},'*');}catch(e){}setTimeout(()=>window.close(),2000);</script></body></html>`;
+        const msg  = type === 'graph-auth-success' ? `Connected as ${esc(payload.sender)}` : esc(payload.error);
+        const safePayload = JSON.stringify({ type, ...payload }).replace(/<\//g, '<\\/');
+        return `<!DOCTYPE html><html><head><title>Microsoft Auth</title></head><body style="margin:0;display:grid;place-items:center;height:100vh;background:${bg};font-family:sans-serif;color:#e2e8f0"><div style="text-align:center;padding:32px"><div style="font-size:40px;margin-bottom:12px">${icon}</div><p style="font-size:18px;font-weight:600">${msg}</p><p style="color:#94a3b8;font-size:14px">You can close this window.</p></div><script>try{window.opener.postMessage(${safePayload},'*');}catch(e){}setTimeout(()=>window.close(),2000);</script></body></html>`;
     };
 
     if (errMsg) return res.send(page('graph-auth-error', { error: errMsg }));
