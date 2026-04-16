@@ -656,11 +656,11 @@ details[open] summary{margin-bottom:13px}
           </div>
         </div>
         <div class="card" style="margin-top:16px">
-          <div class="lbl">Change Password</div>
+          <div class="lbl">Change My Password</div>
           <div style="display:flex;gap:10px;margin-top:8px;flex-wrap:wrap;align-items:flex-end">
             <div style="flex:1;min-width:160px">
-              <div class="hint" style="margin-bottom:4px">Select User</div>
-              <select class="inp" id="admin-chpw-user" style="height:38px"><option value="">Loading...</option></select>
+              <div class="hint" style="margin-bottom:4px">Logged in as</div>
+              <input class="inp" id="admin-chpw-user" readonly style="opacity:0.7;cursor:default">
             </div>
             <div style="flex:1;min-width:160px">
               <div class="hint" style="margin-bottom:4px">New Password</div>
@@ -727,17 +727,19 @@ function switchTab(id, el) {
   var m = TAB_META[id] || ['', ''];
   document.getElementById('tab-title').textContent = m[0];
   document.getElementById('tab-sub').textContent = m[1];
-  if (id === 'tab-admin') adminLoadUsers();
+  if (id === 'tab-admin') {
+    adminLoadUsers();
+    fetch('/api/auth/status').then(function(r){ return r.json(); }).then(function(d) {
+      document.getElementById('admin-chpw-user').value = d.username || '';
+    }).catch(function(){});
+  }
 }
 
 /* ── ADMIN USER MANAGEMENT ── */
 function adminLoadUsers() {
   fetch('/api/admin/users').then(function(r){ return r.json(); }).then(function(data) {
     var el = document.getElementById('admin-user-list');
-    var sel = document.getElementById('admin-chpw-user');
-    if (!data.users || !data.users.length) { el.innerHTML = '<div style="color:var(--text3)">No users found.</div>'; sel.innerHTML = '<option value="">No users</option>'; return; }
-    // Populate change-password dropdown
-    sel.innerHTML = data.users.map(function(u){ return '<option value="' + u.username + '">' + u.username + ' (' + u.role + ')</option>'; }).join('');
+    if (!data.users || !data.users.length) { el.innerHTML = '<div style="color:var(--text3)">No users found.</div>'; return; }
     // Populate user table
     var html = '<table style="width:100%;border-collapse:collapse">';
     html += '<tr style="text-align:left;color:var(--text3);font-size:13px"><th style="padding:6px 10px">Username</th><th style="padding:6px 10px">Role</th><th style="padding:6px 10px;width:90px">Action</th></tr>';
@@ -784,7 +786,7 @@ function adminDeleteUser(username) {
 function adminChangePassword() {
   var user = document.getElementById('admin-chpw-user').value;
   var pass = document.getElementById('admin-chpw-pass').value;
-  if (!user) { alert('Select a user first.'); return; }
+  if (!user) { alert('Could not detect your username.'); return; }
   if (!pass || pass.length < 4) { alert('Password must be at least 4 characters.'); return; }
   fetch('/api/admin/users/' + encodeURIComponent(user) + '/password', {
     method: 'PUT',
@@ -792,7 +794,7 @@ function adminChangePassword() {
     body: JSON.stringify({ password: pass })
   }).then(function(r){ return r.json(); }).then(function(data) {
     if (data.error) { alert(data.error); return; }
-    alert('Password updated for ' + user);
+    alert('Password updated successfully!');
     document.getElementById('admin-chpw-pass').value = '';
   }).catch(function(e) { alert('Failed to change password.'); });
 }

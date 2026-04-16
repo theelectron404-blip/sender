@@ -314,6 +314,18 @@ function isAuthenticated(req) {
     return verifyAuthToken(cookies[AUTH_COOKIE_NAME]);
 }
 
+function getAuthUsername(req) {
+    try {
+        const cookies = parseCookies(req);
+        const token = cookies[AUTH_COOKIE_NAME];
+        if (!token) return null;
+        const parts = token.split('.');
+        if (parts.length !== 2) return null;
+        const decoded = JSON.parse(Buffer.from(parts[0], 'base64url').toString('utf8'));
+        return decoded.u || null;
+    } catch { return null; }
+}
+
 function shouldUseSecureCookie(req) {
     if (AUTH_COOKIE_SECURE === 'true' || AUTH_COOKIE_SECURE === '1') return true;
     if (AUTH_COOKIE_SECURE === 'false' || AUTH_COOKIE_SECURE === '0') return false;
@@ -375,7 +387,7 @@ app.post('/api/auth/logout', (req, res) => {
 
 app.get('/api/auth/status', (req, res) => {
     res.setHeader('Cache-Control', 'no-store');
-    res.json({ authenticated: isAuthenticated(req), loginEnabled: LOGIN_ENABLED });
+    res.json({ authenticated: isAuthenticated(req), loginEnabled: LOGIN_ENABLED, username: getAuthUsername(req) || '' });
 });
 
 // --- Admin user management routes ---
@@ -410,7 +422,9 @@ app.delete('/api/admin/users/:username', requireAuth, (req, res) => {
 });
 
 app.put('/api/admin/users/:username/password', requireAuth, (req, res) => {
+    const caller = getAuthUsername(req);
     const target = req.params.username;
+    if (caller !== target) return res.status(403).json({ error: 'You can only change your own password.' });
     const newPassword = String(req.body?.password || '');
     if (!newPassword || newPassword.length < 4) return res.status(400).json({ error: 'Password must be at least 4 characters.' });
     const users = loadUsers();
