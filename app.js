@@ -396,6 +396,9 @@ app.get('/api/auth/status', (req, res) => {
 
 // --- Admin user management routes ---
 app.get('/api/admin/users', requireAuth, (req, res) => {
+    const caller = getAuthUsername(req);
+    const callerUser = caller ? findUser(caller) : null;
+    if (!callerUser || callerUser.role !== 'admin') return res.status(403).json({ error: 'Admin only.' });
     const users = loadUsers().map(u => ({ username: u.username, role: u.role || 'user' }));
     res.json({ users });
 });
