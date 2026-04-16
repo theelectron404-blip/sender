@@ -1080,7 +1080,15 @@ app.post('/api/send', async (req, res) => {
                 await sendGmail({ account, recipient, subject: finalSubject, html: signedHtml, fromName: pickedFromName });
                 info = { messageId: `gmail-${Date.now()}-${crypto.randomBytes(3).toString('hex')}` };
             } else {
-                info = await sendMail({ smtp, recipient, subject: finalSubject, html: signedHtml, attachments, fromName: pickedFromName, unsubUrl });
+                info = await sendMail({ 
+    smtp, 
+    recipient, 
+    subject: finalSubject, 
+    html: signedHtml, 
+    attachments, 
+    fromName: pickedFromName, 
+    unsubUrl 
+});
             }
             results.success++;
             if (!graphEnabled && !gmailEnabled) sendCounter++;
