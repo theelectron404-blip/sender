@@ -205,6 +205,9 @@ details[open] summary{margin-bottom:13px}
   </div>
   <nav class="sb-nav">
     <div class="sb-section">Campaign</div>
+    <div class="sbi" onclick="switchTab('tab-tags',this)">
+      <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path d="M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>Tags
+    </div>
     <div class="sbi on" onclick="switchTab('tab-smtp',this)">
       <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>SMTP Pool
     </div>
@@ -281,6 +284,120 @@ details[open] summary{margin-bottom:13px}
 
   <div id="body">
     <div id="content">
+
+      <!-- ── TAGS TAB ── -->
+      <div id="tab-tags" class="tab-panel">
+        <div class="s-hdr">
+          <div class="s-hdr-title">Template Tags</div>
+          <div class="s-hdr-sub">Click <strong>Copy</strong> to copy a tag, or <strong>Insert</strong> to place it at the cursor in the last focused Subject / Body field.</div>
+        </div>
+        <div class="callout c-violet" style="margin-bottom:10px;font-size:13px">
+          <strong>Tip:</strong> Click inside the <strong>Subject Lines</strong> or <strong>Body</strong> textarea first to set the insert target, then come here and click Insert.
+          <span id="tagsInsertTarget" style="margin-left:10px;font-weight:600;color:var(--blue)"></span>
+        </div>
+        <style>
+          .tr2{display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--border)}
+          .tr2:last-child{border-bottom:none}
+          .tc2{font-family:'Menlo','Consolas',monospace;font-size:13px;padding:3px 10px;border-radius:6px;background:rgba(239,68,68,.08);min-width:130px;display:inline-block;text-align:center;flex-shrink:0}
+          .td2{color:var(--text3);font-size:13px;flex:1}
+          .tbtn{cursor:pointer;border:none;border-radius:6px;height:28px;padding:0 10px;font-size:12px;font-weight:600;display:flex;align-items:center;gap:5px;flex-shrink:0;transition:opacity .15s}
+          .tbtn:hover{opacity:.8}
+          .tbtn-copy{background:var(--blue);color:#fff}
+          .tbtn-insert{background:rgba(139,92,246,.18);color:#a78bfa}
+          .tag-cat-hdr{font-weight:700;font-size:13px;color:var(--text2);padding:14px 0 6px;display:flex;align-items:center;gap:7px}
+        </style>
+
+        <!-- Name Tags -->
+        <div class="card">
+          <div class="tag-cat-hdr">📛 Name Tags</div>
+          <div class="tr2"><span class="tc2" style="color:#ef4444">$FNAME</span><span class="td2">Recipient's first name (auto-generated if missing)</span><button class="tbtn tbtn-copy" onclick="copyTag('$FNAME')">Copy</button><button class="tbtn tbtn-insert" onclick="insertTag('$FNAME')">Insert</button></div>
+          <div class="tr2"><span class="tc2" style="color:#ef4444">$LNAME</span><span class="td2">Recipient's last name (auto-generated if missing)</span><button class="tbtn tbtn-copy" onclick="copyTag('$LNAME')">Copy</button><button class="tbtn tbtn-insert" onclick="insertTag('$LNAME')">Insert</button></div>
+          <div class="tr2"><span class="tc2" style="color:#ef4444">$SNM</span><span class="td2">Surname alternative format</span><button class="tbtn tbtn-copy" onclick="copyTag('$SNM')">Copy</button><button class="tbtn tbtn-insert" onclick="insertTag('$SNM')">Insert</button></div>
+          <div class="tr2"><span class="tc2" style="color:#ef4444">$FNM</span><span class="td2">Full name (first + middle + last)</span><button class="tbtn tbtn-copy" onclick="copyTag('$FNM')">Copy</button><button class="tbtn tbtn-insert" onclick="insertTag('$FNM')">Insert</button></div>
+          <div class="tr2"><span class="tc2" style="color:#ef4444">$EMAIL</span><span class="td2">Recipient's email address</span><button class="tbtn tbtn-copy" onclick="copyTag('$EMAIL')">Copy</button><button class="tbtn tbtn-insert" onclick="insertTag('$EMAIL')">Insert</button></div>
+        </div>
+
+        <!-- Random Numbers -->
+        <div class="card">
+          <div class="tag-cat-hdr">🔢 Random Numbers</div>
+          <div class="tr2"><span class="tc2" style="color:#22c55e">$RAND4</span><span class="td2">Random 4-digit number</span><button class="tbtn tbtn-copy" onclick="copyTag('$RAND4')">Copy</button><button class="tbtn tbtn-insert" onclick="insertTag('$RAND4')">Insert</button></div>
+          <div class="tr2"><span class="tc2" style="color:#22c55e">$RAND6</span><span class="td2">Random 6-digit number</span><button class="tbtn tbtn-copy" onclick="copyTag('$RAND6')">Copy</button><button class="tbtn tbtn-insert" onclick="insertTag('$RAND6')">Insert</button></div>
+          <div class="tr2"><span class="tc2" style="color:#22c55e">$RAND8</span><span class="td2">Random 8-digit number</span><button class="tbtn tbtn-copy" onclick="copyTag('$RAND8')">Copy</button><button class="tbtn tbtn-insert" onclick="insertTag('$RAND8')">Insert</button></div>
+          <div class="tr2"><span class="tc2" style="color:#22c55e">$RAND10</span><span class="td2">Random 10-digit number</span><button class="tbtn tbtn-copy" onclick="copyTag('$RAND10')">Copy</button><button class="tbtn tbtn-insert" onclick="insertTag('$RAND10')">Insert</button></div>
+          <div class="tr2"><span class="tc2" style="color:#22c55e">$RAND12</span><span class="td2">Random 12-digit number</span><button class="tbtn tbtn-copy" onclick="copyTag('$RAND12')">Copy</button><button class="tbtn tbtn-insert" onclick="insertTag('$RAND12')">Insert</button></div>
+          <div class="tr2"><span class="tc2" style="color:#22c55e">$Last4</span><span class="td2">Last 4 digits pattern</span><button class="tbtn tbtn-copy" onclick="copyTag('$Last4')">Copy</button><button class="tbtn tbtn-insert" onclick="insertTag('$Last4')">Insert</button></div>
+          <div class="tr2"><span class="tc2" style="color:#f59e0b">$#SEVEN</span><span class="td2">Seven-digit number</span><button class="tbtn tbtn-copy" onclick="copyTag('$#SEVEN')">Copy</button><button class="tbtn tbtn-insert" onclick="insertTag('$#SEVEN')">Insert</button></div>
+          <div class="tr2"><span class="tc2" style="color:#22c55e">$TWO</span><span class="td2">Two-digit number</span><button class="tbtn tbtn-copy" onclick="copyTag('$TWO')">Copy</button><button class="tbtn tbtn-insert" onclick="insertTag('$TWO')">Insert</button></div>
+        </div>
+
+        <!-- Key Patterns -->
+        <div class="card">
+          <div class="tag-cat-hdr">🔑 Key Patterns</div>
+          <div class="tr2"><span class="tc2" style="color:#ef4444">$KEY</span><span class="td2">Standard activation key pattern (XXXXX-XXXXX-XXXXX)</span><button class="tbtn tbtn-copy" onclick="copyTag('$KEY')">Copy</button><button class="tbtn tbtn-insert" onclick="insertTag('$KEY')">Insert</button></div>
+          <div class="tr2"><span class="tc2" style="color:#ef4444">$KEY2</span><span class="td2">Alternative key pattern 2</span><button class="tbtn tbtn-copy" onclick="copyTag('$KEY2')">Copy</button><button class="tbtn tbtn-insert" onclick="insertTag('$KEY2')">Insert</button></div>
+          <div class="tr2"><span class="tc2" style="color:#ef4444">$KEY3</span><span class="td2">Key pattern 3</span><button class="tbtn tbtn-copy" onclick="copyTag('$KEY3')">Copy</button><button class="tbtn tbtn-insert" onclick="insertTag('$KEY3')">Insert</button></div>
+          <div class="tr2"><span class="tc2" style="color:#ef4444">$KEY3_ALT</span><span class="td2">Key pattern 3 alternative format</span><button class="tbtn tbtn-copy" onclick="copyTag('$KEY3_ALT')">Copy</button><button class="tbtn tbtn-insert" onclick="insertTag('$KEY3_ALT')">Insert</button></div>
+          <div class="tr2"><span class="tc2" style="color:#ef4444">$KEY4</span><span class="td2">Key pattern 4</span><button class="tbtn tbtn-copy" onclick="copyTag('$KEY4')">Copy</button><button class="tbtn tbtn-insert" onclick="insertTag('$KEY4')">Insert</button></div>
+          <div class="tr2"><span class="tc2" style="color:#ef4444">$KEY5</span><span class="td2">Key pattern 5</span><button class="tbtn tbtn-copy" onclick="copyTag('$KEY5')">Copy</button><button class="tbtn tbtn-insert" onclick="insertTag('$KEY5')">Insert</button></div>
+          <div class="tr2"><span class="tc2" style="color:#ef4444">$KEY6</span><span class="td2">Key pattern 6</span><button class="tbtn tbtn-copy" onclick="copyTag('$KEY6')">Copy</button><button class="tbtn tbtn-insert" onclick="insertTag('$KEY6')">Insert</button></div>
+        </div>
+
+        <!-- Alphanumeric -->
+        <div class="card">
+          <div class="tag-cat-hdr">🔤 Alphanumeric Strings</div>
+          <div class="tr2"><span class="tc2" style="color:#f59e0b">$RANDALPHA10</span><span class="td2">10-character random alphanumeric</span><button class="tbtn tbtn-copy" onclick="copyTag('$RANDALPHA10')">Copy</button><button class="tbtn tbtn-insert" onclick="insertTag('$RANDALPHA10')">Insert</button></div>
+          <div class="tr2"><span class="tc2" style="color:#f59e0b">$ALPHA</span><span class="td2">8-character alphanumeric</span><button class="tbtn tbtn-copy" onclick="copyTag('$ALPHA')">Copy</button><button class="tbtn tbtn-insert" onclick="insertTag('$ALPHA')">Insert</button></div>
+          <div class="tr2"><span class="tc2" style="color:#f59e0b">$DOTALPHA</span><span class="td2">Dotted alphanumeric (e.g. ab.cd.ef)</span><button class="tbtn tbtn-copy" onclick="copyTag('$DOTALPHA')">Copy</button><button class="tbtn tbtn-insert" onclick="insertTag('$DOTALPHA')">Insert</button></div>
+        </div>
+
+        <!-- Unique IDs -->
+        <div class="card">
+          <div class="tag-cat-hdr">🆔 Unique Identifiers</div>
+          <div class="tr2"><span class="tc2" style="color:#3b82f6">$UNQ1</span><span class="td2">Unique ID 12-char hex</span><button class="tbtn tbtn-copy" onclick="copyTag('$UNQ1')">Copy</button><button class="tbtn tbtn-insert" onclick="insertTag('$UNQ1')">Insert</button></div>
+          <div class="tr2"><span class="tc2" style="color:#3b82f6">$UNQ2</span><span class="td2">Unique ID 16-char hex</span><button class="tbtn tbtn-copy" onclick="copyTag('$UNQ2')">Copy</button><button class="tbtn tbtn-insert" onclick="insertTag('$UNQ2')">Insert</button></div>
+          <div class="tr2"><span class="tc2" style="color:#3b82f6">$UNQ3</span><span class="td2">Unique ID 24-char hex</span><button class="tbtn tbtn-copy" onclick="copyTag('$UNQ3')">Copy</button><button class="tbtn tbtn-insert" onclick="insertTag('$UNQ3')">Insert</button></div>
+          <div class="tr2"><span class="tc2" style="color:#3b82f6">$UNQ4</span><span class="td2">UUID v4</span><button class="tbtn tbtn-copy" onclick="copyTag('$UNQ4')">Copy</button><button class="tbtn tbtn-insert" onclick="insertTag('$UNQ4')">Insert</button></div>
+          <div class="tr2"><span class="tc2" style="color:#8b5cf6">$ConfCode</span><span class="td2">Confirmation code (6-8 chars)</span><button class="tbtn tbtn-copy" onclick="copyTag('$ConfCode')">Copy</button><button class="tbtn tbtn-insert" onclick="insertTag('$ConfCode')">Insert</button></div>
+        </div>
+
+        <!-- Location & Date -->
+        <div class="card">
+          <div class="tag-cat-hdr">📍 Location &amp; Date</div>
+          <div class="tr2"><span class="tc2" style="color:#3b82f6">$ADD</span><span class="td2">Recipient address</span><button class="tbtn tbtn-copy" onclick="copyTag('$ADD')">Copy</button><button class="tbtn tbtn-insert" onclick="insertTag('$ADD')">Insert</button></div>
+          <div class="tr2"><span class="tc2" style="color:#3b82f6">$DATE</span><span class="td2">Today's date (formatted)</span><button class="tbtn tbtn-copy" onclick="copyTag('$DATE')">Copy</button><button class="tbtn tbtn-insert" onclick="insertTag('$DATE')">Insert</button></div>
+          <div class="tr2"><span class="tc2" style="color:#3b82f6">$City</span><span class="td2">Random US city</span><button class="tbtn tbtn-copy" onclick="copyTag('$City')">Copy</button><button class="tbtn tbtn-insert" onclick="insertTag('$City')">Insert</button></div>
+          <div class="tr2"><span class="tc2" style="color:#3b82f6">$State</span><span class="td2">Random US state abbreviation (CA, NY…)</span><button class="tbtn tbtn-copy" onclick="copyTag('$State')">Copy</button><button class="tbtn tbtn-insert" onclick="insertTag('$State')">Insert</button></div>
+        </div>
+
+        <!-- Greetings & Closings -->
+        <div class="card">
+          <div class="tag-cat-hdr">✉️ Greetings &amp; Closings</div>
+          <div class="tr2"><span class="tc2" style="color:#8b5cf6">$Greet</span><span class="td2">Random greeting — Hi / Hello / Dear / Good day</span><button class="tbtn tbtn-copy" onclick="copyTag('$Greet')">Copy</button><button class="tbtn tbtn-insert" onclick="insertTag('$Greet')">Insert</button></div>
+          <div class="tr2"><span class="tc2" style="color:#8b5cf6">$Close</span><span class="td2">Random closing — Regards / Best / Thanks / Sincerely</span><button class="tbtn tbtn-copy" onclick="copyTag('$Close')">Copy</button><button class="tbtn tbtn-insert" onclick="insertTag('$Close')">Insert</button></div>
+        </div>
+
+        <!-- Data Tags -->
+        <div class="card">
+          <div class="tag-cat-hdr">📦 Data Tags</div>
+          <div class="tr2"><span class="tc2" style="color:#f59e0b">$tfn</span><span class="td2">Global TFN phone number value</span><button class="tbtn tbtn-copy" onclick="copyTag('$tfn')">Copy</button><button class="tbtn tbtn-insert" onclick="insertTag('$tfn')">Insert</button></div>
+          <div class="tr2"><span class="tc2" style="color:#f59e0b">$invoice_table</span><span class="td2">Rendered invoice HTML table (set JSON in Content tab)</span><button class="tbtn tbtn-copy" onclick="copyTag('$invoice_table')">Copy</button><button class="tbtn tbtn-insert" onclick="insertTag('$invoice_table')">Insert</button></div>
+        </div>
+
+        <!-- Handlebars -->
+        <div class="card">
+          <div class="tag-cat-hdr">🔧 Handlebars</div>
+          <div class="tr2"><span class="tc2" style="color:#a78bfa">{{firstName}}</span><span class="td2">First name (Handlebars)</span><button class="tbtn tbtn-copy" onclick="copyTag('{{firstName}}')">Copy</button><button class="tbtn tbtn-insert" onclick="insertTag('{{firstName}}')">Insert</button></div>
+          <div class="tr2"><span class="tc2" style="color:#a78bfa">{{lastName}}</span><span class="td2">Last name (Handlebars)</span><button class="tbtn tbtn-copy" onclick="copyTag('{{lastName}}')">Copy</button><button class="tbtn tbtn-insert" onclick="insertTag('{{lastName}}')">Insert</button></div>
+          <div class="tr2"><span class="tc2" style="color:#a78bfa">{{fullName}}</span><span class="td2">Full name (Handlebars)</span><button class="tbtn tbtn-copy" onclick="copyTag('{{fullName}}')">Copy</button><button class="tbtn tbtn-insert" onclick="insertTag('{{fullName}}')">Insert</button></div>
+          <div class="tr2"><span class="tc2" style="color:#a78bfa">{{email}}</span><span class="td2">Email address (Handlebars)</span><button class="tbtn tbtn-copy" onclick="copyTag('{{email}}')">Copy</button><button class="tbtn tbtn-insert" onclick="insertTag('{{email}}')">Insert</button></div>
+          <div class="tr2"><span class="tc2" style="color:#a78bfa">{{greeting}}</span><span class="td2">Good morning/afternoon/evening</span><button class="tbtn tbtn-copy" onclick="copyTag('{{greeting}}')">Copy</button><button class="tbtn tbtn-insert" onclick="insertTag('{{greeting}}')">Insert</button></div>
+        </div>
+
+        <!-- Spintax reminder -->
+        <div class="callout c-green" style="margin-top:6px">
+          <strong>Spintax:</strong> Use <code>{option A|option B|option C}</code> anywhere in subject or body — one variant picked randomly per recipient.
+        </div>
+      </div>
 
       <!-- ── SMTP TAB ── -->
       <div id="tab-smtp" class="tab-panel active">
@@ -1738,6 +1855,50 @@ function copyTag(tag) {
   navigator.clipboard.writeText(tag).then(function() { showToast('Copied ' + tag, 'ok'); }).catch(function() {
     var ta = document.createElement('textarea'); ta.value = tag; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); showToast('Copied ' + tag, 'ok');
   });
+}
+
+// Track last focused insert target (subjects / bodies / attachHtml)
+var _tagInsertEl = null;
+var _tagInsertSelStart = 0;
+var _tagInsertSelEnd = 0;
+(function setupTagInsertTracking() {
+  var ids = ['subjects', 'bodies', 'attachHtml'];
+  window.addEventListener('DOMContentLoaded', function() {
+    ids.forEach(function(id) {
+      var el = document.getElementById(id);
+      if (!el) return;
+      el.addEventListener('focus', function() { _tagInsertEl = el; updateInsertTargetLabel(); });
+      el.addEventListener('click', function() { _tagInsertSelStart = el.selectionStart; _tagInsertSelEnd = el.selectionEnd; });
+      el.addEventListener('keyup', function() { _tagInsertSelStart = el.selectionStart; _tagInsertSelEnd = el.selectionEnd; });
+    });
+  });
+})();
+
+function updateInsertTargetLabel() {
+  var lbl = document.getElementById('tagsInsertTarget');
+  if (!lbl || !_tagInsertEl) return;
+  var names = { subjects: '→ Subject Lines', bodies: '→ Body Templates', attachHtml: '→ Attachment HTML' };
+  lbl.textContent = names[_tagInsertEl.id] || '';
+}
+
+function insertTag(tag) {
+  if (!_tagInsertEl) {
+    showToast('Click inside a Subject or Body field first, then insert', 'warn');
+    copyTag(tag);
+    return;
+  }
+  var el = _tagInsertEl;
+  var start = _tagInsertSelStart;
+  var end = _tagInsertSelEnd;
+  var val = el.value;
+  el.value = val.slice(0, start) + tag + val.slice(end);
+  var newPos = start + tag.length;
+  el.setSelectionRange(newPos, newPos);
+  el.dispatchEvent(new Event('input', { bubbles: true }));
+  _tagInsertSelStart = newPos;
+  _tagInsertSelEnd = newPos;
+  el.focus();
+  showToast('Inserted ' + tag + ' into ' + el.id, 'ok');
 }
 
 function showToast(msg, type) {
