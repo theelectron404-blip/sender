@@ -409,6 +409,18 @@ app.delete('/api/admin/users/:username', requireAuth, (req, res) => {
     res.json({ ok: true });
 });
 
+app.put('/api/admin/users/:username/password', requireAuth, (req, res) => {
+    const target = req.params.username;
+    const newPassword = String(req.body?.password || '');
+    if (!newPassword || newPassword.length < 4) return res.status(400).json({ error: 'Password must be at least 4 characters.' });
+    const users = loadUsers();
+    const user = users.find(u => u.username === target);
+    if (!user) return res.status(404).json({ error: 'User not found.' });
+    user.password = newPassword;
+    saveUsers(users);
+    res.json({ ok: true });
+});
+
 app.get('/login', (req, res) => {
     if (isAuthenticated(req)) return res.redirect('/dashboard');
     return res.sendFile(path.join(__dirname, 'public', 'login.html'));

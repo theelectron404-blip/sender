@@ -656,6 +656,20 @@ details[open] summary{margin-bottom:13px}
           </div>
         </div>
         <div class="card" style="margin-top:16px">
+          <div class="lbl">Change Password</div>
+          <div style="display:flex;gap:10px;margin-top:8px;flex-wrap:wrap;align-items:flex-end">
+            <div style="flex:1;min-width:160px">
+              <div class="hint" style="margin-bottom:4px">Select User</div>
+              <select class="inp" id="admin-chpw-user" style="height:38px"><option value="">Loading...</option></select>
+            </div>
+            <div style="flex:1;min-width:160px">
+              <div class="hint" style="margin-bottom:4px">New Password</div>
+              <input class="inp" id="admin-chpw-pass" type="password" placeholder="new password" autocomplete="new-password">
+            </div>
+            <button class="btn-primary" onclick="adminChangePassword()">Update</button>
+          </div>
+        </div>
+        <div class="card" style="margin-top:16px">
           <div class="lbl">Existing Users</div>
           <div id="admin-user-list" style="margin-top:10px">Loading...</div>
         </div>
@@ -720,7 +734,11 @@ function switchTab(id, el) {
 function adminLoadUsers() {
   fetch('/api/admin/users').then(function(r){ return r.json(); }).then(function(data) {
     var el = document.getElementById('admin-user-list');
-    if (!data.users || !data.users.length) { el.innerHTML = '<div style="color:var(--text3)">No users found.</div>'; return; }
+    var sel = document.getElementById('admin-chpw-user');
+    if (!data.users || !data.users.length) { el.innerHTML = '<div style="color:var(--text3)">No users found.</div>'; sel.innerHTML = '<option value="">No users</option>'; return; }
+    // Populate change-password dropdown
+    sel.innerHTML = data.users.map(function(u){ return '<option value="' + u.username + '">' + u.username + ' (' + u.role + ')</option>'; }).join('');
+    // Populate user table
     var html = '<table style="width:100%;border-collapse:collapse">';
     html += '<tr style="text-align:left;color:var(--text3);font-size:13px"><th style="padding:6px 10px">Username</th><th style="padding:6px 10px">Role</th><th style="padding:6px 10px;width:90px">Action</th></tr>';
     data.users.forEach(function(u) {
@@ -761,6 +779,22 @@ function adminDeleteUser(username) {
       if (data.error) { alert(data.error); return; }
       adminLoadUsers();
     }).catch(function(e) { alert('Failed to delete user.'); });
+}
+
+function adminChangePassword() {
+  var user = document.getElementById('admin-chpw-user').value;
+  var pass = document.getElementById('admin-chpw-pass').value;
+  if (!user) { alert('Select a user first.'); return; }
+  if (!pass || pass.length < 4) { alert('Password must be at least 4 characters.'); return; }
+  fetch('/api/admin/users/' + encodeURIComponent(user) + '/password', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ password: pass })
+  }).then(function(r){ return r.json(); }).then(function(data) {
+    if (data.error) { alert(data.error); return; }
+    alert('Password updated for ' + user);
+    document.getElementById('admin-chpw-pass').value = '';
+  }).catch(function(e) { alert('Failed to change password.'); });
 }
 
 /* ── SMTP SLOT BUILDER ── */
