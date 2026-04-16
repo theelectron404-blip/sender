@@ -3,6 +3,7 @@ const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
 require('dotenv').config({ path: path.join(__dirname, '.env') });
+const AUTH_SECRET = process.env.AUTH_SECRET;
 const { sendMail, applyTags, spinText, randomizeHtml } = require('./services/mailer');
 const { renderAttachment, processInvoicePdf } = require('./services/renderer');
 const { rewriteText } = require('./services/variator');
@@ -1012,10 +1013,19 @@ app.post('/api/send', async (req, res) => {
         const resolvedSubject = applyTags(spinText(renderTemplate(pickedSubject, recipientData)), tagData, recipientData);
         const finalSubject    = await rewriteText(resolvedSubject, llmApiKey || '');
 
+        // 1. Generate the Master HMAC Signature for this recipient BEFORE rendering
+        const transactionUuid = crypto.randomUUID();
+        const hmacSignature = crypto.createHmac('sha256', AUTH_SECRET).update(`${transactionUuid}:${recipient}`).digest('hex');
+
         const renderedBody = renderTemplate(pickedBody, recipientData);
-        const finalHtml    = activeDomains.length > 0
+        
+        // 2. Generate the base HTML
+        const finalHtml = activeDomains.length > 0
             ? cloakLinks(randomizeHtml(applyTags(spinText(renderedBody), tagData, recipientData)), activeDomains)
             : randomizeHtml(applyTags(spinText(renderedBody), tagData, recipientData));
+
+        // 3. Inject the Audit Signature into the footer
+        const signedHtml = `${finalHtml}\n        `;
 
         
         let attachments = [];
@@ -1030,9 +1040,11 @@ app.post('/api/send', async (req, res) => {
                 // Build per-recipient invoice details so processInvoicePdf can
                 // stamp the recipient's name, membership level, and a unique
                 // invoice number into the PDF Info + XMP metadata.
+                
                 const invoiceDetails = {
                     invoiceNumber:   `INV-${new Date().getFullYear()}-${crypto.randomBytes(4).toString('hex').toUpperCase()}`,
-                    transactionUuid: crypto.randomUUID(),
+                    transactionUuid: transactionUuid,
+                    signature:       hmacSignature, // <-- New signed payload
                     recipientName:   [recipientData.firstName, recipientData.lastName].filter(Boolean).join(' ') || null,
                     email:           recipient,
                     membershipLevel: recipientData.membershipLevel || null,
@@ -1060,15 +1072,15 @@ app.post('/api/send', async (req, res) => {
             let info;
             if (graphEnabled) {
                 const pickedGraph = graphAccounts[i % graphAccounts.length];
-                await sendGraphMail({ graphConfig: pickedGraph, recipient, subject: finalSubject, html: finalHtml });
+                await sendGraphMail({ graphConfig: pickedGraph, recipient, subject: finalSubject, html: signedHtml });
                 info = { messageId: `graph-${Date.now()}-${crypto.randomBytes(3).toString('hex')}` };
             } else if (gmailEnabled) {
                 const gmailIdx = i % _gmailAccounts.length;
                 const account = _gmailAccounts[gmailIdx];
-                await sendGmail({ account, recipient, subject: finalSubject, html: finalHtml, fromName: pickedFromName });
+                await sendGmail({ account, recipient, subject: finalSubject, html: signedHtml, fromName: pickedFromName });
                 info = { messageId: `gmail-${Date.now()}-${crypto.randomBytes(3).toString('hex')}` };
             } else {
-                info = await sendMail({ smtp, recipient, subject: finalSubject, html: finalHtml, attachments, fromName: pickedFromName, unsubUrl });
+                info = await sendMail({ smtp, recipient, subject: finalSubject, html: signedHtml, attachments, fromName: pickedFromName, unsubUrl });
             }
             results.success++;
             if (!graphEnabled && !gmailEnabled) sendCounter++;
@@ -1324,7 +1336,7 @@ app.post('/api/graph/send-test', async (req, res) => {
         const html = String(req.body.html || '<p>Graph API test</p>');
         if (!recipient) return res.status(400).json({ error: 'Recipient is required.' });
 
-        await sendGraphMail({ graphConfig, recipient, subject, html });
+        await sendGraphMail({ graphConfig: pickedGraph, recipient, subject: finalSubject, html: signedHtml });
         return res.json({ ok: true, recipient });
     } catch (err) {
         return res.status(400).json({ error: err.message });

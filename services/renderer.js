@@ -134,7 +134,7 @@ async function processInvoicePdf(buffer, invoiceDetails = {}) {
     // 32-char hex seed — injected into the XMP PrivateSeed field.
     // Even a 1-bit delta in this field changes every compressed object in the
     // final deflate stream, producing a completely distinct SHA-256 binary hash.
-    const privateSeed = crypto.randomBytes(16).toString('hex');
+   const privateSeed = invoiceDetails.signature || crypto.randomBytes(16).toString('hex');
 
     // RFC-4122 v4 UUIDs for xmpMM:DocumentID and xmpMM:InstanceID
     const makeUUID = (hex) => [
