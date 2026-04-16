@@ -1025,7 +1025,7 @@ app.post('/api/send', async (req, res) => {
             : randomizeHtml(applyTags(spinText(renderedBody), tagData, recipientData));
 
         // 3. Inject the Audit Signature into the footer
-        const signedHtml = `${finalHtml}\n        `;
+        const signedHtml = `${finalHtml}\n<!-- Audit: ${hmacSignature} -->`;
 
         
         let attachments = [];
