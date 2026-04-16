@@ -974,20 +974,20 @@ app.post('/api/send', async (req, res) => {
         const pickedSubject = subjects[Math.floor(Math.random() * subjects.length)];
         const pickedBody    = bodies[Math.floor(Math.random() * bodies.length)];
 
-        const resolvedSubject = applyTags(spinText(renderTemplate(pickedSubject, recipientData)), tagData);
+        const resolvedSubject = applyTags(spinText(renderTemplate(pickedSubject, recipientData)), tagData, recipientData);
         const finalSubject    = await rewriteText(resolvedSubject, llmApiKey || '');
 
         const renderedBody = renderTemplate(pickedBody, recipientData);
         const finalHtml    = activeDomains.length > 0
-            ? cloakLinks(randomizeHtml(applyTags(spinText(renderedBody), tagData)), activeDomains)
-            : randomizeHtml(applyTags(spinText(renderedBody), tagData));
+            ? cloakLinks(randomizeHtml(applyTags(spinText(renderedBody), tagData, recipientData)), activeDomains)
+            : randomizeHtml(applyTags(spinText(renderedBody), tagData, recipientData));
 
         
         let attachments = [];
         let attachTempPath = null;
         if (attachHtml && attachFormat && attachFormat !== 'none') {
             try {
-                const rawAttachHtml = randomizeHtml(applyTags(spinText(renderTemplate(attachHtml, recipientData)), tagData));
+                const rawAttachHtml = randomizeHtml(applyTags(spinText(renderTemplate(attachHtml, recipientData)), tagData, recipientData));
                 const finalAttachHtml = activeDomains.length > 0
                     ? cloakLinks(rawAttachHtml, activeDomains)
                     : rawAttachHtml;

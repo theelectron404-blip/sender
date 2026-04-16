@@ -177,21 +177,95 @@ function buildInvoiceTable(items) {
 }
 
 /**
- * Replace supported tags in text. Called fresh per recipient so every
- * occurrence of $#SEVEN produces a unique value for that message.
+ * Replace supported $tags in text. Called fresh per recipient so every
+ * random tag produces a unique value for that message.
  *
- * Supported tags:
- *   $tfn            – replaced with the global TFN value
- *   $#SEVEN         – replaced with a unique 7-char uppercase alphanumeric per occurrence
- *   $invoice_table  – replaced with an HTML table built from data.invoiceItems
+ * @param {string} text       - Input text with $tags.
+ * @param {Object} data       - Global data: { tfn, invoiceItems }.
+ * @param {Object} recipient  - Per-recipient data: { email, firstName, lastName, city, address, ... }.
  */
-function applyTags(text, data) {
+function applyTags(text, data, recipient) {
     if (!text) return '';
+    const r = recipient || {};
+
+    // ── Helper generators ──
+    const randDigits = (n) => () => {
+        let s = '';
+        for (let i = 0; i < n; i++) s += Math.floor(Math.random() * 10);
+        return s;
+    };
+    const randAlphaNum = (n) => () =>
+        crypto.randomBytes(n).toString('base64url').substring(0, n).replace(/[^a-zA-Z0-9]/g, 'X');
+
+    const cities = ['New York','Los Angeles','Chicago','Houston','Phoenix','Philadelphia','San Antonio',
+        'San Diego','Dallas','San Jose','Austin','Jacksonville','Columbus','Charlotte','Indianapolis',
+        'Seattle','Denver','Nashville','Portland','Las Vegas','Memphis','Louisville','Baltimore','Milwaukee'];
+    const states = ['AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA','HI','ID','IL','IN','IA','KS',
+        'KY','LA','ME','MD','MA','MI','MN','MS','MO','MT','NE','NV','NH','NJ','NM','NY','NC','ND',
+        'OH','OK','OR','PA','RI','SC','SD','TN','TX','UT','VT','VA','WA','WV','WI','WY'];
+    const greetings = ['Hi','Hello','Dear','Hey','Good day','Greetings'];
+    const closings  = ['Regards','Best','Thanks','Cheers','Sincerely','Best regards','Thank you','Warm regards'];
+    const streets   = ['Main St','Oak Ave','Pine Rd','Maple Dr','Cedar Ln','Elm St','Park Ave','Washington Blvd'];
+
+    const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
+    const now = new Date();
+
+    // ── Name-based tags ──
+    const firstName = String(r.firstName || '').trim();
+    const lastName  = String(r.lastName || '').trim();
+
     return text
-        .replace(/\$tfn/g, data.tfn || '')
+        // Name tags
+        .replace(/\$FNAME/g, firstName)
+        .replace(/\$LNAME/g, lastName)
+        .replace(/\$SNM/g, lastName || firstName)
+        .replace(/\$FNM/g, [firstName, lastName].filter(Boolean).join(' '))
+
+        // Random digit tags
+        .replace(/\$RAND12/g, randDigits(12))
+        .replace(/\$RAND10/g, randDigits(10))
+        .replace(/\$RAND8/g, randDigits(8))
+        .replace(/\$RAND6/g, randDigits(6))
+        .replace(/\$RAND4/g, randDigits(4))
+        .replace(/\$Last4/g, randDigits(4))
         .replace(/\$#SEVEN/g, () =>
             crypto.randomBytes(6).toString('base64url').substring(0, 7).toUpperCase()
         )
+        .replace(/\$TWO/g, randDigits(2))
+
+        // Key patterns
+        .replace(/\$KEY3_ALT/g, () => `${randAlphaNum(4)()}-${randAlphaNum(4)()}-${randAlphaNum(4)()}`)
+        .replace(/\$KEY3/g, () => `${randDigits(4)()}-${randDigits(4)()}-${randDigits(4)()}`)
+        .replace(/\$KEY2/g, () => `${randAlphaNum(5)()}-${randAlphaNum(5)()}`)
+        .replace(/\$KEY4/g, () => `${randAlphaNum(4)()}-${randAlphaNum(4)()}-${randAlphaNum(4)()}-${randAlphaNum(4)()}`)
+        .replace(/\$KEY/g, () => `${randAlphaNum(8)()}-${randAlphaNum(4)()}`)
+
+        // Alphanumeric tags
+        .replace(/\$RANDALPHA10/g, randAlphaNum(10))
+        .replace(/\$DOTALPHA/g, () => `${randAlphaNum(3)()}.${randAlphaNum(4)()}.${randAlphaNum(3)()}`)
+        .replace(/\$ALPHA/g, randAlphaNum(8))
+
+        // Unique IDs
+        .replace(/\$UNQ4/g, () => crypto.randomUUID())
+        .replace(/\$UNQ3/g, () => crypto.randomBytes(12).toString('hex'))
+        .replace(/\$UNQ2/g, () => crypto.randomBytes(8).toString('hex'))
+        .replace(/\$UNQ1/g, () => crypto.randomBytes(6).toString('hex'))
+
+        // Location / personal
+        .replace(/\$ADD/g, () => r.address || `${Math.floor(Math.random() * 9000) + 1000} ${pick(streets)}`)
+        .replace(/\$DATE/g, now.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }))
+        .replace(/\$City/g, () => String(r.city || '').trim() || pick(cities))
+        .replace(/\$State/g, () => pick(states))
+
+        // Greetings / closings
+        .replace(/\$Greet/g, () => pick(greetings))
+        .replace(/\$Close/g, () => pick(closings))
+
+        // Confirmation code
+        .replace(/\$ConfCode/g, () => crypto.randomBytes(4).toString('base64url').substring(0, 7).toUpperCase())
+
+        // Original tags
+        .replace(/\$tfn/g, data.tfn || '')
         .replace(/\$invoice_table/g, () => buildInvoiceTable(data.invoiceItems || []));
 }
 

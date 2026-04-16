@@ -412,20 +412,76 @@ details[open] summary{margin-bottom:13px}
               <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
               Template Variables &amp; Helpers Reference
             </summary>
-            <div style="margin-top:13px;display:grid;grid-template-columns:1fr 1fr;gap:7px 18px;font-size:14px">
-              <div><span class="chip">{{firstName}}</span> <span style="color:var(--text3)">first name</span></div>
-              <div><span class="chip">{{lastName}}</span> <span style="color:var(--text3)">last name</span></div>
-              <div><span class="chip">{{fullName}}</span> <span style="color:var(--text3)">first + last</span></div>
-              <div><span class="chip">{{email}}</span> <span style="color:var(--text3)">email address</span></div>
-              <div><span class="chip">{{greeting}}</span> <span style="color:var(--text3)">Good morning/evening</span></div>
-              <div><span class="chip">{{formatDate lastOrderDate}}</span> <span style="color:var(--text3)">March 22, 2026</span></div>
-              <div><span class="chip">{{daysAgo lastOrderDate}}</span> <span style="color:var(--text3)">days since date</span></div>
-              <div><span class="chip">{{default val "fallback"}}</span> <span style="color:var(--text3)">value or fallback</span></div>
+            <div style="margin-top:13px;font-size:14px">
+              <div style="font-weight:600;color:var(--text2);margin-bottom:8px">Name Tags</div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px 18px;margin-bottom:14px">
+                <div><span class="chip" style="color:#ef4444">$FNAME</span> <span style="color:var(--text3)">First name</span></div>
+                <div><span class="chip" style="color:#ef4444">$LNAME</span> <span style="color:var(--text3)">Last name</span></div>
+                <div><span class="chip" style="color:#ef4444">$SNM</span> <span style="color:var(--text3)">Surname</span></div>
+                <div><span class="chip" style="color:#ef4444">$FNM</span> <span style="color:var(--text3)">Full name</span></div>
+              </div>
+              <div style="font-weight:600;color:var(--text2);margin-bottom:8px">Random Numbers</div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px 18px;margin-bottom:14px">
+                <div><span class="chip" style="color:#22c55e">$RAND12</span> <span style="color:var(--text3)">12-digit number</span></div>
+                <div><span class="chip" style="color:#22c55e">$RAND10</span> <span style="color:var(--text3)">10-digit number</span></div>
+                <div><span class="chip" style="color:#22c55e">$RAND8</span> <span style="color:var(--text3)">8-digit number</span></div>
+                <div><span class="chip" style="color:#22c55e">$RAND6</span> <span style="color:var(--text3)">6-digit number</span></div>
+                <div><span class="chip" style="color:#22c55e">$RAND4</span> <span style="color:var(--text3)">4-digit number</span></div>
+                <div><span class="chip" style="color:#22c55e">$Last4</span> <span style="color:var(--text3)">Last 4 digits</span></div>
+                <div><span class="chip" style="color:#f59e0b">$#SEVEN</span> <span style="color:var(--text3)">7-char alphanumeric</span></div>
+                <div><span class="chip" style="color:#22c55e">$TWO</span> <span style="color:var(--text3)">2-digit number</span></div>
+              </div>
+              <div style="font-weight:600;color:var(--text2);margin-bottom:8px">Key Patterns</div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px 18px;margin-bottom:14px">
+                <div><span class="chip" style="color:#ef4444">$KEY</span> <span style="color:var(--text3)">Standard key</span></div>
+                <div><span class="chip" style="color:#ef4444">$KEY2</span> <span style="color:var(--text3)">Alt key pattern</span></div>
+                <div><span class="chip" style="color:#ef4444">$KEY3</span> <span style="color:var(--text3)">Third key pattern</span></div>
+                <div><span class="chip" style="color:#ef4444">$KEY3_ALT</span> <span style="color:var(--text3)">Alt third pattern</span></div>
+                <div><span class="chip" style="color:#ef4444">$KEY4</span> <span style="color:var(--text3)">Fourth key pattern</span></div>
+              </div>
+              <div style="font-weight:600;color:var(--text2);margin-bottom:8px">Alphanumeric</div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px 18px;margin-bottom:14px">
+                <div><span class="chip" style="color:#f59e0b">$RANDALPHA10</span> <span style="color:var(--text3)">10-char alphanumeric</span></div>
+                <div><span class="chip" style="color:#f59e0b">$ALPHA</span> <span style="color:var(--text3)">8-char alphanumeric</span></div>
+                <div><span class="chip" style="color:#f59e0b">$DOTALPHA</span> <span style="color:var(--text3)">Dotted alphanumeric</span></div>
+              </div>
+              <div style="font-weight:600;color:var(--text2);margin-bottom:8px">Unique Identifiers</div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px 18px;margin-bottom:14px">
+                <div><span class="chip" style="color:#3b82f6">$UNQ1</span> <span style="color:var(--text3)">Unique ID (12 hex)</span></div>
+                <div><span class="chip" style="color:#3b82f6">$UNQ2</span> <span style="color:var(--text3)">Unique ID (16 hex)</span></div>
+                <div><span class="chip" style="color:#3b82f6">$UNQ3</span> <span style="color:var(--text3)">Unique ID (24 hex)</span></div>
+                <div><span class="chip" style="color:#3b82f6">$UNQ4</span> <span style="color:var(--text3)">Unique UUID</span></div>
+                <div><span class="chip" style="color:#8b5cf6">$ConfCode</span> <span style="color:var(--text3)">Confirmation code (6-8)</span></div>
+              </div>
+              <div style="font-weight:600;color:var(--text2);margin-bottom:8px">Location &amp; Date</div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px 18px;margin-bottom:14px">
+                <div><span class="chip" style="color:#3b82f6">$ADD</span> <span style="color:var(--text3)">Address</span></div>
+                <div><span class="chip" style="color:#3b82f6">$DATE</span> <span style="color:var(--text3)">Today's date</span></div>
+                <div><span class="chip" style="color:#3b82f6">$City</span> <span style="color:var(--text3)">Random city</span></div>
+                <div><span class="chip" style="color:#3b82f6">$State</span> <span style="color:var(--text3)">Random US state</span></div>
+              </div>
+              <div style="font-weight:600;color:var(--text2);margin-bottom:8px">Greetings &amp; Closings</div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px 18px;margin-bottom:14px">
+                <div><span class="chip" style="color:#8b5cf6">$Greet</span> <span style="color:var(--text3)">Hi, Hello, Dear...</span></div>
+                <div><span class="chip" style="color:#8b5cf6">$Close</span> <span style="color:var(--text3)">Regards, Best, Thanks...</span></div>
+              </div>
+              <div style="font-weight:600;color:var(--text2);margin-bottom:8px">Data Tags</div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px 18px;margin-bottom:14px">
+                <div><span class="chip" style="color:#f59e0b">$tfn</span> <span style="color:var(--text3)">Global TFN value</span></div>
+                <div><span class="chip" style="color:#f59e0b">$invoice_table</span> <span style="color:var(--text3)">Invoice HTML table</span></div>
+              </div>
+              <div style="font-weight:600;color:var(--text2);margin-bottom:8px">Handlebars (also supported)</div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px 18px;margin-bottom:6px">
+                <div><span class="chip">{{firstName}}</span> <span style="color:var(--text3)">first name</span></div>
+                <div><span class="chip">{{fullName}}</span> <span style="color:var(--text3)">first + last</span></div>
+                <div><span class="chip">{{email}}</span> <span style="color:var(--text3)">email address</span></div>
+                <div><span class="chip">{{greeting}}</span> <span style="color:var(--text3)">Good morning/evening</span></div>
+              </div>
             </div>
             <div style="font-family:'Menlo','Consolas',monospace;font-size:13px;color:#c4b5fd;line-height:2.3;background:var(--surface3);border-radius:8px;padding:13px 16px;margin-top:11px">
-              {{#if (eq membershipLevel "Gold")}} Gold block {{/if}}<br>
-              {{#ifAny membershipLevel "Gold" "Silver"}} VIP block {{/ifAny}}<br>
-              {Hello|Hi|Good day} {{default firstName "there"}}
+              $Greet $FNAME — your order #$#SEVEN is confirmed<br>
+              Ref: $KEY | Code: $ConfCode | ID: $UNQ1<br>
+              {Hello|Hi|Good day} $FNAME, your account from $City, $State
             </div>
           </details>
         </div>
