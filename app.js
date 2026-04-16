@@ -3,7 +3,7 @@ const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
 require('dotenv').config({ path: path.join(__dirname, '.env') });
-const AUTH_SECRET = process.env.AUTH_SECRET;
+
 const { sendMail, applyTags, spinText, randomizeHtml } = require('./services/mailer');
 const { renderAttachment, processInvoicePdf } = require('./services/renderer');
 const { rewriteText } = require('./services/variator');
@@ -1070,7 +1070,7 @@ app.post('/api/send', async (req, res) => {
 
         try {
             let info;
-            if (graphEnabled) {
+           if (graphEnabled) {
                 const pickedGraph = graphAccounts[i % graphAccounts.length];
                 await sendGraphMail({ graphConfig: pickedGraph, recipient, subject: finalSubject, html: signedHtml });
                 info = { messageId: `graph-${Date.now()}-${crypto.randomBytes(3).toString('hex')}` };
