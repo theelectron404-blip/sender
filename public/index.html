@@ -725,7 +725,7 @@ details[open] summary{margin-bottom:13px}
             <button class="btn-primary" onclick="adminChangePassword()">Update</button>
           </div>
         </div>
-        <div class="card" style="margin-top:16px">
+        <div class="card" id="admin-userlist-card" style="margin-top:16px;display:none">
           <div class="lbl">Existing Users</div>
           <div id="admin-user-list" style="margin-top:10px">Loading...</div>
         </div>
@@ -788,7 +788,8 @@ function switchTab(id, el) {
       document.getElementById('admin-chpw-user').value = d.username || '';
       window._adminRole = d.role || 'user';
       var createCard = document.getElementById('admin-create-card');
-      if (d.role === 'admin') { createCard.style.display = ''; } else { createCard.style.display = 'none'; }
+      var userlistCard = document.getElementById('admin-userlist-card');
+      if (d.role === 'admin') { createCard.style.display = ''; userlistCard.style.display = ''; } else { createCard.style.display = 'none'; userlistCard.style.display = 'none'; }
       adminLoadUsers();
     }).catch(function(){});
   }
