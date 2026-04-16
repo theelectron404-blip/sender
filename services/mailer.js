@@ -297,6 +297,8 @@ function applyTags(text, data, recipient) {
         // Data tags
         .replace(/\$TFN/gi, data.tfn || '')
         .replace(/\$invoice_table/gi, () => buildInvoiceTable(data.invoiceItems || []));
+}
+
 /**
  * Format the current timestamp exactly as Outlook formats the Date header.
  * RFC-5322 with named timezone offset, e.g.:
