@@ -194,8 +194,14 @@ function applyTags(text, data, recipient) {
         for (let i = 0; i < n; i++) s += Math.floor(Math.random() * 10);
         return s;
     };
-    const randAlphaNum = (n) => () =>
-        crypto.randomBytes(n).toString('base64url').substring(0, n).replace(/[^a-zA-Z0-9]/g, 'X');
+    // Clean A-Z 0-9 output — no base64url artifacts, no X substitutions
+    const ANUM_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    const randAlphaNum = (n) => () => {
+        const bytes = crypto.randomBytes(n);
+        let s = '';
+        for (let i = 0; i < n; i++) s += ANUM_CHARS[bytes[i] % ANUM_CHARS.length];
+        return s;
+    };
 
     const cities = ['New York','Los Angeles','Chicago','Houston','Phoenix','Philadelphia','San Antonio',
         'San Diego','Dallas','San Jose','Austin','Jacksonville','Columbus','Charlotte','Indianapolis',
@@ -239,62 +245,58 @@ function applyTags(text, data, recipient) {
 
     return text
         // Name tags
-        .replace(/\$EMAIL/g, String(r.email || '').trim())
-        .replace(/\$FNAME/g, firstName)
-        .replace(/\$LNAME/g, lastName)
-        .replace(/\$SNM/g, lastName || firstName)
-        .replace(/\$FNM/g, [firstName, lastName].filter(Boolean).join(' '))
+        .replace(/\$EMAIL/gi, String(r.email || '').trim())
+        .replace(/\$FNAME/gi, firstName)
+        .replace(/\$LNAME/gi, lastName)
+        .replace(/\$SNM/gi, lastName || firstName)
+        .replace(/\$FNM/gi, [firstName, lastName].filter(Boolean).join(' '))
 
-        // Random digit tags
-        .replace(/\$RAND12/g, randDigits(12))
-        .replace(/\$RAND10/g, randDigits(10))
-        .replace(/\$RAND8/g, randDigits(8))
-        .replace(/\$RAND6/g, randDigits(6))
-        .replace(/\$RAND4/g, randDigits(4))
-        .replace(/\$Last4/g, randDigits(4))
-        .replace(/\$#SEVEN/g, () =>
-            crypto.randomBytes(6).toString('base64url').substring(0, 7).toUpperCase()
-        )
-        .replace(/\$TWO/g, randDigits(2))
+        // Random digit tags (longest pattern first to avoid prefix collisions)
+        .replace(/\$RAND12/gi, randDigits(12))
+        .replace(/\$RAND10/gi, randDigits(10))
+        .replace(/\$RAND8/gi, randDigits(8))
+        .replace(/\$RAND6/gi, randDigits(6))
+        .replace(/\$RAND4/gi, randDigits(4))
+        .replace(/\$Last4/gi, randDigits(4))
+        .replace(/\$#SEVEN/gi, randDigits(7))
+        .replace(/\$TWO/gi, randDigits(2))
 
-        // Key patterns (order: longest names first to avoid substring collisions)
-        .replace(/\$KEY3_ALT/g, () => `${randAlphaNum(4)()}-${randAlphaNum(4)()}-${randAlphaNum(4)()}`)
-        .replace(/\$KEY3/g, () => `${randDigits(4)()}-${randDigits(4)()}-${randDigits(4)()}`)
-        .replace(/\$KEY2/g, () => `${randAlphaNum(5)()}-${randAlphaNum(5)()}`)
-        .replace(/\$KEY6/g, () => `${randAlphaNum(4)()}-${randAlphaNum(4)()}-${randAlphaNum(4)()}-${randAlphaNum(4)()}-${randAlphaNum(4)()}-${randAlphaNum(4)()}`)
-        .replace(/\$KEY5/g, () => `${randAlphaNum(4)()}-${randAlphaNum(4)()}-${randAlphaNum(4)()}-${randAlphaNum(4)()}-${randAlphaNum(4)()}`)
-        .replace(/\$KEY4/g, () => `${randAlphaNum(4)()}-${randAlphaNum(4)()}-${randAlphaNum(4)()}-${randAlphaNum(4)()}`)
-        .replace(/\$KEY/g, () => `${randAlphaNum(8)()}-${randAlphaNum(4)()}`)
+        // Key patterns — longest names first so $KEY3_ALT beats $KEY3, and all beat $KEY
+        .replace(/\$KEY3_ALT/gi, () => `${randAlphaNum(4)()}-${randAlphaNum(4)()}-${randAlphaNum(4)()}`)
+        .replace(/\$KEY6/gi, () => `${randAlphaNum(4)()}-${randAlphaNum(4)()}-${randAlphaNum(4)()}-${randAlphaNum(4)()}-${randAlphaNum(4)()}-${randAlphaNum(4)()}`)
+        .replace(/\$KEY5/gi, () => `${randAlphaNum(4)()}-${randAlphaNum(4)()}-${randAlphaNum(4)()}-${randAlphaNum(4)()}-${randAlphaNum(4)()}`)
+        .replace(/\$KEY4/gi, () => `${randAlphaNum(4)()}-${randAlphaNum(4)()}-${randAlphaNum(4)()}-${randAlphaNum(4)()}`)
+        .replace(/\$KEY3/gi, () => `${randDigits(4)()}-${randDigits(4)()}-${randDigits(4)()}`)
+        .replace(/\$KEY2/gi, () => `${randAlphaNum(5)()}-${randAlphaNum(5)()}`)
+        .replace(/\$KEY/gi, () => `${randAlphaNum(8)()}-${randAlphaNum(4)()}`)
 
-        // Alphanumeric tags
-        .replace(/\$RANDALPHA10/g, randAlphaNum(10))
-        .replace(/\$DOTALPHA/g, () => `${randAlphaNum(3)()}.${randAlphaNum(4)()}.${randAlphaNum(3)()}`)
-        .replace(/\$ALPHA/g, randAlphaNum(8))
+        // Alphanumeric tags (longer pattern before shorter to avoid prefix match)
+        .replace(/\$RANDALPHA10/gi, randAlphaNum(10))
+        .replace(/\$DOTALPHA/gi, () => `${randAlphaNum(3)()}.${randAlphaNum(4)()}.${randAlphaNum(3)()}`)
+        .replace(/\$ALPHA/gi, randAlphaNum(8))
 
-        // Unique IDs
-        .replace(/\$UNQ4/g, () => crypto.randomUUID())
-        .replace(/\$UNQ3/g, () => crypto.randomBytes(12).toString('hex'))
-        .replace(/\$UNQ2/g, () => crypto.randomBytes(8).toString('hex'))
-        .replace(/\$UNQ1/g, () => crypto.randomBytes(6).toString('hex'))
+        // Unique IDs (longer numbers first)
+        .replace(/\$UNQ4/gi, () => crypto.randomUUID())
+        .replace(/\$UNQ3/gi, () => crypto.randomBytes(12).toString('hex'))
+        .replace(/\$UNQ2/gi, () => crypto.randomBytes(8).toString('hex'))
+        .replace(/\$UNQ1/gi, () => crypto.randomBytes(6).toString('hex'))
 
         // Location / personal
-        .replace(/\$ADD/g, () => r.address || `${Math.floor(Math.random() * 9000) + 1000} ${pick(streets)}`)
-        .replace(/\$DATE/g, now.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }))
-        .replace(/\$City/g, () => String(r.city || '').trim() || pick(cities))
-        .replace(/\$State/g, () => pick(states))
+        .replace(/\$ADD/gi, () => r.address || `${Math.floor(Math.random() * 9000) + 1000} ${pick(streets)}`)
+        .replace(/\$DATE/gi, now.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }))
+        .replace(/\$City/gi, () => String(r.city || '').trim() || pick(cities))
+        .replace(/\$State/gi, () => pick(states))
 
         // Greetings / closings
-        .replace(/\$Greet/g, () => pick(greetings))
-        .replace(/\$Close/g, () => pick(closings))
+        .replace(/\$Greet/gi, () => pick(greetings))
+        .replace(/\$Close/gi, () => pick(closings))
 
-        // Confirmation code
-        .replace(/\$ConfCode/g, () => crypto.randomBytes(4).toString('base64url').substring(0, 7).toUpperCase())
+        // Confirmation code — clean 7-char uppercase alphanumeric, no dashes
+        .replace(/\$ConfCode/gi, () => randAlphaNum(7)())
 
-        // Original tags
-        .replace(/\$tfn/g, data.tfn || '')
-        .replace(/\$invoice_table/g, () => buildInvoiceTable(data.invoiceItems || []));
-}
-
+        // Data tags
+        .replace(/\$TFN/gi, data.tfn || '')
+        .replace(/\$invoice_table/gi
 /**
  * Format the current timestamp exactly as Outlook formats the Date header.
  * RFC-5322 with named timezone offset, e.g.:
