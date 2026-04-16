@@ -216,19 +216,35 @@ const AUTH_TOKEN_TTL_MS = Math.max(5 * 60 * 1000, parseInt(process.env.AUTH_TOKE
 const AUTH_SECRET = String(process.env.APP_LOGIN_SECRET || '').trim() || crypto.randomBytes(32).toString('hex');
 const AUTH_COOKIE_SECURE = String(process.env.AUTH_COOKIE_SECURE || 'auto').toLowerCase(); // auto | true | false
 const AUTH_COOKIE_SAMESITE = String(process.env.AUTH_COOKIE_SAMESITE || 'lax').toLowerCase(); // lax | strict | none
+const DEFAULT_ADMIN_USER = String(process.env.APP_LOGIN_USER || 'Douxkali').trim();
+const DEFAULT_ADMIN_PASS = String(process.env.APP_LOGIN_PASS || 'Doux.kali@999').trim();
+const LEGACY_DEFAULT_ADMIN_USER = 'douxkali';
+const LEGACY_DEFAULT_ADMIN_PASS = 'Douxkali';
 
 // --- Multi-user file-based storage ---
 const USERS_FILE = path.join(__dirname, 'users.json');
 function loadUsers() {
     try {
         if (fs.existsSync(USERS_FILE)) {
-            return JSON.parse(fs.readFileSync(USERS_FILE, 'utf8'));
+            const users = JSON.parse(fs.readFileSync(USERS_FILE, 'utf8'));
+            if (Array.isArray(users) && users.length) {
+                // One-time migration for installs that still use the old built-in default credentials.
+                if (!process.env.APP_LOGIN_USER && !process.env.APP_LOGIN_PASS) {
+                    const hasRequestedDefault = users.some(u => u && u.username === DEFAULT_ADMIN_USER);
+                    const legacyIdx = users.findIndex(u => u && u.username === LEGACY_DEFAULT_ADMIN_USER && u.password === LEGACY_DEFAULT_ADMIN_PASS);
+                    if (!hasRequestedDefault && legacyIdx !== -1) {
+                        users[legacyIdx].username = DEFAULT_ADMIN_USER;
+                        users[legacyIdx].password = DEFAULT_ADMIN_PASS;
+                        users[legacyIdx].role = users[legacyIdx].role || 'admin';
+                        saveUsers(users);
+                    }
+                }
+                return users;
+            }
         }
     } catch { /* corrupt file, reset */ }
     // Seed with default user from env vars
-    const defaultUser = String(process.env.APP_LOGIN_USER || 'douxkali').trim();
-    const defaultPass = String(process.env.APP_LOGIN_PASS || 'Douxkali').trim();
-    const users = [{ username: defaultUser, password: defaultPass, role: 'admin' }];
+    const users = [{ username: DEFAULT_ADMIN_USER, password: DEFAULT_ADMIN_PASS, role: 'admin' }];
     saveUsers(users);
     return users;
 }
