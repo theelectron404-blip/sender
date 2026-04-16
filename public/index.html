@@ -234,6 +234,10 @@ details[open] summary{margin-bottom:13px}
     <div class="sbi" onclick="switchTab('tab-reputation',this)">
       <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>Reputation
     </div>
+    <div class="sb-section">System</div>
+    <div class="sbi" onclick="switchTab('tab-admin',this)">
+      <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path d="M16 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="8.5" cy="7" r="4"/><path d="M20 8v6M23 11h-6"/></svg>Admin
+    </div>
   </nav>
   <div class="sb-foot">
     <div class="sb-conn">
@@ -627,6 +631,36 @@ details[open] summary{margin-bottom:13px}
         <div class="callout c-red">Blacklisted addresses appear as <span class="chip">[SKIPPED]</span> in the feed and are never sent to again until manually removed from <span class="chip">blacklist.json</span>.</div>
       </div>
 
+      <!-- ─── ADMIN TAB ─── -->
+      <div id="tab-admin" class="tab-panel">
+        <div class="s-hdr">
+          <div class="s-hdr-title">User Management</div>
+          <div class="s-hdr-sub">Create and delete dashboard login accounts.</div>
+        </div>
+        <div class="card">
+          <div class="lbl">Create New User</div>
+          <div style="display:flex;gap:10px;margin-top:8px;flex-wrap:wrap;align-items:flex-end">
+            <div style="flex:1;min-width:140px">
+              <div class="hint" style="margin-bottom:4px">Username</div>
+              <input class="inp" id="admin-new-user" placeholder="username" autocomplete="off">
+            </div>
+            <div style="flex:1;min-width:140px">
+              <div class="hint" style="margin-bottom:4px">Password</div>
+              <input class="inp" id="admin-new-pass" type="password" placeholder="password" autocomplete="new-password">
+            </div>
+            <div style="min-width:100px">
+              <div class="hint" style="margin-bottom:4px">Role</div>
+              <select class="inp" id="admin-new-role" style="height:38px"><option value="admin">Admin</option><option value="user">User</option></select>
+            </div>
+            <button class="btn-primary" onclick="adminCreateUser()">Create</button>
+          </div>
+        </div>
+        <div class="card" style="margin-top:16px">
+          <div class="lbl">Existing Users</div>
+          <div id="admin-user-list" style="margin-top:10px">Loading...</div>
+        </div>
+      </div>
+
     </div><!-- /content -->
 
     <!-- ─── LIVE FEED ─── -->
@@ -667,6 +701,7 @@ var TAB_META = {
   'tab-ai':         ['AI Variator',      'GPT-4o-mini subject rewriter'],
   'tab-graph':      ['Graph API',        'Microsoft Graph auth & API-based sending'],
   'tab-reputation': ['Reputation Guard', 'IMAP bounce monitor & blacklist'],
+  'tab-admin':      ['Admin',             'User management & accounts'],
 };
 
 function switchTab(id, el) {
@@ -678,6 +713,54 @@ function switchTab(id, el) {
   var m = TAB_META[id] || ['', ''];
   document.getElementById('tab-title').textContent = m[0];
   document.getElementById('tab-sub').textContent = m[1];
+  if (id === 'tab-admin') adminLoadUsers();
+}
+
+/* ── ADMIN USER MANAGEMENT ── */
+function adminLoadUsers() {
+  fetch('/api/admin/users').then(function(r){ return r.json(); }).then(function(data) {
+    var el = document.getElementById('admin-user-list');
+    if (!data.users || !data.users.length) { el.innerHTML = '<div style="color:var(--text3)">No users found.</div>'; return; }
+    var html = '<table style="width:100%;border-collapse:collapse">';
+    html += '<tr style="text-align:left;color:var(--text3);font-size:13px"><th style="padding:6px 10px">Username</th><th style="padding:6px 10px">Role</th><th style="padding:6px 10px;width:90px">Action</th></tr>';
+    data.users.forEach(function(u) {
+      html += '<tr style="border-top:1px solid var(--border)">';
+      html += '<td style="padding:8px 10px;color:var(--text1)">' + u.username + '</td>';
+      html += '<td style="padding:8px 10px"><span class="chip">' + u.role + '</span></td>';
+      html += '<td style="padding:8px 10px"><button class="btn-ghost" style="color:var(--red);font-size:12px;padding:3px 10px" onclick="adminDeleteUser(\'' + u.username.replace(/'/g, "\\'") + '\')">Delete</button></td>';
+      html += '</tr>';
+    });
+    html += '</table>';
+    el.innerHTML = html;
+  }).catch(function(e) {
+    document.getElementById('admin-user-list').textContent = 'Error loading users.';
+  });
+}
+
+function adminCreateUser() {
+  var user = document.getElementById('admin-new-user').value.trim();
+  var pass = document.getElementById('admin-new-pass').value;
+  var role = document.getElementById('admin-new-role').value;
+  if (!user || !pass) { alert('Username and password are required.'); return; }
+  fetch('/api/admin/users', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username: user, password: pass, role: role })
+  }).then(function(r){ return r.json(); }).then(function(data) {
+    if (data.error) { alert(data.error); return; }
+    document.getElementById('admin-new-user').value = '';
+    document.getElementById('admin-new-pass').value = '';
+    adminLoadUsers();
+  }).catch(function(e) { alert('Failed to create user.'); });
+}
+
+function adminDeleteUser(username) {
+  if (!confirm('Delete user "' + username + '"?')) return;
+  fetch('/api/admin/users/' + encodeURIComponent(username), { method: 'DELETE' })
+    .then(function(r){ return r.json(); }).then(function(data) {
+      if (data.error) { alert(data.error); return; }
+      adminLoadUsers();
+    }).catch(function(e) { alert('Failed to delete user.'); });
 }
 
 /* ── SMTP SLOT BUILDER ── */

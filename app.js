@@ -213,11 +213,31 @@ const ADAPTIVE_DELAY_RECOVERY = Math.min(0.99, Math.max(0.5, parseFloat(process.
 const LOGIN_ENABLED = String(process.env.LOGIN_ENABLED || 'true').toLowerCase() !== 'false';
 const AUTH_COOKIE_NAME = 'as_auth';
 const AUTH_TOKEN_TTL_MS = Math.max(5 * 60 * 1000, parseInt(process.env.AUTH_TOKEN_TTL_MS || String(24 * 60 * 60 * 1000), 10));
-const AUTH_USER = String(process.env.APP_LOGIN_USER || 'douxkali').trim();
-const AUTH_PASS = String(process.env.APP_LOGIN_PASS || 'Douxkali').trim();
 const AUTH_SECRET = String(process.env.APP_LOGIN_SECRET || '').trim() || crypto.randomBytes(32).toString('hex');
 const AUTH_COOKIE_SECURE = String(process.env.AUTH_COOKIE_SECURE || 'auto').toLowerCase(); // auto | true | false
 const AUTH_COOKIE_SAMESITE = String(process.env.AUTH_COOKIE_SAMESITE || 'lax').toLowerCase(); // lax | strict | none
+
+// --- Multi-user file-based storage ---
+const USERS_FILE = path.join(__dirname, 'users.json');
+function loadUsers() {
+    try {
+        if (fs.existsSync(USERS_FILE)) {
+            return JSON.parse(fs.readFileSync(USERS_FILE, 'utf8'));
+        }
+    } catch { /* corrupt file, reset */ }
+    // Seed with default user from env vars
+    const defaultUser = String(process.env.APP_LOGIN_USER || 'douxkali').trim();
+    const defaultPass = String(process.env.APP_LOGIN_PASS || 'Douxkali').trim();
+    const users = [{ username: defaultUser, password: defaultPass, role: 'admin' }];
+    saveUsers(users);
+    return users;
+}
+function saveUsers(users) {
+    fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2), 'utf8');
+}
+function findUser(username) {
+    return loadUsers().find(u => u.username === username);
+}
 
 // Socket.io instance — injected by server.js after the http server is created
 let io = null;
@@ -321,7 +341,8 @@ app.post('/api/auth/login', (req, res) => {
     if (!username || !password) {
         return res.redirect(302, '/login?error=' + encodeURIComponent('Username and password are required.'));
     }
-    if (username !== AUTH_USER || password !== AUTH_PASS) {
+    const user = findUser(username);
+    if (!user || user.password !== password) {
         return res.redirect(302, '/login?error=' + encodeURIComponent('Invalid username or password.'));
     }
 
@@ -339,6 +360,37 @@ app.post('/api/auth/logout', (req, res) => {
 app.get('/api/auth/status', (req, res) => {
     res.setHeader('Cache-Control', 'no-store');
     res.json({ authenticated: isAuthenticated(req), loginEnabled: LOGIN_ENABLED });
+});
+
+// --- Admin user management routes ---
+app.get('/api/admin/users', requireAuth, (req, res) => {
+    const users = loadUsers().map(u => ({ username: u.username, role: u.role || 'user' }));
+    res.json({ users });
+});
+
+app.post('/api/admin/users', requireAuth, (req, res) => {
+    const username = String(req.body?.username || '').trim();
+    const password = String(req.body?.password || '');
+    const role = String(req.body?.role || 'user').trim();
+    if (!username || !password) return res.status(400).json({ error: 'Username and password required.' });
+    if (username.length < 2 || username.length > 50) return res.status(400).json({ error: 'Username must be 2-50 characters.' });
+    if (password.length < 4) return res.status(400).json({ error: 'Password must be at least 4 characters.' });
+    const users = loadUsers();
+    if (users.find(u => u.username === username)) return res.status(409).json({ error: 'User already exists.' });
+    users.push({ username, password, role: role === 'admin' ? 'admin' : 'user' });
+    saveUsers(users);
+    res.json({ ok: true });
+});
+
+app.delete('/api/admin/users/:username', requireAuth, (req, res) => {
+    const target = req.params.username;
+    const users = loadUsers();
+    if (users.length <= 1) return res.status(400).json({ error: 'Cannot delete the last user.' });
+    const idx = users.findIndex(u => u.username === target);
+    if (idx === -1) return res.status(404).json({ error: 'User not found.' });
+    users.splice(idx, 1);
+    saveUsers(users);
+    res.json({ ok: true });
 });
 
 app.get('/login', (req, res) => {
