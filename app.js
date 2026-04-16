@@ -228,6 +228,14 @@ function loadUsers() {
         if (fs.existsSync(USERS_FILE)) {
             const users = JSON.parse(fs.readFileSync(USERS_FILE, 'utf8'));
             if (Array.isArray(users) && users.length) {
+                // Ensure every user has a role field
+                let dirty = false;
+                users.forEach((u, i) => {
+                    if (u && !u.role) {
+                        users[i].role = (i === 0) ? 'admin' : 'user';
+                        dirty = true;
+                    }
+                });
                 // One-time migration for installs that still use the old built-in default credentials.
                 if (!process.env.APP_LOGIN_USER && !process.env.APP_LOGIN_PASS) {
                     const hasRequestedDefault = users.some(u => u && u.username === DEFAULT_ADMIN_USER);
@@ -236,9 +244,10 @@ function loadUsers() {
                         users[legacyIdx].username = DEFAULT_ADMIN_USER;
                         users[legacyIdx].password = DEFAULT_ADMIN_PASS;
                         users[legacyIdx].role = users[legacyIdx].role || 'admin';
-                        saveUsers(users);
+                        dirty = true;
                     }
                 }
+                if (dirty) saveUsers(users);
                 return users;
             }
         }
