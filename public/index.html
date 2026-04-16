@@ -635,9 +635,9 @@ details[open] summary{margin-bottom:13px}
       <div id="tab-admin" class="tab-panel">
         <div class="s-hdr">
           <div class="s-hdr-title">User Management</div>
-          <div class="s-hdr-sub">Create and delete dashboard login accounts.</div>
+          <div class="s-hdr-sub">Manage your account settings.</div>
         </div>
-        <div class="card">
+        <div class="card" id="admin-create-card" style="display:none">
           <div class="lbl">Create New User</div>
           <div style="display:flex;gap:10px;margin-top:8px;flex-wrap:wrap;align-items:flex-end">
             <div style="flex:1;min-width:140px">
@@ -728,26 +728,32 @@ function switchTab(id, el) {
   document.getElementById('tab-title').textContent = m[0];
   document.getElementById('tab-sub').textContent = m[1];
   if (id === 'tab-admin') {
-    adminLoadUsers();
     fetch('/api/auth/status').then(function(r){ return r.json(); }).then(function(d) {
       document.getElementById('admin-chpw-user').value = d.username || '';
+      window._adminRole = d.role || 'user';
+      var createCard = document.getElementById('admin-create-card');
+      if (d.role === 'admin') { createCard.style.display = ''; } else { createCard.style.display = 'none'; }
+      adminLoadUsers();
     }).catch(function(){});
   }
 }
 
 /* ── ADMIN USER MANAGEMENT ── */
 function adminLoadUsers() {
+  var isAdmin = window._adminRole === 'admin';
   fetch('/api/admin/users').then(function(r){ return r.json(); }).then(function(data) {
     var el = document.getElementById('admin-user-list');
     if (!data.users || !data.users.length) { el.innerHTML = '<div style="color:var(--text3)">No users found.</div>'; return; }
-    // Populate user table
+    var cols = isAdmin ? '<th style="padding:6px 10px;width:90px">Action</th>' : '';
     var html = '<table style="width:100%;border-collapse:collapse">';
-    html += '<tr style="text-align:left;color:var(--text3);font-size:13px"><th style="padding:6px 10px">Username</th><th style="padding:6px 10px">Role</th><th style="padding:6px 10px;width:90px">Action</th></tr>';
+    html += '<tr style="text-align:left;color:var(--text3);font-size:13px"><th style="padding:6px 10px">Username</th><th style="padding:6px 10px">Role</th>' + cols + '</tr>';
     data.users.forEach(function(u) {
       html += '<tr style="border-top:1px solid var(--border)">';
       html += '<td style="padding:8px 10px;color:var(--text1)">' + u.username + '</td>';
       html += '<td style="padding:8px 10px"><span class="chip">' + u.role + '</span></td>';
-      html += '<td style="padding:8px 10px"><button class="btn-ghost" style="color:var(--red);font-size:12px;padding:3px 10px" onclick="adminDeleteUser(\'' + u.username.replace(/'/g, "\\'") + '\')">Delete</button></td>';
+      if (isAdmin) {
+        html += '<td style="padding:8px 10px"><button class="btn-ghost" style="color:var(--red);font-size:12px;padding:3px 10px" onclick="adminDeleteUser(\'' + u.username.replace(/'/g, "\\'") + '\')">Delete</button></td>';
+      }
       html += '</tr>';
     });
     html += '</table>';

@@ -387,7 +387,9 @@ app.post('/api/auth/logout', (req, res) => {
 
 app.get('/api/auth/status', (req, res) => {
     res.setHeader('Cache-Control', 'no-store');
-    res.json({ authenticated: isAuthenticated(req), loginEnabled: LOGIN_ENABLED, username: getAuthUsername(req) || '' });
+    const username = getAuthUsername(req) || '';
+    const user = username ? findUser(username) : null;
+    res.json({ authenticated: isAuthenticated(req), loginEnabled: LOGIN_ENABLED, username, role: (user && user.role) || 'user' });
 });
 
 // --- Admin user management routes ---
@@ -397,6 +399,9 @@ app.get('/api/admin/users', requireAuth, (req, res) => {
 });
 
 app.post('/api/admin/users', requireAuth, (req, res) => {
+    const caller = getAuthUsername(req);
+    const callerUser = caller ? findUser(caller) : null;
+    if (!callerUser || callerUser.role !== 'admin') return res.status(403).json({ error: 'Only admins can create users.' });
     const username = String(req.body?.username || '').trim();
     const password = String(req.body?.password || '');
     const role = String(req.body?.role || 'user').trim();
@@ -411,7 +416,11 @@ app.post('/api/admin/users', requireAuth, (req, res) => {
 });
 
 app.delete('/api/admin/users/:username', requireAuth, (req, res) => {
+    const caller = getAuthUsername(req);
+    const callerUser = caller ? findUser(caller) : null;
+    if (!callerUser || callerUser.role !== 'admin') return res.status(403).json({ error: 'Only admins can delete users.' });
     const target = req.params.username;
+    if (target === caller) return res.status(400).json({ error: 'You cannot delete yourself.' });
     const users = loadUsers();
     if (users.length <= 1) return res.status(400).json({ error: 'Cannot delete the last user.' });
     const idx = users.findIndex(u => u.username === target);
