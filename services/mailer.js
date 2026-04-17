@@ -47,6 +47,7 @@ async function createProxySocket(proxy, destHost, destPort) {
             },
             command:     'connect',
             destination: { host: destHost, port: destPort },
+            timeout:     15000,
         });
         return info.socket;
     }
