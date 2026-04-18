@@ -84,13 +84,14 @@ function cloakLinks(html, domains) {
         /(href|src|action)=["']([^"']+)["']/g,
         (match, attr, url) => {
             // Skip non-navigable or already-cloaked URLs
-            if (/^(mailto:|tel:|cid:|#|\/r\/)/i.test(url)) return match;
+            if (/^(mailto:|tel:|cid:|#)/i.test(url)) return match;
             // Only cloak http/https links
             if (!/^https?:\/\//i.test(url)) return match;
-            const domain = domains[_domainRoundRobin % domains.length];
+            const raw = domains[_domainRoundRobin % domains.length];
             _domainRoundRobin++;
-            const cloaked = registerRedirect(url, domain);
-            return `${attr}="${cloaked}"`;
+            // Normalize: if user entered bare domain (no scheme), prepend https://
+            const replacement = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+            return `${attr}="${replacement}"`;
         }
     );
 }
