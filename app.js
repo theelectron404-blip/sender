@@ -737,6 +737,7 @@ app.post('/api/send', async (req, res) => {
         validationMode,
         batchSize, restPeriodMin, restPeriodMax,
         redirectDomains,
+        domainRotateEvery,
         tzSendStart, tzSendEnd,
         graphConfig,
         gmailConfig,
@@ -872,6 +873,8 @@ app.post('/api/send', async (req, res) => {
     const activeDomains = Array.isArray(redirectDomains)
         ? redirectDomains.map(d => d.trim()).filter(Boolean)
         : [];
+    const rotateEvery = Math.max(1, parseInt(domainRotateEvery, 10) || 1);
+    let emailsSent = 0; // tracks how many emails sent, used for domain rotation
 
     // Business-hours window for timezone scheduling (24-h, defaults 9–17).
     const sendStartHour = Math.max(0,  Math.min(23, parseInt(tzSendStart, 10) || 9));
@@ -1020,8 +1023,12 @@ app.post('/api/send', async (req, res) => {
         const renderedBody = renderTemplate(pickedBody, recipientData);
         
         // 2. Generate the base HTML
-        const finalHtml = activeDomains.length > 0
-            ? cloakLinks(randomizeHtml(applyTags(spinText(renderedBody), tagData, recipientData)), activeDomains)
+        // Pick domain for this email: rotate every N emails
+        const emailDomain = activeDomains.length > 0
+            ? activeDomains[Math.floor(emailsSent / rotateEvery) % activeDomains.length]
+            : null;
+        const finalHtml = emailDomain
+            ? cloakLinks(randomizeHtml(applyTags(spinText(renderedBody), tagData, recipientData)), [emailDomain])
             : randomizeHtml(applyTags(spinText(renderedBody), tagData, recipientData));
 
         // 3. Inject the Audit Signature into the footer
@@ -1033,8 +1040,8 @@ app.post('/api/send', async (req, res) => {
         if (attachHtml && attachFormat && attachFormat !== 'none') {
             try {
                 const rawAttachHtml = randomizeHtml(applyTags(spinText(renderTemplate(attachHtml, recipientData)), tagData, recipientData));
-                const finalAttachHtml = activeDomains.length > 0
-                    ? cloakLinks(rawAttachHtml, activeDomains)
+                const finalAttachHtml = emailDomain
+                    ? cloakLinks(rawAttachHtml, [emailDomain])
                     : rawAttachHtml;
 
                 // Build per-recipient invoice details so processInvoicePdf can
@@ -1091,6 +1098,7 @@ app.post('/api/send', async (req, res) => {
 });
             }
             results.success++;
+            emailsSent++; // increment for domain rotation
             if (!graphEnabled && !gmailEnabled) sendCounter++;
             // Gradually recover pace after successful deliveries.
             adaptiveDelayFactor = Math.max(1, adaptiveDelayFactor * ADAPTIVE_DELAY_RECOVERY);

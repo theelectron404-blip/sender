@@ -685,6 +685,12 @@ details[open] summary{margin-bottom:13px}
             oninput="saveField(this.id)"></textarea>
           <div style="font-size:14px;color:var(--text4);margin-top:10px">Leave blank to send raw links. First domain used for unsubscribe links.</div>
         </div>
+        <div class="card" style="margin-top:14px">
+          <div class="lbl" style="margin-bottom:10px">Rotate Domain Every <span class="hint">— switch to next domain after every N emails sent</span></div>
+          <input class="inp" id="domainRotateEvery" type="number" min="1" value="1" style="width:120px"
+            placeholder="1" oninput="saveField(this.id)" />
+          <div style="font-size:13px;color:var(--text4);margin-top:8px">e.g. set to <strong>5</strong> → domain1 used for emails 1–5, domain2 for emails 6–10, etc.</div>
+        </div>
         <div class="callout c-green"><strong>Never cloaked:</strong> <span class="chip">mailto:</span>, <span class="chip">tel:</span>, <span class="chip">cid:</span>, <span class="chip">#</span> anchors, and already-cloaked <span class="chip">/r/</span> paths.</div>
       </div>
 
@@ -1175,7 +1181,7 @@ function buildSmtpArray() {
 /* ── PERSISTENCE ── */
 var PIDS = ['rotateLimit', 'tfn', 'fromName', 'recipients', 'tzSendStart', 'tzSendEnd',
             'subjects', 'bodies', 'invoiceData', 'attachHtml', 'attachFormat',
-            'redirectDomains', 'minDelay', 'maxDelay', 'batchSize',
+            'redirectDomains', 'domainRotateEvery', 'minDelay', 'maxDelay', 'batchSize',
             'restPeriodMin', 'restPeriodMax', 'warmupDay', 'llmApiKey', 'imapAccounts',
             'graphTenantId', 'graphClientId', 'graphClientSecret', 'graphSender'];
 
@@ -1960,6 +1966,7 @@ async function handleSend() {
       attachFormat: document.getElementById('attachFormat').value,
       validationMode: (document.querySelector('input[name="validationMode"]:checked') || {}).value || 'syntax',
       redirectDomains: (document.getElementById('redirectDomains').value || '').split('\n').map(function(d) { return d.trim(); }).filter(Boolean),
+      domainRotateEvery: parseInt(document.getElementById('domainRotateEvery').value, 10) || 1,
       tzSendStart: parseInt(document.getElementById('tzSendStart').value, 10) || 9,
       tzSendEnd: parseInt(document.getElementById('tzSendEnd').value, 10) || 17,
       batchSize: parseInt(document.getElementById('batchSize').value, 10) || 0,
