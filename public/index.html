@@ -1975,6 +1975,7 @@ async function handleSend() {
       invoiceData: invoiceData,
       graphConfig: graphConfig,
       gmailConfig: gmailConfig,
+      socketId: socket.id,  // route live logs only to this client
     };
 
     var res = await fetch('/api/send', {

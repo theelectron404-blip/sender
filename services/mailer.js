@@ -492,7 +492,33 @@ function generateThreadIndex() {
  *   - Date header matches Outlook's exact RFC-5322 formatting.
  *   - Message-ID domain alternates per send to mimic multi-tenant relay traffic.
  */
-async function sendMail({ smtp, recipient, subject, html, attachments, fromName, unsubUrl = null }) {
+/**
+ * Build a reusable pooled nodemailer transporter for a given SMTP config.
+ * Should be called once per batch (not per email) and closed after the batch.
+ * Returns null for proxy-based configs — those require a fresh socket per send
+ * and cannot share a persistent connection pool.
+ */
+function buildTransporter(smtp) {
+    if (smtp.proxy) return null; // proxy sockets must be created per-send
+    const useOAuth2 = !!(smtp.clientId && smtp.clientSecret && smtp.refreshToken);
+    const auth = useOAuth2
+        ? { type: 'OAuth2', user: smtp.user, clientId: smtp.clientId,
+            clientSecret: smtp.clientSecret, refreshToken: smtp.refreshToken }
+        : { user: smtp.user, pass: smtp.pass };
+    const smtpPort = parseInt(smtp.port, 10);
+    return nodemailer.createTransport({
+        host:            smtp.host,
+        port:            smtpPort,
+        secure:          smtpPort === 465,
+        auth,
+        pool:            true,   // keep connections alive across sends
+        maxConnections:  3,
+        maxMessages:     Infinity,
+        tls: { minVersion: 'TLSv1.2', rejectUnauthorized: true },
+    });
+}
+
+async function sendMail({ smtp, recipient, subject, html, attachments, fromName, unsubUrl = null, transporter: prebuiltTransporter = null }) {
     const useOAuth2 = !!(smtp.clientId && smtp.clientSecret && smtp.refreshToken);
 
     const auth = useOAuth2
@@ -505,33 +531,31 @@ async function sendMail({ smtp, recipient, subject, html, attachments, fromName,
           }
         : { user: smtp.user, pass: smtp.pass };
 
-    // Build transport options.
-    // If a proxy URL is present on the SMTP entry, create a tunneled socket
-    // through the proxy first and pass it to nodemailer via `socket`.
-    // Nodemailer uses the host/port fields for TLS SNI and STARTTLS regardless
-    // of whether a pre-connected socket is provided, so TLS 1.3 enforcement
-    // and rejectUnauthorized apply identically to proxied and direct connections.
     const smtpPort = parseInt(smtp.port, 10);
-    const transportOptions = {
-        host:   smtp.host,
-        port:   smtpPort,
-        secure: smtpPort === 465,
-        auth,
-        tls: {
-            minVersion: 'TLSv1.2',   // 1.3 is widely unsupported by SMTP relays
-            rejectUnauthorized: true,
-        },
-    };
 
-    if (smtp.proxy) {
-        const proxy = parseProxy(smtp.proxy);
-        if (proxy) {
-            const tunneledSocket = await createProxySocket(proxy, smtp.host, smtpPort);
-            transportOptions.socket = tunneledSocket;
+    // Use the pre-built pooled transporter when provided (non-proxy path).
+    // For proxy SMTPs (prebuiltTransporter === null) we build a fresh transport
+    // with a new tunneled socket for each send, as before.
+    let transporter;
+    if (prebuiltTransporter) {
+        transporter = prebuiltTransporter;
+    } else {
+        const transportOptions = {
+            host:   smtp.host,
+            port:   smtpPort,
+            secure: smtpPort === 465,
+            auth,
+            tls: { minVersion: 'TLSv1.2', rejectUnauthorized: true },
+        };
+        if (smtp.proxy) {
+            const proxy = parseProxy(smtp.proxy);
+            if (proxy) {
+                const tunneledSocket = await createProxySocket(proxy, smtp.host, smtpPort);
+                transportOptions.socket = tunneledSocket;
+            }
         }
+        transporter = nodemailer.createTransport(transportOptions);
     }
-
-    const transporter = nodemailer.createTransport(transportOptions);
 
     // Derive plain text from the resolved HTML.
     // Both parts share the same resolved content — spintax and tags were applied
@@ -721,4 +745,4 @@ function randomizeHtml(html) {
     return out;
 }
 
-module.exports = { sendMail, applyTags, spinText, randomizeHtml };
+module.exports = { sendMail, buildTransporter, applyTags, spinText, randomizeHtml };

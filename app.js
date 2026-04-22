@@ -3,7 +3,7 @@ const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
 require('dotenv').config({ path: path.join(__dirname, '.env') });
-const { sendMail, applyTags, spinText, randomizeHtml } = require('./services/mailer');
+const { sendMail, buildTransporter, applyTags, spinText, randomizeHtml } = require('./services/mailer');
 const { renderAttachment, processInvoicePdf } = require('./services/renderer');
 const { rewriteText } = require('./services/variator');
 const { validateRecipient, clearCaches } = require('./services/validator');
@@ -210,7 +210,7 @@ app.set('trust proxy', true);
 
 // Speed controls for adaptive throttling after provider rate limits.
 // Keep defaults fast while still backing off when 421/454 responses appear.
-const SMTP_COOLDOWN_MS = Math.max(30000, parseInt(process.env.SMTP_COOLDOWN_MS || '180000', 10));
+const SMTP_COOLDOWN_MS = Math.max(1000, parseInt(process.env.SMTP_COOLDOWN_MS || '30000', 10));
 const ADAPTIVE_DELAY_MAX = Math.max(1, parseFloat(process.env.ADAPTIVE_DELAY_MAX || '2'));
 const ADAPTIVE_DELAY_STEP_UP = Math.max(0.05, parseFloat(process.env.ADAPTIVE_DELAY_STEP_UP || '0.25'));
 const ADAPTIVE_DELAY_RECOVERY = Math.min(0.99, Math.max(0.5, parseFloat(process.env.ADAPTIVE_DELAY_RECOVERY || '0.9')));
@@ -276,9 +276,18 @@ function setIo(instance) { io = instance; }
 
 
 let _batchState = 'idle';
+// Socket ID of the client that started the current batch.
+// Events emitted during a batch are routed only to that socket so
+// users cannot see each other's live logs.
+let _batchSocketId = null;
 
 function emit(event, data) {
-    if (io) io.emit(event, data);
+    if (!io) return;
+    if (_batchSocketId) {
+        io.to(_batchSocketId).emit(event, data);
+    } else {
+        io.emit(event, data);
+    }
 }
 
 function parseCookies(req) {
@@ -741,7 +750,11 @@ app.post('/api/send', async (req, res) => {
         tzSendStart, tzSendEnd,
         graphConfig,
         gmailConfig,
+        socketId,
     } = req.body;
+
+    // Route all batch events only to the requesting client.
+    _batchSocketId = (socketId && typeof socketId === 'string') ? socketId : null;
 
     // Support multi-account Graph: graphConfig.accounts is an array
     const graphAccounts = (graphConfig && graphConfig.enabled && Array.isArray(graphConfig.accounts) && graphConfig.accounts.length)
@@ -845,6 +858,7 @@ app.post('/api/send', async (req, res) => {
     // sendCounter tracks sends on the current SMTP; resets on every rotation
     let sendCounter = 0;
     let smtpIndex = 0;
+    let recipientIndex = 0; // used for Graph/Gmail account rotation
 
     // ── Dynamic Batching ─────────────────────────────────────────────────────
     // batchSendCount tracks how many emails have been sent in the current micro-
@@ -879,6 +893,11 @@ app.post('/api/send', async (req, res) => {
     // Business-hours window for timezone scheduling (24-h, defaults 9–17).
     const sendStartHour = Math.max(0,  Math.min(23, parseInt(tzSendStart, 10) || 9));
     const sendEndHour   = Math.max(0,  Math.min(23, parseInt(tzSendEnd,   10) || 17));
+
+    // Build one persistent pooled transporter per SMTP account for the duration
+    // of this batch. Proxy-based SMTPs return null and fall back to per-send
+    // transport creation inside sendMail().
+    const _transporterPool = Array.isArray(smtps) ? smtps.map(s => buildTransporter(s)) : [];
 
     _batchState = 'running';
     emit('batch:start', { total: recipients.length, timestamp: Date.now() });
@@ -1078,11 +1097,11 @@ app.post('/api/send', async (req, res) => {
         try {
             let info;
            if (graphEnabled) {
-                const pickedGraph = graphAccounts[i % graphAccounts.length];
+                const pickedGraph = graphAccounts[recipientIndex % graphAccounts.length];
                 await sendGraphMail({ graphConfig: pickedGraph, recipient, subject: finalSubject, html: signedHtml });
                 info = { messageId: `graph-${Date.now()}-${crypto.randomBytes(3).toString('hex')}` };
             } else if (gmailEnabled) {
-                const gmailIdx = i % _gmailAccounts.length;
+                const gmailIdx = recipientIndex % _gmailAccounts.length;
                 const account = _gmailAccounts[gmailIdx];
                 await sendGmail({ account, recipient, subject: finalSubject, html: signedHtml, fromName: pickedFromName });
                 info = { messageId: `gmail-${Date.now()}-${crypto.randomBytes(3).toString('hex')}` };
@@ -1094,7 +1113,8 @@ app.post('/api/send', async (req, res) => {
     html: signedHtml, 
     attachments, 
     fromName: pickedFromName, 
-    unsubUrl 
+    unsubUrl,
+    transporter: _transporterPool[smtpIndex] || null,
 });
             }
             results.success++;
@@ -1104,7 +1124,7 @@ app.post('/api/send', async (req, res) => {
             adaptiveDelayFactor = Math.max(1, adaptiveDelayFactor * ADAPTIVE_DELAY_RECOVERY);
             warmupSentThisHour++;
             batchSendCount++;
-            const via = graphEnabled ? `graph-${graphAccounts[i % graphAccounts.length]?.sender || 'api'}` : gmailEnabled ? `gmail-${_gmailAccounts[i % _gmailAccounts.length]?.senderEmail || 'api'}` : smtp.host;
+            const via = graphEnabled ? `graph-${graphAccounts[recipientIndex % graphAccounts.length]?.sender || 'api'}` : gmailEnabled ? `gmail-${_gmailAccounts[recipientIndex % _gmailAccounts.length]?.senderEmail || 'api'}` : smtp.host;
             const msg = `[SUCCESS] ${recipient} via ${via}`;
             results.logs.push(msg);
             emit('send:event', {
@@ -1201,9 +1221,13 @@ app.post('/api/send', async (req, res) => {
             const actual        = base * cadenceFactor * adaptiveDelayFactor;
             await new Promise((r) => setTimeout(r, actual * 1000));
         }
+        recipientIndex++;
     }
 
     _batchState = 'idle';
+    // Close all pooled SMTP connections and clear the per-batch socket context.
+    _transporterPool.forEach(t => { try { if (t) t.close(); } catch {} });
+    _batchSocketId = null;
     emit('batch:complete', { success: results.success, failed: results.failed, total: recipients.length, timestamp: Date.now() });
     res.json(results);
 });
