@@ -1263,16 +1263,16 @@ function setBatchPaused(yes) {
 }
 
 async function batchPause() {
-  try { await fetch('/api/batch/pause', { method: 'POST' }); setBatchPaused(true); } catch (e) {}
+  try { await fetch('/api/batch/pause', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ socketId: socket.id }) }); setBatchPaused(true); } catch (e) {}
 }
 
 async function batchResume() {
-  try { await fetch('/api/batch/resume', { method: 'POST' }); setBatchPaused(false); } catch (e) {}
+  try { await fetch('/api/batch/resume', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ socketId: socket.id }) }); setBatchPaused(false); } catch (e) {}
 }
 
 async function batchStop() {
   try {
-    await fetch('/api/batch/stop', { method: 'POST' });
+    await fetch('/api/batch/stop', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ socketId: socket.id }) });
     setStatus('STOPPED', 'stopped');
     setBatchRunning(false);
     feedLine('warn', null, null, '[USER] Stop requested.');
