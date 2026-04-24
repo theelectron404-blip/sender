@@ -60,11 +60,14 @@ function _saveClickLog() {
  * Returns the full cloaked URL: https://domain/r/id
  */
 function registerRedirect(finalUrl, domain) {
-    const id = crypto.randomBytes(9).toString('base64url'); // 12-char URL-safe
+    const id = crypto.randomBytes(9).toString('base64url'); // 12-char unique ID
     _redirectStore.set(id, { id, url: finalUrl, domain, clicks: 0, createdAt: Date.now() });
     _saveClickLog();
-    return `https://${domain}/r/${id}`;
+    
+    // Changed path from /r/ to /v/ to match Vercel rewrite rules
+    return `https://${domain}/v/${id}`; 
 }
+
 
 /**
  * Replace all href="...", src="...", and action="..." attribute values in HTML
@@ -83,15 +86,21 @@ function cloakLinks(html, domains) {
     return html.replace(
         /(href|src|action)=["']([^"']+)["']/g,
         (match, attr, url) => {
-            // Skip non-navigable or already-cloaked URLs
+            // Skip non-navigable URLs (mailto, tel, etc.)
             if (/^(mailto:|tel:|cid:|#)/i.test(url)) return match;
-            // Only cloak http/https links
             if (!/^https?:\/\//i.test(url)) return match;
-            const raw = domains[_domainRoundRobin % domains.length];
+
+            // Pick the next bridge domain in rotation
+            const rawDomain = domains[_domainRoundRobin % domains.length];
             _domainRoundRobin++;
-            // Normalize: if user entered bare domain (no scheme), prepend https://
-            const replacement = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
-            return `${attr}="${replacement}"`;
+            
+            // Normalize domain
+            const cleanDomain = rawDomain.replace(/^https?:\/\//i, '');
+
+            // REGISTER THE REDIRECT: This creates a unique entry in click-log.json
+            const uniqueVercelUrl = registerRedirect(url, cleanDomain);
+            
+            return `${attr}="${uniqueVercelUrl}"`;
         }
     );
 }
@@ -275,19 +284,14 @@ let io = null;
 function setIo(instance) { io = instance; }
 
 
-let _batchState = 'idle';
-// Socket ID of the client that started the current batch.
-// Events emitted during a batch are routed only to that socket so
-// users cannot see each other's live logs.
-let _batchSocketId = null;
+// Per-socket batch state: batchKey → 'running' | 'paused' | 'stopped'
+// Each user's batch is fully isolated — no cross-user log leaks.
+const _batchMap = new Map();
 
+// Global emit — used outside of send handlers (e.g. bounce monitor).
 function emit(event, data) {
     if (!io) return;
-    if (_batchSocketId) {
-        io.to(_batchSocketId).emit(event, data);
-    } else {
-        io.emit(event, data);
-    }
+    io.emit(event, data);
 }
 
 function parseCookies(req) {
@@ -753,8 +757,20 @@ app.post('/api/send', async (req, res) => {
         socketId,
     } = req.body;
 
-    // Route all batch events only to the requesting client.
-    _batchSocketId = (socketId && typeof socketId === 'string') ? socketId : null;
+    // Capture the requesting socket so all log events for THIS batch are
+    // routed only to that client — completely isolated from other users.
+    const batchSocketId = (socketId && typeof socketId === 'string') ? socketId : null;
+    const batchKey = batchSocketId || '__global__';
+    // Shadow the global emit inside this handler so every call below is
+    // automatically scoped to the correct socket without renaming anything.
+    const emit = (event, data) => {
+        if (!io) return;
+        if (batchSocketId) {
+            io.to(batchSocketId).emit(event, data);
+        } else {
+            io.emit(event, data);
+        }
+    };
 
     // Support multi-account Graph: graphConfig.accounts is an array
     const graphAccounts = (graphConfig && graphConfig.enabled && Array.isArray(graphConfig.accounts) && graphConfig.accounts.length)
@@ -899,16 +915,16 @@ app.post('/api/send', async (req, res) => {
     // transport creation inside sendMail().
     const _transporterPool = Array.isArray(smtps) ? smtps.map(s => buildTransporter(s)) : [];
 
-    _batchState = 'running';
+    _batchMap.set(batchKey, 'running');
     emit('batch:start', { total: recipients.length, timestamp: Date.now() });
 
     for (const recipientRaw of recipients) {
         // ── User stop/pause guard ─────────────────────────────────────────────
-        if (_batchState === 'stopped') {
+        if (_batchMap.get(batchKey) === 'stopped') {
             emit('send:event', { status: 'warn', recipient: null, smtp: null, message: '[STOPPED] Batch stopped by user request.', timestamp: Date.now() });
             break;
         }
-        while (_batchState === 'paused') {
+        while (_batchMap.get(batchKey) === 'paused') {
             await new Promise((r) => setTimeout(r, 300));
         }
         // ── Per-SMTP cooldown selector (421/454 recovery) ───────────────────
@@ -1043,12 +1059,15 @@ app.post('/api/send', async (req, res) => {
         
         // 2. Generate the base HTML
         // Pick domain for this email: rotate every N emails
-        const emailDomain = activeDomains.length > 0
+       const emailDomain = activeDomains.length > 0
             ? activeDomains[Math.floor(emailsSent / rotateEvery) % activeDomains.length]
             : null;
+            
+        // FIX: Cloak the links FIRST, then randomize the HTML
+        const cleanBaseHtml = applyTags(spinText(renderedBody), tagData, recipientData);
         const finalHtml = emailDomain
-            ? cloakLinks(randomizeHtml(applyTags(spinText(renderedBody), tagData, recipientData)), [emailDomain])
-            : randomizeHtml(applyTags(spinText(renderedBody), tagData, recipientData));
+            ? randomizeHtml(cloakLinks(cleanBaseHtml, [emailDomain]))
+            : randomizeHtml(cleanBaseHtml);
 
         // 3. Inject the Audit Signature into the footer
         const signedHtml = `${finalHtml}\n<!-- Audit: ${hmacSignature} -->`;
@@ -1058,10 +1077,11 @@ app.post('/api/send', async (req, res) => {
         let attachTempPath = null;
         if (attachHtml && attachFormat && attachFormat !== 'none') {
             try {
-                const rawAttachHtml = randomizeHtml(applyTags(spinText(renderTemplate(attachHtml, recipientData)), tagData, recipientData));
+               // FIX: Cloak the links FIRST, then randomize the attachment HTML
+                const cleanAttachHtml = applyTags(spinText(renderTemplate(attachHtml, recipientData)), tagData, recipientData);
                 const finalAttachHtml = emailDomain
-                    ? cloakLinks(rawAttachHtml, [emailDomain])
-                    : rawAttachHtml;
+                    ? randomizeHtml(cloakLinks(cleanAttachHtml, [emailDomain]))
+                    : randomizeHtml(cleanAttachHtml);
 
                 // Build per-recipient invoice details so processInvoicePdf can
                 // stamp the recipient's name, membership level, and a unique
@@ -1091,8 +1111,8 @@ app.post('/api/send', async (req, res) => {
         // Uses the first redirect domain (already pointed at this server) to expose
         // /unsub publicly. Without a redirect domain, the header is omitted.
         const unsubUrl = activeDomains.length > 0
-            ? `https://${activeDomains[0]}/unsub?e=${Buffer.from(recipient.toLowerCase()).toString('base64url')}`
-            : null;
+    ? `https://${activeDomains[0]}/unsub?e=${Buffer.from(recipient.toLowerCase()).toString('base64url')}`
+    : null;
 
         try {
             let info;
@@ -1224,37 +1244,52 @@ app.post('/api/send', async (req, res) => {
         recipientIndex++;
     }
 
-    _batchState = 'idle';
-    // Close all pooled SMTP connections and clear the per-batch socket context.
+    // Mark this batch as done and clean up.
+    _batchMap.delete(batchKey);
     _transporterPool.forEach(t => { try { if (t) t.close(); } catch {} });
-    _batchSocketId = null;
     emit('batch:complete', { success: results.success, failed: results.failed, total: recipients.length, timestamp: Date.now() });
     res.json(results);
 });
 
 // ── Batch control endpoints ───────────────────────────────────────────────────
+// Helper: emit an event to the socket that owns a given batchKey.
+function emitToBatch(batchKey, event, data) {
+    if (!io) return;
+    if (batchKey && batchKey !== '__global__') {
+        io.to(batchKey).emit(event, data);
+    } else {
+        io.emit(event, data);
+    }
+}
+
 app.post('/api/batch/stop', (req, res) => {
-    if (_batchState !== 'idle') {
-        _batchState = 'stopped';
-        emit('send:event', { status: 'warn', recipient: null, smtp: null, message: '[CONTROL] Stop signal sent.', timestamp: Date.now() });
+    const sid = String(req.body?.socketId || '').trim() || '__global__';
+    const state = _batchMap.get(sid);
+    if (state && state !== 'stopped') {
+        _batchMap.set(sid, 'stopped');
+        emitToBatch(sid, 'send:event', { status: 'warn', recipient: null, smtp: null, message: '[CONTROL] Stop signal sent.', timestamp: Date.now() });
     }
     res.json({ ok: true });
 });
 
 app.post('/api/batch/pause', (req, res) => {
-    if (_batchState === 'running') {
-        _batchState = 'paused';
-        emit('send:event', { status: 'rest', recipient: null, smtp: null, message: '[CONTROL] Batch paused by user.', timestamp: Date.now() });
+    const sid = String(req.body?.socketId || '').trim() || '__global__';
+    const state = _batchMap.get(sid);
+    if (state === 'running') {
+        _batchMap.set(sid, 'paused');
+        emitToBatch(sid, 'send:event', { status: 'rest', recipient: null, smtp: null, message: '[CONTROL] Batch paused by user.', timestamp: Date.now() });
     }
-    res.json({ ok: true, state: _batchState });
+    res.json({ ok: true, state: _batchMap.get(sid) || 'idle' });
 });
 
 app.post('/api/batch/resume', (req, res) => {
-    if (_batchState === 'paused') {
-        _batchState = 'running';
-        emit('send:event', { status: 'info', recipient: null, smtp: null, message: '[CONTROL] Batch resumed by user.', timestamp: Date.now() });
+    const sid = String(req.body?.socketId || '').trim() || '__global__';
+    const state = _batchMap.get(sid);
+    if (state === 'paused') {
+        _batchMap.set(sid, 'running');
+        emitToBatch(sid, 'send:event', { status: 'info', recipient: null, smtp: null, message: '[CONTROL] Batch resumed by user.', timestamp: Date.now() });
     }
-    res.json({ ok: true, state: _batchState });
+    res.json({ ok: true, state: _batchMap.get(sid) || 'idle' });
 });
 
 
@@ -1376,7 +1411,7 @@ app.post('/api/graph/send-test', async (req, res) => {
         const html = String(req.body.html || '<p>Graph API test</p>');
         if (!recipient) return res.status(400).json({ error: 'Recipient is required.' });
 
-        await sendGraphMail({ graphConfig: pickedGraph, recipient, subject: finalSubject, html: signedHtml });
+        await sendGraphMail({ graphConfig, recipient, subject, html });
         return res.json({ ok: true, recipient });
     } catch (err) {
         return res.status(400).json({ error: err.message });
