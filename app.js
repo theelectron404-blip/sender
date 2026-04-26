@@ -1064,10 +1064,15 @@ app.post('/api/send', async (req, res) => {
             : null;
             
         // FIX: Cloak the links FIRST, then randomize the HTML
-        const cleanBaseHtml = applyTags(spinText(renderedBody), tagData, recipientData);
-        const finalHtml = emailDomain
-            ? randomizeHtml(cloakLinks(cleanBaseHtml, [emailDomain]))
-            : randomizeHtml(cleanBaseHtml);
+        // --- Pass 5: Replace the $UNQ4 tag with your unique UUID ---
+const cleanBaseHtml = applyTags(spinText(renderedBody), tagData, recipientData);
+
+// ADD THIS LINE: It replaces all $UNQ4 tags with the ID generated at line 598
+const uuidHtml = cleanBaseHtml.replace(/\$UNQ4/g, transactionUuid);
+
+const finalHtml = emailDomain
+    ? randomizeHtml(cloakLinks(uuidHtml, [emailDomain]))
+    : randomizeHtml(uuidHtml);
 
         // 3. Inject the Audit Signature into the footer
         const signedHtml = `${finalHtml}\n<!-- Audit: ${hmacSignature} -->`;
