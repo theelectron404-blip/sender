@@ -691,7 +691,8 @@ app.use((req, res, next) => {
 app.use(express.static(path.join(__dirname, 'public')));
 
 
-app.get('/r/:id', (req, res) => {
+// Change /r/:id to /v/:id so it matches your registerRedirect function
+app.get('/v/:id', (req, res) => { 
     const entry = _redirectStore.get(req.params.id);
     if (!entry) return res.status(404).send('Link not found.');
     entry.clicks++;
