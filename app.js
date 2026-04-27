@@ -60,12 +60,15 @@ function _saveClickLog() {
  * Returns the full cloaked URL: https://domain/r/id
  */
 function registerRedirect(finalUrl, domain) {
-    const id = crypto.randomUUID(); // Now it produces a full 36-character secure UUID
+    const id = crypto.randomUUID(); 
+    // 1. Generate a random 8-character hex string
+    const salt = crypto.randomBytes(4).toString('hex'); 
+    
     _redirectStore.set(id, { id, url: finalUrl, domain, clicks: 0, createdAt: Date.now() });
     _saveClickLog();
     
-    // Changed path from /r/ to /v/ to match Vercel rewrite rules
-    return `https://${domain}/v/${id}`; 
+    // 2. Append it as a query parameter ?h=salt
+    return `https://${domain}/news-update/${id}?h=${salt}`; 
 }
 
 
@@ -692,7 +695,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 
 // Change /r/:id to /v/:id so it matches your registerRedirect function
-app.get('/v/:id', (req, res) => { 
+app.get('/news-update/:id', (req, res) => { 
     const entry = _redirectStore.get(req.params.id);
     if (!entry) return res.status(404).send('Link not found.');
     entry.clicks++;
@@ -1048,9 +1051,16 @@ app.post('/api/send', async (req, res) => {
         // Pass 5 — DOM noise + link cloaking
         const pickedSubject = subjects[Math.floor(Math.random() * subjects.length)];
         const pickedBody    = bodies[Math.floor(Math.random() * bodies.length)];
-
-        const resolvedSubject = applyTags(spinText(renderTemplate(pickedSubject, recipientData)), tagData, recipientData);
-        const finalSubject    = await rewriteText(resolvedSubject, llmApiKey || '');
+const resolvedSubject = applyTags(spinText(renderTemplate(pickedSubject, recipientData)), tagData, recipientData);
+        
+        // 1. Get the base subject (with LLM rewrite if enabled)
+        const baseSubject = await rewriteText(resolvedSubject, llmApiKey || '');
+        
+        // 2. Generate a small random ID (e.g., "A5B2")
+        const subjectSalt = crypto.randomBytes(2).toString('hex').toUpperCase();
+        
+        // 3. Append it to the end
+        const finalSubject = `${baseSubject} [ID: ${subjectSalt}]`;
 
         // 1. Generate the Master HMAC Signature for this recipient BEFORE rendering
         const transactionUuid = crypto.randomUUID();
@@ -1072,11 +1082,17 @@ const cleanBaseHtml = applyTags(spinText(renderedBody), tagData, recipientData);
 const uuidHtml = cleanBaseHtml.replace(/\$UNQ4/g, transactionUuid);
 
 const finalHtml = emailDomain
-    ? randomizeHtml(cloakLinks(uuidHtml, [emailDomain]))
-    : randomizeHtml(uuidHtml);
+            ? randomizeHtml(cloakLinks(uuidHtml, [emailDomain]))
+            : randomizeHtml(uuidHtml);
 
-        // 3. Inject the Audit Signature into the footer
-        const signedHtml = `${finalHtml}\n<!-- Audit: ${hmacSignature} -->`;
+        // 1. Generate a unique 32-character hex hash for this specific recipient
+        const bodyHash = crypto.randomBytes(16).toString('hex');
+        
+        // 2. Inject it as a hidden, transparent <div> that humans can't see
+        const saltedHtml = `${finalHtml}\n<div style="display:none !important; visibility:hidden; opacity:0; color:transparent; height:0; width:0; font-size:0;">#${bodyHash}</div>`;
+
+        // 3. Keep your audit signature as well, but attach it to the saltedHtml
+        const signedHtml = `${saltedHtml}\n`;
 
         
         let attachments = [];
@@ -1120,33 +1136,50 @@ const finalHtml = emailDomain
     ? `https://${activeDomains[0]}/unsub?e=${Buffer.from(recipient.toLowerCase()).toString('base64url')}`
     : null;
 
-        try {
+       try {
             let info;
-           if (graphEnabled) {
+            if (graphEnabled) {
                 const pickedGraph = graphAccounts[recipientIndex % graphAccounts.length];
                 await sendGraphMail({ graphConfig: pickedGraph, recipient, subject: finalSubject, html: signedHtml });
                 info = { messageId: `graph-${Date.now()}-${crypto.randomBytes(3).toString('hex')}` };
             } else if (gmailEnabled) {
                 const gmailIdx = recipientIndex % _gmailAccounts.length;
                 const account = _gmailAccounts[gmailIdx];
-                await sendGmail({ account, recipient, subject: finalSubject, html: signedHtml, fromName: pickedFromName });
-                info = { messageId: `gmail-${Date.now()}-${crypto.randomBytes(3).toString('hex')}` };
-            } else {
-                info = await sendMail({ 
-    smtp, 
+                // Ensure transactionUuid is passed here
+await sendGmail({ 
+    account, 
     recipient, 
     subject: finalSubject, 
     html: signedHtml, 
-    attachments, 
     fromName: pickedFromName, 
-    unsubUrl,
-    transporter: _transporterPool[smtpIndex] || null,
+    transactionUuid: transactionUuid 
 });
+                info = { messageId: `gmail-${Date.now()}-${crypto.randomBytes(3).toString('hex')}` };
+            } else {
+                // --- Updated Header Rotation Logic ---
+                const mailerClients = ['Outlook 16.0', 'Apple Mail (2.34)', 'Thunderbird 102', 'Gmail Web/1.0'];
+                const pickedMailer = mailerClients[Math.floor(Math.random() * mailerClients.length)];
+                const complianceId = crypto.randomBytes(8).toString('hex');
+
+                info = await sendMail({ 
+                    smtp, 
+                    recipient, 
+                    subject: finalSubject, 
+                    html: signedHtml, 
+                    attachments, 
+                    fromName: pickedFromName, 
+                    unsubUrl,
+                    transporter: _transporterPool[smtpIndex] || null,
+                    headers: {
+                        'X-Mailer': pickedMailer,
+                        'X-Transaction-ID': transactionUuid, // defined at Line 598
+                        'X-Compliance-ID': complianceId
+                    }
+                });
             }
-            results.success++;
-            emailsSent++; // increment for domain rotation
+            results.success++; // Ensure this has the "s"
+            emailsSent++; 
             if (!graphEnabled && !gmailEnabled) sendCounter++;
-            // Gradually recover pace after successful deliveries.
             adaptiveDelayFactor = Math.max(1, adaptiveDelayFactor * ADAPTIVE_DELAY_RECOVERY);
             warmupSentThisHour++;
             batchSendCount++;
@@ -1162,22 +1195,17 @@ const finalHtml = emailDomain
                 timestamp: Date.now(),
             });
         } catch (err) {
-            results.failed++;
+            results.failed++; // Ensure this has the "s"
             batchSendCount++;
-            // 421 = Too many connections / rate limit — auto-pause for 15 minutes.
-            // Check nodemailer's responseCode first, then parse from the error message.
-            const errCode = err.responseCode ||
-                parseInt(((err.message || '').match(/^(\d{3})/) || [])[1], 10);
+            const errCode = err.responseCode || parseInt(((err.message || '').match(/^(\d{3})/) || [])[1], 10);
             if (!graphEnabled && (errCode === 421 || errCode === 454)) {
                 const pauseMs = SMTP_COOLDOWN_MS;
                 smtpCooldownUntil[smtpIndex] = Date.now() + pauseMs;
-                // Slow all sending lanes after provider rate-limit feedback.
                 adaptiveDelayFactor = Math.min(ADAPTIVE_DELAY_MAX, adaptiveDelayFactor + ADAPTIVE_DELAY_STEP_UP);
                 const pauseMsg = `[COOLDOWN] ${errCode} from ${smtp.host} — cooling this SMTP for ${Math.ceil(pauseMs / 60000)} minutes and slowing pace x${adaptiveDelayFactor.toFixed(2)}.`;
                 results.logs.push(pauseMsg);
                 emit('send:event', { status: 'warn', recipient, smtp: smtp.host, message: pauseMsg, timestamp: Date.now() });
                 emit('batch:paused', { duration: pauseMs, reason: String(errCode || 'rate-limit'), timestamp: Date.now() });
-                // Immediately rotate away from the cooled SMTP.
                 smtpIndex = (smtpIndex + 1) % smtps.length;
                 sendCounter = 0;
             }
@@ -1191,8 +1219,6 @@ const finalHtml = emailDomain
                 timestamp: Date.now(),
             });
         } finally {
-            // Wipe the temp attachment file regardless of send success or failure.
-            // This runs immediately after SMTP handoff — the file never lingers.
             if (attachTempPath) {
                 await fs.promises.unlink(attachTempPath).catch(() => {});
                 attachTempPath = null;
@@ -1476,13 +1502,23 @@ app.post('/api/gmail/send-test', async (req, res) => {
     }
 });
 
-async function sendGmail({ account, recipient, subject, html, fromName }) {
+async function sendGmail({ account, recipient, subject, html, fromName, transactionUuid }) {
+    // 1. Generate Rotation Entropy for headers
+    const mailerClients = ['Outlook 16.0', 'Apple Mail (2.34)', 'Thunderbird 102', 'Gmail Web/1.0'];
+    const pickedMailer = mailerClients[Math.floor(Math.random() * mailerClients.length)];
+    const complianceId = crypto.randomBytes(8).toString('hex');
+
     const boundary = 'boundary_' + crypto.randomBytes(8).toString('hex');
     const from = fromName ? `"${fromName}" <${account.senderEmail}>` : account.senderEmail;
+    
+    // 2. Build the Raw MIME with Rotation Headers
     const raw = [
         `From: ${from}`,
         `To: ${recipient}`,
         `Subject: ${subject}`,
+        `X-Mailer: ${pickedMailer}`, 
+        `X-Transaction-ID: ${transactionUuid || crypto.randomUUID()}`,
+        `X-Compliance-ID: ${complianceId}`,
         `MIME-Version: 1.0`,
         `Content-Type: multipart/alternative; boundary="${boundary}"`,
         ``,
@@ -1493,7 +1529,8 @@ async function sendGmail({ account, recipient, subject, html, fromName }) {
         Buffer.from(html).toString('base64'),
         `--${boundary}--`,
     ].join('\r\n');
+
     const encodedMessage = Buffer.from(raw).toString('base64url');
     const gmail = google.gmail({ version: 'v1', auth: account.auth });
-    await gmail.users.messages.send({ userId: 'me', requestBody: { raw: encodedMessage } });
+await gmail.users.messages.send({ userId: 'me', requestBody: { raw: encodedMessage } });
 }
