@@ -97,7 +97,7 @@ function registerRedirect(finalUrl, domain) {
     _saveClickLog();
     
     // 2. Append it as a query parameter ?h=salt
-    return `https://${domain}:3000/news-update/${id}?h=${salt}`; 
+    return `https://${domain}/news-update/${id}?h=${salt}`; 
 }
 
 
