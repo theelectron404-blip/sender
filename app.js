@@ -60,7 +60,7 @@ function _saveClickLog() {
  * Returns the full cloaked URL: https://domain/r/id
  */
 function registerRedirect(finalUrl, domain) {
-    const id = crypto.randomBytes(9).toString('base64url'); // 12-char unique ID
+    const id = crypto.randomUUID(); // Now it produces a full 36-character secure UUID
     _redirectStore.set(id, { id, url: finalUrl, domain, clicks: 0, createdAt: Date.now() });
     _saveClickLog();
     
