@@ -2,16 +2,20 @@ const express = require('express');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
+const { google } = require('googleapis'); // MOVED FROM LINE 75
 require('dotenv').config({ path: path.join(__dirname, '.env') });
+
 const { sendMail, buildTransporter, applyTags, spinText, randomizeHtml } = require('./services/mailer');
 const { renderAttachment, processInvoicePdf } = require('./services/renderer');
 const { rewriteText } = require('./services/variator');
 const { validateRecipient, clearCaches } = require('./services/validator');
 const { renderTemplate, clearTemplateCache } = require('./services/templater');
 const bounceMonitor = require('./services/bounceMonitor');
-const GMAIL_TOKENS_PATH = path.join(__dirname, 'gmail-tokens.json');
 
-// Helper to save tokens to disk
+const GMAIL_TOKENS_PATH = path.join(__dirname, 'gmail-tokens.json');
+const _gmailAccounts = []; // DECLARED ONCE HERE
+
+// Helpers for persistence
 function _saveGmailTokens() {
     const data = _gmailAccounts.map(acc => ({
         tokens: acc.auth.credentials,
@@ -21,24 +25,23 @@ function _saveGmailTokens() {
     fs.writeFileSync(GMAIL_TOKENS_PATH, JSON.stringify(data, null, 2), 'utf8');
 }
 
-// Helper to load tokens at startup
 function _loadGmailTokens() {
     try {
         if (!fs.existsSync(GMAIL_TOKENS_PATH)) return;
         const data = JSON.parse(fs.readFileSync(GMAIL_TOKENS_PATH, 'utf8'));
         for (const entry of data) {
-const auth = new google.auth.OAuth2(
-    process.env.GMAIL_CLIENT_ID,
-    process.env.GMAIL_CLIENT_SECRET,
-    "http://localhost:3000/api/gmail/callback"
-);
+            const auth = new google.auth.OAuth2(
+                process.env.GMAIL_CLIENT_ID,
+                process.env.GMAIL_CLIENT_SECRET,
+                "http://localhost:3000/api/gmail/callback"
+            );
             auth.setCredentials(entry.tokens);
             _gmailAccounts.push({ auth, senderEmail: entry.senderEmail, label: entry.label });
         }
     } catch (e) { console.error("Gmail token load failed:", e); }
 }
 
-// Trigger the load
+
 _loadGmailTokens();
 const BLACKLIST_PATH = path.join(__dirname, 'blacklist.json');
 
@@ -63,10 +66,6 @@ const _graphOAuthState = new Map();
 // Token store: clientId → { refreshToken, accessToken, expiresAt, senderEmail, clientId, clientSecret }
 const _graphTokenStore = new Map();
 
-// ── Gmail API ────────────────────────────────────────────────────────────────
-const { google } = require('googleapis');
-// In-memory store: slotIndex → { auth, senderEmail, label }
-const _gmailAccounts = [];
 
 function _loadClickLog() {
     try {
@@ -1506,13 +1505,14 @@ app.get('/api/gmail/callback', async (req, res) => {
         const { code } = req.query;
         const { tokens } = await oauth2Client.getToken(code);
         
+        // Use process.env instead of hardcoding strings here!
         const userAuth = new google.auth.OAuth2(
             process.env.GMAIL_CLIENT_ID,
             process.env.GMAIL_CLIENT_SECRET,
             "http://localhost:3000/api/gmail/callback"
         );
-        // ... rest of the callback logic
         userAuth.setCredentials(tokens);
+        // ... rest of the logic
 
         const gmail = google.gmail({ version: 'v1', auth: userAuth });
         const profile = await gmail.users.getProfile({ userId: 'me' });
@@ -1589,4 +1589,4 @@ async function sendGmail({ account, recipient, subject, html, fromName, transact
 const encodedMessage = Buffer.from(raw).toString('base64url');
     const gmail = google.gmail({ version: 'v1', auth: account.auth });
     await gmail.users.messages.send({ userId: 'me', requestBody: { raw: encodedMessage } });
-}
+} // This should be the LAST line of your file.
