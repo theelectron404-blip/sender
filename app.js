@@ -9,7 +9,37 @@ const { rewriteText } = require('./services/variator');
 const { validateRecipient, clearCaches } = require('./services/validator');
 const { renderTemplate, clearTemplateCache } = require('./services/templater');
 const bounceMonitor = require('./services/bounceMonitor');
+const GMAIL_TOKENS_PATH = path.join(__dirname, 'gmail-tokens.json');
 
+// Helper to save tokens to disk
+function _saveGmailTokens() {
+    const data = _gmailAccounts.map(acc => ({
+        tokens: acc.auth.credentials,
+        senderEmail: acc.senderEmail,
+        label: acc.label
+    }));
+    fs.writeFileSync(GMAIL_TOKENS_PATH, JSON.stringify(data, null, 2), 'utf8');
+}
+
+// Helper to load tokens at startup
+function _loadGmailTokens() {
+    try {
+        if (!fs.existsSync(GMAIL_TOKENS_PATH)) return;
+        const data = JSON.parse(fs.readFileSync(GMAIL_TOKENS_PATH, 'utf8'));
+        for (const entry of data) {
+const auth = new google.auth.OAuth2(
+    process.env.GMAIL_CLIENT_ID,
+    process.env.GMAIL_CLIENT_SECRET,
+    "http://localhost:3000/api/gmail/callback"
+);
+            auth.setCredentials(entry.tokens);
+            _gmailAccounts.push({ auth, senderEmail: entry.senderEmail, label: entry.label });
+        }
+    } catch (e) { console.error("Gmail token load failed:", e); }
+}
+
+// Trigger the load
+_loadGmailTokens();
 const BLACKLIST_PATH = path.join(__dirname, 'blacklist.json');
 
 function loadBlacklist() {
@@ -1453,10 +1483,11 @@ app.post('/api/graph/send-test', async (req, res) => {
 // ── Gmail API routes ─────────────────────────────────────────────────────────
 // 1. Initialize the OAuth2 Client (Use your Client ID/Secret from Google Console)
 // 1. Initialize the OAuth2 Client (Use your Client ID/Secret from Google Console)
+// REPLACE THESE LINES
 const oauth2Client = new google.auth.OAuth2(
     process.env.GMAIL_CLIENT_ID,
     process.env.GMAIL_CLIENT_SECRET,
-    "http://localhost:3000/api/gmail/callback" // Your redirect URI
+    "http://localhost:3000/api/gmail/callback"
 );
 
 // 2. Route to start the login process
@@ -1475,21 +1506,24 @@ app.get('/api/gmail/callback', async (req, res) => {
         const { code } = req.query;
         const { tokens } = await oauth2Client.getToken(code);
         
-        const userAuth = new google.auth.OAuth2();
+        const userAuth = new google.auth.OAuth2(
+            process.env.GMAIL_CLIENT_ID,
+            process.env.GMAIL_CLIENT_SECRET,
+            "http://localhost:3000/api/gmail/callback"
+        );
+        // ... rest of the callback logic
         userAuth.setCredentials(tokens);
 
         const gmail = google.gmail({ version: 'v1', auth: userAuth });
         const profile = await gmail.users.getProfile({ userId: 'me' });
         const senderEmail = profile.data.emailAddress;
 
-        // Push to your existing array
-        _gmailAccounts.push({ 
-            auth: userAuth, 
-            senderEmail, 
-            label: `Personal: ${senderEmail}` 
-        });
+        _gmailAccounts.push({ auth: userAuth, senderEmail, label: `Personal: ${senderEmail}` });
 
-        res.send('<h1>Authenticated!</h1><p>Close this and return to your dashboard.</p>');
+        // Save the tokens to your JSON file
+        _saveGmailTokens();
+
+        res.send('<h1>Authenticated!</h1><p>Your session is now saved to gmail-tokens.json.</p>');
     } catch (err) {
         res.status(500).send('Auth failed: ' + err.message);
     }
@@ -1552,7 +1586,7 @@ async function sendGmail({ account, recipient, subject, html, fromName, transact
         `--${boundary}--`,
     ].join('\r\n');
 
-    const encodedMessage = Buffer.from(raw).toString('base64url');
+const encodedMessage = Buffer.from(raw).toString('base64url');
     const gmail = google.gmail({ version: 'v1', auth: account.auth });
-await gmail.users.messages.send({ userId: 'me', requestBody: { raw: encodedMessage } });
+    await gmail.users.messages.send({ userId: 'me', requestBody: { raw: encodedMessage } });
 }
