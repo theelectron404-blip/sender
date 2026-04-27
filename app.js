@@ -1452,6 +1452,7 @@ app.post('/api/graph/send-test', async (req, res) => {
 
 // ── Gmail API routes ─────────────────────────────────────────────────────────
 // 1. Initialize the OAuth2 Client (Use your Client ID/Secret from Google Console)
+// 1. Initialize the OAuth2 Client (Use your Client ID/Secret from Google Console)
 const oauth2Client = new google.auth.OAuth2(
     process.env.GMAIL_CLIENT_ID,
     process.env.GMAIL_CLIENT_SECRET,
@@ -1461,7 +1462,7 @@ const oauth2Client = new google.auth.OAuth2(
 // 2. Route to start the login process
 app.get('/api/gmail/auth', (req, res) => {
     const url = oauth2Client.generateAuthUrl({
-        access_type: 'offline', // Required to get a refresh_token
+        access_type: 'offline', // Required for the refresh_token
         prompt: 'consent',
         scope: ['https://www.googleapis.com/auth/gmail.send']
     });
@@ -1474,23 +1475,21 @@ app.get('/api/gmail/callback', async (req, res) => {
         const { code } = req.query;
         const { tokens } = await oauth2Client.getToken(code);
         
-        // We create a new auth instance for THIS specific user
         const userAuth = new google.auth.OAuth2();
         userAuth.setCredentials(tokens);
 
-        // Fetch the email address to use as the sender label
         const gmail = google.gmail({ version: 'v1', auth: userAuth });
         const profile = await gmail.users.getProfile({ userId: 'me' });
         const senderEmail = profile.data.emailAddress;
 
-        // Save it to your existing array so the sending engine still works
+        // Push to your existing array
         _gmailAccounts.push({ 
             auth: userAuth, 
             senderEmail, 
             label: `Personal: ${senderEmail}` 
         });
 
-        res.send('<h1>Authenticated!</h1><p>You can now close this window and start your batch.</p>');
+        res.send('<h1>Authenticated!</h1><p>Close this and return to your dashboard.</p>');
     } catch (err) {
         res.status(500).send('Auth failed: ' + err.message);
     }
