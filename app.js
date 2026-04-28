@@ -1977,22 +1977,28 @@ function saveGmailAccounts() {
 }
 
 function createOAuth2Client(app, req = null) {
-    let baseUrl;
-    
-    // Auto-detect from request headers if available
-    if (req && req.headers) {
+    let redirectUri;
+
+    // Priority 1: Manual override via environment variable (most reliable)
+    if (process.env.GMAIL_REDIRECT_OVERRIDE) {
+        redirectUri = process.env.GMAIL_REDIRECT_OVERRIDE;
+    }
+    // Priority 2: If DOMAIN is set, always use https with that domain
+    else if (process.env.DOMAIN) {
+        redirectUri = `https://${process.env.DOMAIN}/api/gmail/callback`;
+    }
+    // Priority 3: Auto-detect from request headers (for local dev)
+    else if (req && req.headers) {
         const protocol = req.headers['x-forwarded-proto'] || (req.secure ? 'https' : 'http');
         const host = req.headers['x-forwarded-host'] || req.headers.host;
-        baseUrl = `${protocol}://${host}`;
-    } else if (process.env.NODE_ENV === 'production') {
-        baseUrl = process.env.DOMAIN 
-            ? `https://${process.env.DOMAIN}` 
-            : `https://cloudenetic.com`; // Your domain
-    } else {
-        baseUrl = `http://localhost:${process.env.PORT || 3005}`;
+        redirectUri = `${protocol}://${host}/api/gmail/callback`;
     }
-    
-    const redirectUri = process.env.GMAIL_REDIRECT_OVERRIDE || `${baseUrl}/api/gmail/callback`;
+    // Priority 4: Local development fallback
+    else {
+        redirectUri = `http://localhost:${process.env.PORT || 3005}/api/gmail/callback`;
+    }
+
+    console.log(`[OAuth] Using redirect URI: ${redirectUri}`);
     
     return new google.auth.OAuth2(
         app.client_id,
