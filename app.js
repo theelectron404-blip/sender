@@ -514,6 +514,32 @@ app.get('/dashboard', requireAuth, (req, res) => {
     return res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
+// Debug route to check configuration
+app.get('/api/debug/config', (req, res) => {
+    const protocol = req.headers['x-forwarded-proto'] || (req.secure ? 'https' : 'http');
+    const host = req.headers['x-forwarded-host'] || req.headers.host;
+    const baseUrl = `${protocol}://${host}`;
+    
+    res.json({
+        NODE_ENV: process.env.NODE_ENV,
+        PORT: process.env.PORT,
+        DOMAIN: process.env.DOMAIN,
+        detected_protocol: protocol,
+        detected_host: host,
+        detected_baseUrl: baseUrl,
+        redirect_override: process.env.GMAIL_REDIRECT_OVERRIDE,
+        final_redirect_uri: process.env.GMAIL_REDIRECT_OVERRIDE || `${baseUrl}/api/gmail/callback`,
+        gmail_apps_count: gmailApps.length,
+        gmail_accounts_count: gmailAccounts.length,
+        headers: {
+            'x-forwarded-proto': req.headers['x-forwarded-proto'],
+            'x-forwarded-host': req.headers['x-forwarded-host'], 
+            'host': req.headers.host,
+            'user-agent': req.headers['user-agent']
+        }
+    });
+});
+
 // ── Microsoft Graph OAuth routes (public — no auth cookie required) ──────────
 
 // Returns a Microsoft login URL for the delegated OAuth2 flow.
@@ -2129,14 +2155,31 @@ app.get('/api/gmail/auth/:appId', (req, res) => {
     }
 });
 
-// Legacy route for backward compatibility
+// Legacy route for backward compatibility + universal fallback
 app.get('/api/gmail/auth', (req, res) => {
     if (gmailApps.length === 0) {
         return res.status(400).json({ error: 'No Gmail apps configured. Add a Gmail app first.' });
     }
     
-    // Use first app as default
-    res.redirect(`/api/gmail/auth/${gmailApps[0].id}`);
+    // Create OAuth directly without state (universal fallback)
+    try {
+        const app = gmailApps[0];
+        const oauth2Client = createOAuth2Client(app, req);
+        const url = oauth2Client.generateAuthUrl({
+            access_type: 'offline',
+            prompt: 'consent',
+            scope: [
+                'https://www.googleapis.com/auth/gmail.send',
+                'https://www.googleapis.com/auth/gmail.readonly',
+                'https://www.googleapis.com/auth/userinfo.email'
+            ],
+            state: app.id // Ensure state is set
+        });
+        
+        res.redirect(url);
+    } catch (e) {
+        res.status(400).json({ error: 'Failed to start auth: ' + e.message });
+    }
 });
 
 // 3. Callback route to handle the response from Google
@@ -2149,11 +2192,24 @@ app.get('/api/gmail/callback', async (req, res) => {
         }
         
         // Find the app from state parameter
-        const appId = state;
-        const app = gmailApps.find(a => a.id === appId);
+        let appId = state;
+        let app = gmailApps.find(a => a.id === appId);
+        
+        // Fallback: if no app found by state, try to use the first available app
+        if (!app && gmailApps.length > 0) {
+            console.log(`Warning: App ID "${appId}" not found, using first available app`);
+            app = gmailApps[0];
+            appId = app.id;
+        }
         
         if (!app) {
-            return res.status(400).send('<h1>Authentication failed!</h1><p>Invalid app ID in state.</p>');
+            return res.status(400).send(`
+                <h1>Authentication failed!</h1>
+                <p>No Gmail apps configured. Please add a Gmail API app first.</p>
+                <p>State received: ${state || 'none'}</p>
+                <p>Available apps: ${gmailApps.length}</p>
+                <script>setTimeout(() => window.close(), 3000);</script>
+            `);
         }
         
         const oauth2Client = createOAuth2Client(app, req);
