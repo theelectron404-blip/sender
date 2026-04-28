@@ -2359,6 +2359,11 @@ async function addGmailApp() {
     
     if (!response.ok) {
       const error = await response.json();
+      if (response.status === 409) {
+        showToast('This Gmail API app is already added', 'info');
+        refreshGmailApps();
+        return;
+      }
       throw new Error(error.error || 'Failed to add Gmail app');
     }
     
@@ -2635,64 +2640,41 @@ function graphRenderPool() {
   }).join('');
 }
 
-// ── Gmail API functions ──
+// Legacy Gmail toggles used by main sender form
 function toggleGmail() {
   var cb = document.getElementById('gmailEnabled');
   var t = document.getElementById('gmailTrack');
+  if (!cb || !t) return;
   cb.checked = !cb.checked;
   t.classList.toggle('on', cb.checked);
   saveField('gmailEnabled');
 }
 
 function readGmailConfigFromUi() {
-  return { enabled: !!document.getElementById('gmailEnabled').checked };
-}
-
-async function gmailAddAccount() {
-  var st = document.getElementById('gmailAuthStatus');
-  try {
-    var raw = document.getElementById('gmailJsonInput').value.trim();
-    if (!raw) { st.textContent = 'Paste the JSON key first.'; return; }
-    var json = JSON.parse(raw);
-    var sender = document.getElementById('gmailSenderInput').value.trim();
-    st.textContent = 'Authenticating...';
-    var res = await fetch('/api/gmail/auth', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ json: json, sender: sender }) });
-    var data = await res.json();
-    if (!res.ok) throw new Error(data.error);
-    st.textContent = 'Authenticated as ' + data.sender;
-    document.getElementById('gmailJsonInput').value = '';
-    gmailLoadAccounts();
-  } catch (e) { st.textContent = 'Error: ' + e.message; }
-}
-
-async function gmailLoadAccounts() {
-  try {
-    var res = await fetch('/api/gmail/accounts');
-    var list = await res.json();
-    var el = document.getElementById('gmailAccountsList');
-    if (!list.length) { el.innerHTML = 'No accounts added yet.'; return; }
-    el.innerHTML = list.map(function(a) {
-      return '<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border)">' +
-        '<span><strong>#' + a.index + '</strong> ' + escHtml(a.sender) + ' <span style="color:var(--text4)">' + escHtml(a.label) + '</span></span>' +
-        '<button class="btn-ghost" style="color:#ef4444;font-size:12px" onclick="gmailRemoveAccount(' + a.index + ')">Remove</button></div>';
-    }).join('');
-  } catch (e) { console.error(e); }
-}
-
-async function gmailRemoveAccount(idx) {
-  await fetch('/api/gmail/accounts/' + idx, { method: 'DELETE' });
-  gmailLoadAccounts();
+  var enabledEl = document.getElementById('gmailEnabled');
+  return { enabled: !!(enabledEl && enabledEl.checked) };
 }
 
 async function gmailSendTest() {
   try {
-    var to = document.getElementById('gmailTestTo').value.trim();
-    var idx = parseInt(document.getElementById('gmailTestIdx').value || '0', 10);
-    var res = await fetch('/api/gmail/send-test', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ recipient: to, index: idx }) });
+    var to = (document.getElementById('gmailTestTo') || {}).value || '';
+    var idxRaw = (document.getElementById('gmailTestIdx') || {}).value || '0';
+    var idx = parseInt(idxRaw, 10);
+    if (!to.trim()) {
+      showToast('Enter recipient for Gmail test', 'warn');
+      return;
+    }
+    var res = await fetch('/api/gmail/send-test', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ recipient: to.trim(), index: Number.isNaN(idx) ? 0 : idx })
+    });
     var data = await res.json();
-    if (!res.ok) throw new Error(data.error);
+    if (!res.ok) throw new Error(data.error || 'Gmail test failed');
     showToast('Test sent to ' + data.recipient, 'ok');
-  } catch (e) { showToast('Gmail test failed: ' + e.message, 'err'); }
+  } catch (e) {
+    showToast('Gmail test failed: ' + e.message, 'err');
+  }
 }
 
 // Check connection status on page load
@@ -2708,8 +2690,8 @@ async function gmailSendTest() {
           }
         }).catch(function() {});
     }
-    // Load Gmail accounts
-    if (typeof gmailLoadAccounts === 'function') gmailLoadAccounts();
+    // Load Gmail accounts (new multi-app UI)
+    if (typeof refreshGmailAccounts === 'function') refreshGmailAccounts();
     // Render Graph pool
     if (typeof graphRenderPool === 'function') graphRenderPool();
   });

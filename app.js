@@ -16,44 +16,12 @@ const { DeliverabilityMonitor } = require('./services/deliverabilityMonitor');
 const { ContentAnalyzer } = require('./services/contentAnalyzer');
 const { runEngagementSimulation } = require('./services/engagementSim');
 
-const GMAIL_TOKENS_PATH = path.join(__dirname, 'gmail-tokens.json');
-const _gmailAccounts = []; // DECLARED ONCE HERE
-
 // Initialize deliverability monitoring
 const deliverabilityMonitor = new DeliverabilityMonitor();
 const contentAnalyzer = new ContentAnalyzer();
 
-// Helpers for persistence
-function _saveGmailTokens() {
-    const data = _gmailAccounts.map(acc => ({
-        tokens: acc.auth.credentials,
-        senderEmail: acc.senderEmail,
-        label: acc.label
-    }));
-    fs.writeFileSync(GMAIL_TOKENS_PATH, JSON.stringify(data, null, 2), 'utf8');
-}
-function _loadGmailTokens() {
-    try {
-        if (!fs.existsSync(GMAIL_TOKENS_PATH)) return;
-        const data = JSON.parse(fs.readFileSync(GMAIL_TOKENS_PATH, 'utf8'));
-        for (const entry of data) {
-            const auth = new google.auth.OAuth2(
-                gmailCredentials.client_id,
-                gmailCredentials.client_secret,
-                `http://localhost:${process.env.PORT || 3002}/api/gmail/callback`
-            );
-            auth.setCredentials(entry.tokens);
-            _gmailAccounts.push({ auth, senderEmail: entry.senderEmail, label: entry.label });
-        }
-    } catch (e) { console.error("Gmail token load failed:", e); }
-}
-
 // --- NEW: Global Crawler Trap State ---
 let _globalBotSafeUrl = 'https://www.youtube.com/@BlackBoxAnimated';
-// Initialize Gmail system and migrate legacy tokens
-setTimeout(() => {
-    migrateLegacyGmailTokens();
-}, 1000);
 const BLACKLIST_PATH = path.join(__dirname, 'blacklist.json');
 
 function loadBlacklist() {
@@ -1982,20 +1950,28 @@ function saveGmailAccounts() {
     fs.writeFileSync(GMAIL_ACCOUNTS_PATH, JSON.stringify(accountsData, null, 2), 'utf8');
 }
 
-function createOAuth2Client(app) {
+function createOAuth2Client(app, req = null) {
     let baseUrl;
-    if (process.env.NODE_ENV === 'production') {
+    
+    // Auto-detect from request headers if available
+    if (req && req.headers) {
+        const protocol = req.headers['x-forwarded-proto'] || (req.secure ? 'https' : 'http');
+        const host = req.headers['x-forwarded-host'] || req.headers.host;
+        baseUrl = `${protocol}://${host}`;
+    } else if (process.env.NODE_ENV === 'production') {
         baseUrl = process.env.DOMAIN 
             ? `https://${process.env.DOMAIN}` 
-            : `https://your-domain.com`; // Replace with your actual domain
+            : `https://cloudenetic.com`; // Your domain
     } else {
         baseUrl = `http://localhost:${process.env.PORT || 3005}`;
     }
     
+    const redirectUri = process.env.GMAIL_REDIRECT_OVERRIDE || `${baseUrl}/api/gmail/callback`;
+    
     return new google.auth.OAuth2(
         app.client_id,
         app.client_secret,
-        `${baseUrl}/api/gmail/callback`
+        redirectUri
     );
 }
 
@@ -2075,6 +2051,14 @@ app.post('/api/gmail/apps', (req, res) => {
             return res.status(400).json({ error: 'Invalid Gmail credentials format' });
         }
         
+        const existingByClient = gmailApps.find(app => app.client_id === gmailCreds.client_id);
+        if (existingByClient) {
+            return res.status(409).json({
+                error: 'This Gmail API app is already added.',
+                app: existingByClient
+            });
+        }
+
         const appId = `app_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         const newApp = {
             id: appId,
@@ -2127,7 +2111,7 @@ app.get('/api/gmail/auth/:appId', (req, res) => {
             return res.status(404).json({ error: 'Gmail app not found' });
         }
         
-        const oauth2Client = createOAuth2Client(app);
+        const oauth2Client = createOAuth2Client(app, req);
         const url = oauth2Client.generateAuthUrl({
             access_type: 'offline',
             prompt: 'consent',
@@ -2172,7 +2156,7 @@ app.get('/api/gmail/callback', async (req, res) => {
             return res.status(400).send('<h1>Authentication failed!</h1><p>Invalid app ID in state.</p>');
         }
         
-        const oauth2Client = createOAuth2Client(app);
+        const oauth2Client = createOAuth2Client(app, req);
         const { tokens } = await oauth2Client.getToken(code);
         
         oauth2Client.setCredentials(tokens);
