@@ -727,7 +727,15 @@ app.post('/api/graph/device-poll', async (req, res) => {
 });
 
 app.use((req, res, next) => {
-    if (req.path === '/unsub' || req.path.startsWith('/r/') || req.path === '/api/graph/callback') return next();
+    // Public routes — no auth required
+    if (req.path === '/unsub') return next();
+    if (req.path.startsWith('/r/')) return next();
+    if (req.path.startsWith('/go/')) return next();  // link cloaking redirects
+    if (req.path === '/api/graph/callback') return next();
+    if (req.path === '/api/gmail/callback') return next();
+    if (req.path === '/api/crawler-trap/test') return next(); // bot detection test
+    if (req.path === '/api/click-log') return next(); // click tracking
+    if (req.path === '/api/debug/config') return next(); // debug info
     if (req.path === '/login.html') return res.redirect('/login');
     if (req.path.startsWith('/api/auth')) return next();
 
