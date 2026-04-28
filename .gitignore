@@ -1,17 +1,57 @@
+# Dependencies
 node_modules/
-dashboard/node_modules/
-.env
-.env.*
-!.env.example
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-pnpm-debug.log*
+
+# Environment files
+.env
+.env.local
+.env.production.local
+.env.test.local
+
+# Credentials (NEVER commit these!)
+google-credentials.json
+*-credentials.json
+client_secret_*.json
+SETUP_CREDENTIALS.txt
+
+# Data files (created at runtime)
+gmail-apps.json
+gmail-accounts.json
+blacklist.json
+click-log.json
+users.json
+
+# Logs
+logs/
+*.log
+pm2-logs/
+
+# OS generated files
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
 Thumbs.db
-*.tmp
-*.temp
-coverage/
-dist/
-.cache/
-.vscode/*.log
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Temporary files
+tmp/
+temp/
+
+# SSL certificates (if any)
+*.pem
+*.key
+*.crt
+
+# Backup files
+*.bak
+*.backup

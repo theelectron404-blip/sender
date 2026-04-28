@@ -1,39 +1,38 @@
 {
-  "name": "yoo",
+  "name": "gmail-sender-app",
   "version": "1.0.0",
-  "description": "",
+  "description": "Multi-app Gmail sender with deliverability features",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "build:engine": "tsc -p tsconfig.engine.json",
-    "typecheck:engine": "tsc -p tsconfig.engine.json --noEmit"
+    "dev": "nodemon server.js",
+    "pm2:start": "pm2 start ecosystem.config.js --env production",
+    "pm2:stop": "pm2 stop gmail-sender",
+    "pm2:restart": "pm2 restart gmail-sender",
+    "pm2:logs": "pm2 logs gmail-sender",
+    "pm2:status": "pm2 status"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "type": "commonjs",
   "dependencies": {
-    "body-parser": "^2.2.2",
-    "bullmq": "^5.58.0",
-    "dotenv": "^17.4.2",
-    "express": "^5.2.1",
-    "googleapis": "^171.4.0",
-    "handlebars": "^4.7.9",
-    "imapflow": "^1.3.1",
-    "ioredis": "^5.8.1",
-    "nodemailer": "^8.0.6",
-    "path": "^0.12.7",
-    "pdf-lib": "^1.17.1",
-    "puppeteer": "^24.40.0",
-    "sharp": "^0.34.5",
-    "socket.io": "^4.8.3",
-    "socks": "^2.8.7"
+    "express": "^4.18.2",
+    "socket.io": "^4.7.2",
+    "googleapis": "^118.0.0",
+    "nodemailer": "^6.9.3",
+    "imap-flow": "^1.0.156",
+    "dns-lookup": "^2.0.4",
+    "crypto": "^1.0.1",
+    "fs": "^0.0.2",
+    "path": "^0.12.7"
   },
-  "devDependencies": {
-    "@types/node": "^24.5.2",
-    "@types/nodemailer": "^6.4.17",
-    "@types/sharp": "^0.31.1",
-    "typescript": "^5.9.2"
-  }
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": [
+    "gmail",
+    "email",
+    "sender",
+    "bulk",
+    "deliverability"
+  ],
+  "author": "Your Name",
+  "license": "MIT"
 }

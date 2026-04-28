@@ -187,6 +187,72 @@ details[open] summary{margin-bottom:13px}
 #btast.toast-err{background:rgba(185,28,28,.14);border-color:rgba(239,68,68,.4);color:#fca5a5}
 #btast.toast-info{background:rgba(59,130,246,.14);border-color:rgba(59,130,246,.4);color:#93c5fd}
 #btast.toast-warn{background:rgba(234,179,8,.14);border-color:rgba(245,158,11,.4);color:#fde68a}
+
+/* ─── Deliverability Styles ─── */
+.deliverability-dashboard { background: var(--surface2); border-radius: 8px; padding: 16px; }
+.health-loading { text-align: center; color: var(--text3); padding: 20px; }
+.health-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.health-card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 12px; text-align: center; }
+.health-score { font-size: 24px; font-weight: 700; margin-bottom: 4px; }
+.health-label { font-size: 13px; color: var(--text3); }
+.health-excellent { color: var(--green); }
+.health-good { color: var(--blue); }
+.health-warning { color: var(--amber); }
+.health-poor { color: var(--red); }
+
+.content-grade { padding: 8px 12px; border-radius: 6px; font-weight: 600; text-align: center; }
+.grade-a { background: #dcfce7; color: #166534; }
+.grade-b { background: #dbeafe; color: #1e40af; }
+.grade-c { background: #fef3c7; color: #92400e; }
+.grade-d { background: #fecaca; color: #991b1b; }
+.grade-f { background: #fee2e2; color: #7f1d1d; }
+
+.analysis-score { font-weight: 600; color: var(--text2); }
+.content-suggestions { background: var(--surface2); border-radius: 6px; padding: 12px; margin-top: 8px; }
+.content-suggestions ul { margin: 8px 0 0; padding-left: 16px; }
+.content-suggestions li { margin: 4px 0; color: var(--text2); font-size: 13px; }
+
+.auth-result-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 12px; }
+.auth-item { text-align: center; }
+.auth-label { font-size: 12px; color: var(--text3); margin-bottom: 4px; }
+.auth-status { font-weight: 600; padding: 4px 8px; border-radius: 4px; font-size: 13px; }
+.auth-ok { background: #dcfce7; color: #166534; }
+.auth-warning { background: #fef3c7; color: #92400e; }
+.auth-error { background: #fecaca; color: #991b1b; }
+.auth-missing { background: var(--surface2); color: var(--text3); }
+
+.compliance-grid { display: grid; gap: 12px; }
+.compliance-item { display: flex; align-items: center; gap: 12px; }
+.compliance-check { font-size: 18px; flex-shrink: 0; }
+.compliance-text { flex: 1; }
+.compliance-text strong { color: var(--text1); }
+.compliance-text .hint { color: var(--text3); font-size: 13px; }
+
+.engagement-results { background: var(--surface2); border-radius: 6px; padding: 12px; }
+
+/* ─── Gmail Apps Management ─── */
+.gmail-apps-list { margin-top: 12px; }
+.app-item { display: flex; align-items: center; justify-content: space-between; padding: 12px; border: 1px solid var(--border); border-radius: 8px; margin: 8px 0; background: var(--surface); }
+.app-info { flex: 1; }
+.app-name { font-weight: 600; color: var(--text1); margin-bottom: 4px; }
+.app-details { font-size: 13px; color: var(--text3); }
+.app-actions { display: flex; gap: 8px; }
+
+.gmail-accounts-list { margin-top: 12px; }
+.account-item { display: flex; align-items: center; justify-content: space-between; padding: 12px; border: 1px solid var(--border); border-radius: 8px; margin: 8px 0; background: var(--surface); }
+.account-info { flex: 1; }
+.account-email { font-weight: 600; color: var(--text1); margin-bottom: 4px; }
+.account-details { font-size: 13px; color: var(--text3); }
+.account-actions { display: flex; gap: 8px; }
+
+/* ─── Modal Styles ─── */
+.modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 10000; display: flex; align-items: center; justify-content: center; }
+.modal-content { background: var(--surface); border-radius: 12px; padding: 0; max-width: 600px; width: 90%; max-height: 80vh; overflow: hidden; box-shadow: 0 20px 40px rgba(0,0,0,0.3); }
+.modal-header { padding: 20px 24px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+.modal-header h3 { margin: 0; color: var(--text1); }
+.modal-close { background: none; border: none; font-size: 24px; color: var(--text3); cursor: pointer; padding: 0; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; }
+.modal-close:hover { color: var(--text1); }
+.modal-body { padding: 24px; max-height: 60vh; overflow-y: auto; }
 </style>
 </head>
 <body>
@@ -239,6 +305,9 @@ details[open] summary{margin-bottom:13px}
     </div>
     <div class="sbi" onclick="switchTab('tab-reputation',this)">
       <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>Reputation
+    </div>
+    <div class="sbi" onclick="switchTab('tab-deliverability',this)">
+      <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>Deliverability
     </div>
     <div class="sb-section">System</div>
     <div class="sbi" id="sidebar-admin" style="display:none" onclick="switchTab('tab-admin',this)">
@@ -635,6 +704,43 @@ details[open] summary{margin-bottom:13px}
             placeholder="Paste HTML here. Use Handlebars, spintax, and $tags. Click Insert Examples for pre-built templates."
             oninput="saveField(this.id)"></textarea>
         </div>
+        
+        <!-- ── ROTATION CONFIGURATION ── -->
+        <div class="card">
+          <div class="lbl" style="margin-bottom:13px">
+            Template Rotation Strategy 
+            <span class="hint">— controls how subjects & bodies are selected</span>
+            <button class="btn-ghost" style="font-size:12px;padding:4px 8px;margin-left:8px" onclick="showRotationStats()" id="rotation-stats-btn">📊 Stats</button>
+          </div>
+          <div class="radio-group">
+            <div class="rpill">
+              <input type="radio" name="rotationMode" id="rot-smart" value="smart" onchange="saveField('rotationMode')">
+              <label for="rot-smart">Smart <span style="color:var(--text4);font-weight:400;font-size:13px">Balanced distribution</span></label>
+            </div>
+            <div class="rpill">
+              <input type="radio" name="rotationMode" id="rot-round-robin" value="round-robin" onchange="saveField('rotationMode')">
+              <label for="rot-round-robin">Round-Robin <span style="color:var(--text4);font-weight:400;font-size:13px">Perfect even split</span></label>
+            </div>
+            <div class="rpill">
+              <input type="radio" name="rotationMode" id="rot-random" value="random" onchange="saveField('rotationMode')">
+              <label for="rot-random">Random <span style="color:var(--text4);font-weight:400;font-size:13px">Maximum chaos</span></label>
+            </div>
+            <div class="rpill">
+              <input type="radio" name="rotationMode" id="rot-weighted" value="weighted" onchange="saveField('rotationMode')">
+              <label for="rot-weighted">Weighted <span style="color:var(--text4);font-weight:400;font-size:13px">Auto-balance usage</span></label>
+            </div>
+          </div>
+          <div class="g2" style="margin-top:14px">
+            <div class="field">
+              <div class="lbl">Smart Mode: Rotate Every N Emails</div>
+              <input class="inp" id="rotateEveryN" type="number" min="1" max="20" value="3" 
+                placeholder="3" oninput="saveField(this.id)">
+            </div>
+            <div style="padding-top:28px;font-size:13px;color:var(--text3)">
+              <div id="rotation-preview">Smart mode selected: Groups rotate every 3 emails</div>
+            </div>
+          </div>
+        </div>
         <div class="card">
           <div class="lbl" style="margin-bottom:10px">Invoice / Table Data (JSON) <span class="hint">— use <span class="chip">$invoice_table</span> in body</span></div>
           <textarea class="inp" id="invoiceData" rows="3"
@@ -686,6 +792,22 @@ details[open] summary{margin-bottom:13px}
           <div style="font-size:14px;color:var(--text4);margin-top:10px">Leave blank to send raw links. First domain used for unsubscribe links.</div>
         </div>
         <div class="card" style="margin-top:14px">
+          <div class="card" style="margin-top:14px">
+            <div class="lbl" style="margin-bottom:12px">Crawler Trap Settings</div>
+            <div class="g2">
+              <div class="field">
+                <div class="lbl">Bot Safe Redirect <span class="hint">— Where bots go</span></div>
+                <input class="inp" id="botSafeUrl" type="text" placeholder="https://youtube.com/@BlackBoxAnimated" oninput="saveField(this.id)">
+              </div>
+              <div class="field">
+                <div class="lbl">Human Destination <span class="hint">— Usually your fallback</span></div>
+                <input class="inp" id="humanDefaultUrl" type="text" placeholder="https://your-landing-page.com" oninput="saveField(this.id)">
+              </div>
+            </div>
+            <div style="font-size:13px;color:var(--text4);margin-top:10px">
+              The "Bot Safe" link is shown to Google/Microsoft security crawlers to prevent silent drops.
+            </div>
+          </div>
           <div class="lbl" style="margin-bottom:10px">Rotate Domain Every <span class="hint">— switch to next domain after every N emails sent</span></div>
           <input class="inp" id="domainRotateEvery" type="number" min="1" value="1" style="width:120px"
             placeholder="1" oninput="saveField(this.id)" />
@@ -817,24 +939,101 @@ details[open] summary{margin-bottom:13px}
       <!-- ── GMAIL API TAB ── -->
       <div id="tab-gmail" class="tab-panel">
         <div class="s-hdr">
-          <div class="s-hdr-title">Gmail API</div>
-          <div class="s-hdr-sub">Send via Google Workspace using a service account JSON key (domain-wide delegation required).</div>
+          <div class="s-hdr-title">Gmail API Management</div>
+          <div class="s-hdr-sub">Manage multiple Gmail API apps and authenticate accounts for VPS deployment.</div>
         </div>
 
+        <!-- Gmail Apps Management -->
         <div class="card">
-          <div class="lbl" style="margin-bottom:12px">Add Service Account</div>
-          <div class="field">
-            <div class="lbl">Service Account JSON <span class="hint">— paste the full JSON key file contents</span></div>
-            <textarea class="inp" id="gmailJsonInput" rows="6" placeholder='{"type":"service_account","project_id":"...","private_key":"...","client_email":"..."}'></textarea>
+          <div class="lbl" style="margin-bottom:12px">📱 Gmail API Applications</div>
+          <div class="callout c-violet" style="margin-bottom:12px">
+            <strong>VPS Ready:</strong> Add multiple Gmail API apps from different Google Cloud projects. 
+            Each app can authenticate multiple Gmail accounts independently.
           </div>
-          <div class="field">
-            <div class="lbl">Sender Email <span class="hint">— user to impersonate (must have domain-wide delegation)</span></div>
-            <input class="inp" id="gmailSenderInput" type="email" placeholder="user@yourdomain.com">
+          
+          <div style="display:flex;gap:10px;margin-bottom:12px;align-items:flex-end">
+            <div class="field" style="flex:1">
+              <div class="lbl">App Name</div>
+              <input class="inp" id="newGmailAppName" placeholder="My Gmail API App">
+            </div>
+            <button class="btn-primary" onclick="showAddAppModal()">➕ Add Gmail App</button>
+            <button class="btn-ghost" onclick="refreshGmailApps()">🔄 Refresh</button>
           </div>
-          <div class="btn-row">
-            <button class="btn-primary" onclick="gmailAddAccount()">🔑 Authenticate</button>
+          
+          <div id="gmailAppsList" class="gmail-apps-list">
+            <div class="loading-apps" style="color:var(--text3);font-style:italic;padding:12px 0">
+              Loading Gmail API applications...
+            </div>
           </div>
-          <div id="gmailAuthStatus" style="font-size:14px;color:var(--text3);margin-top:8px"></div>
+        </div>
+
+        <!-- Add App Modal -->
+        <div id="addAppModal" class="modal-overlay" style="display:none">
+          <div class="modal-content">
+            <div class="modal-header">
+              <h3>Add Gmail API Application</h3>
+              <button class="modal-close" onclick="hideAddAppModal()">×</button>
+            </div>
+            <div class="modal-body">
+              <div class="field" style="margin-bottom:12px">
+                <div class="lbl">Application Name</div>
+                <input class="inp" id="modalAppName" placeholder="Production Gmail API">
+              </div>
+              <div class="field" style="margin-bottom:12px">
+                <div class="lbl">Google OAuth2 Credentials JSON</div>
+                <textarea class="inp" id="modalAppCredentials" rows="8" placeholder='{"installed":{"client_id":"...","client_secret":"...","project_id":"...",...}}'></textarea>
+                <div class="hint">Paste the complete contents of your client_secret_xxx.json file</div>
+              </div>
+              <div class="btn-row">
+                <button class="btn-secondary" onclick="hideAddAppModal()">Cancel</button>
+                <button class="btn-primary" onclick="addGmailApp()">Add Application</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Connected Gmail Accounts -->
+        <div class="card">
+          <div class="lbl" style="margin-bottom:12px">📧 Authenticated Gmail Accounts</div>
+          <div class="callout c-green" style="margin-bottom:12px;font-size:13px">
+            <strong>Multi-App Support:</strong> Each account is linked to a specific Gmail API app. 
+            You can have multiple accounts from different apps for better distribution and redundancy.
+          </div>
+          
+          <div id="gmailAccountsList" class="gmail-accounts-list">
+            <div class="loading-accounts" style="color:var(--text3);font-style:italic;padding:12px 0">
+              Loading authenticated accounts...
+            </div>
+          </div>
+        </div>
+
+        <!-- Test Gmail Send -->
+        <div class="card">
+          <div class="lbl" style="margin-bottom:12px">🧪 Test Gmail Send</div>
+          <div class="callout c-blue" style="margin-bottom:12px;font-size:13px">
+            <strong>Testing:</strong> Click "Test" next to any account above to auto-fill the Account ID, 
+            or manually enter an account ID/index to test specific accounts.
+          </div>
+          <div class="g2" style="margin-bottom:12px">
+            <div class="field">
+              <div class="lbl">Account ID/Index</div>
+              <input class="inp" id="testGmailAccountId" placeholder="acc_xxx or 0">
+            </div>
+            <div class="field">
+              <div class="lbl">Recipient</div>
+              <input class="inp" id="testGmailRecipient" type="email" placeholder="test@example.com">
+            </div>
+          </div>
+          <div class="field" style="margin-bottom:12px">
+            <div class="lbl">Subject</div>
+            <input class="inp" id="testGmailSubject" value="Gmail API Test" placeholder="Test subject">
+          </div>
+          <div class="field" style="margin-bottom:12px">
+            <div class="lbl">HTML Content</div>
+            <textarea class="inp" id="testGmailHtml" rows="3" placeholder="<p>Gmail API test message</p>"><p>Hello! This is a test email sent via Gmail API.</p></textarea>
+          </div>
+          <button class="btn-secondary" onclick="testGmailSend()">📤 Send Test Email</button>
+          <div id="testGmailResult" style="margin-top:8px;font-size:13px"></div>
         </div>
 
         <div class="card">
@@ -931,6 +1130,133 @@ details[open] summary{margin-bottom:13px}
         </div>
       </div>
 
+      <!-- ── DELIVERABILITY TAB ── -->
+      <div id="tab-deliverability" class="tab-panel">
+        <div class="s-hdr">
+          <div class="s-hdr-title">🚀 Deliverability Monitor</div>
+          <div class="s-hdr-sub">Advanced anti-silent-drop features, content analysis, and 2026+ compliance tools.</div>
+        </div>
+        
+        <!-- Deliverability Health Dashboard -->
+        <div class="card">
+          <div class="lbl" style="margin-bottom:14px">📊 Deliverability Health
+            <button class="btn-ghost" style="font-size:13px;padding:6px 12px;margin-left:10px" onclick="refreshDeliverabilityHealth()">🔄 Refresh</button>
+          </div>
+          <div id="deliverability-health" class="deliverability-dashboard">
+            <div class="health-loading">Loading deliverability data...</div>
+          </div>
+        </div>
+
+        <!-- Content Analysis -->
+        <div class="card">
+          <div class="lbl" style="margin-bottom:14px">🔍 Content Spam Analysis</div>
+          <div class="g2" style="margin-bottom:12px">
+            <div class="field">
+              <div class="lbl">Subject Line</div>
+              <input class="inp" id="analyze-subject" placeholder="Enter subject line to analyze">
+            </div>
+            <div class="field">
+              <div class="lbl">Content Grade</div>
+              <div id="content-grade" class="content-grade">—</div>
+            </div>
+          </div>
+          <div class="field" style="margin-bottom:12px">
+            <div class="lbl">HTML Content</div>
+            <textarea class="inp" id="analyze-html" rows="4" placeholder="Enter HTML content to analyze"></textarea>
+          </div>
+          <div style="display:flex;gap:10px;align-items:center;margin-bottom:12px">
+            <button class="btn-primary" onclick="analyzeContent()">Analyze Content</button>
+            <div class="field" style="flex:1;margin:0">
+              <div id="analysis-score" class="analysis-score">Spam Score: --/100</div>
+            </div>
+          </div>
+          <div id="content-suggestions" class="content-suggestions" style="display:none">
+            <div class="lbl">📝 Suggestions:</div>
+            <ul id="suggestions-list"></ul>
+          </div>
+        </div>
+
+        <!-- Domain Authentication -->
+        <div class="card">
+          <div class="lbl" style="margin-bottom:14px">🔒 Domain Authentication Check</div>
+          <div style="display:flex;gap:10px;align-items:flex-end;margin-bottom:12px">
+            <div class="field" style="flex:1">
+              <div class="lbl">Domain</div>
+              <input class="inp" id="domain-check" placeholder="yourdomain.com">
+            </div>
+            <button class="btn-primary" onclick="checkDomainAuth()">Check Auth</button>
+          </div>
+          <div id="domain-auth-results" class="domain-auth-results" style="display:none">
+            <div class="auth-result-grid">
+              <div class="auth-item">
+                <div class="auth-label">SPF</div>
+                <div id="spf-status" class="auth-status">—</div>
+              </div>
+              <div class="auth-item">
+                <div class="auth-label">DKIM</div>
+                <div id="dkim-status" class="auth-status">—</div>
+              </div>
+              <div class="auth-item">
+                <div class="auth-label">DMARC</div>
+                <div id="dmarc-status" class="auth-status">—</div>
+              </div>
+              <div class="auth-item">
+                <div class="auth-label">Health Score</div>
+                <div id="health-score" class="auth-status">—</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- RFC 8058 Compliance Status -->
+        <div class="card">
+          <div class="lbl" style="margin-bottom:14px">✅ 2026+ Compliance Status</div>
+          <div class="compliance-grid">
+            <div class="compliance-item">
+              <div class="compliance-check">✅</div>
+              <div class="compliance-text">
+                <strong>Dual-MIME Content</strong><br>
+                <span class="hint">HTML + Plain text in all emails</span>
+              </div>
+            </div>
+            <div class="compliance-item">
+              <div class="compliance-check">✅</div>
+              <div class="compliance-text">
+                <strong>RFC 8058 One-Click</strong><br>
+                <span class="hint">List-Unsubscribe-Post headers</span>
+              </div>
+            </div>
+            <div class="compliance-item">
+              <div class="compliance-check">✅</div>
+              <div class="compliance-text">
+                <strong>Content Analysis</strong><br>
+                <span class="hint">Spam detection & suggestions</span>
+              </div>
+            </div>
+            <div class="compliance-item">
+              <div class="compliance-check">✅</div>
+              <div class="compliance-text">
+                <strong>Deliverability Tracking</strong><br>
+                <span class="hint">Real-time monitoring</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Engagement Simulation -->
+        <div class="card">
+          <div class="lbl" style="margin-bottom:14px">🎭 Engagement Simulation</div>
+          <div class="callout c-blue" style="margin-bottom:12px">
+            Simulates human-like inbox activity to boost sender reputation. Configure IMAP accounts in the Reputation tab first.
+          </div>
+          <button class="btn-secondary" onclick="runEngagementSimulation()">🎯 Run Simulation</button>
+          <div id="engagement-results" class="engagement-results" style="display:none;margin-top:12px">
+            <div class="lbl">Last Simulation Results:</div>
+            <div id="engagement-stats"></div>
+          </div>
+        </div>
+      </div>
+
     </div><!-- /content -->
 
     <!-- ─── LIVE FEED ─── -->
@@ -940,6 +1266,10 @@ details[open] summary{margin-bottom:13px}
         <div class="stat-c"><div class="sk">Sent</div><div class="sv" id="statSuccess" style="color:var(--green)">0</div></div>
         <div class="stat-c"><div class="sk">Failed</div><div class="sv" id="statFailed" style="color:var(--red)">0</div></div>
         <div class="stat-c"><div class="sk">Rate</div><div class="sv" id="statRate" style="color:#38bdf8">--</div></div>
+        <div class="stat-c" id="rotation-stat" style="display:none">
+          <div class="sk">Rotation</div>
+          <div class="sv" id="statRotation" style="color:#a78bfa" title="Template distribution efficiency">--</div>
+        </div>
       </div>
       <div id="feed-progress">
         <div class="fp-row"><span class="fp-label">Progress</span><span id="feed-bar-pct">0%</span></div>
@@ -1183,7 +1513,8 @@ var PIDS = ['rotateLimit', 'tfn', 'fromName', 'recipients', 'tzSendStart', 'tzSe
             'subjects', 'bodies', 'invoiceData', 'attachHtml', 'attachFormat',
             'redirectDomains', 'domainRotateEvery', 'minDelay', 'maxDelay', 'batchSize',
             'restPeriodMin', 'restPeriodMax', 'warmupDay', 'llmApiKey', 'imapAccounts',
-            'graphTenantId', 'graphClientId', 'graphClientSecret', 'graphSender'];
+            'graphTenantId', 'graphClientId', 'graphClientSecret', 'graphSender',
+            'botSafeUrl', 'humanDefaultUrl']; // <--- ADDED THESE TWO
 
 function saveField(id) {
   try {
@@ -1191,7 +1522,13 @@ function saveField(id) {
     if (!el) return;
     if (id === 'warmupMode') { localStorage.setItem('me_warmupMode', el.checked ? 'true' : 'false'); return; }
     if (id === 'graphEnabled') { localStorage.setItem('me_graphEnabled', el.checked ? 'true' : 'false'); return; }
+    if (id === 'rotationMode') { 
+      localStorage.setItem('me_rotationMode', el.value); 
+      updateRotationPreview(); 
+      return; 
+    }
     localStorage.setItem('me_' + id, el.value);
+    if (id === 'rotateEveryN') updateRotationPreview();
   } catch (e) {}
 }
 
@@ -1202,6 +1539,7 @@ function restoreFields() {
     localStorage.removeItem('me_validationMode');
     localStorage.removeItem('me_warmupMode');
     localStorage.removeItem('me_graphEnabled');
+    localStorage.removeItem('me_rotationMode');
     localStorage.removeItem('me_smtpSlots');
   } catch (e) {}
 
@@ -1212,6 +1550,12 @@ function restoreFields() {
     var vm = localStorage.getItem('me_validationMode') || '';
     var el = vm ? document.querySelector('input[name="validationMode"][value="' + vm + '"]') : null;
     if (el) el.checked = true;
+  } catch (e) {}
+  try {
+    var rm = localStorage.getItem('me_rotationMode') || 'smart';
+    var el = document.querySelector('input[name="rotationMode"][value="' + rm + '"]') || document.getElementById('rot-smart');
+    if (el) el.checked = true;
+    updateRotationPreview();
   } catch (e) {}
   try {
     if (localStorage.getItem('me_warmupMode') === 'true') {
@@ -1326,6 +1670,27 @@ socket.on('batch:progress', function(d) {
   var done = d.success + d.failed, pct = d.total ? Math.round(done / d.total * 100) : 0;
   setProgress(pct);
   document.getElementById('statRate').textContent = done ? Math.round(d.success / done * 100) + '%' : '0%';
+  
+  // Update rotation stats if available
+  if (d.rotation && d.rotation.currentStats) {
+    var rotStats = d.rotation.currentStats;
+    
+    // Update button
+    var btn = document.getElementById('rotation-stats-btn');
+    if (btn) {
+      btn.textContent = '📊 Live Stats (' + rotStats.processed + ')';
+      btn.title = 'Mode: ' + rotStats.mode + ' | Bodies: ' + rotStats.totalBodiesUsed + ' | Subjects: ' + rotStats.totalSubjectsUsed;
+    }
+    
+    // Show rotation stat in feed
+    var rotationStat = document.getElementById('rotation-stat');
+    var statRotation = document.getElementById('statRotation');
+    if (rotationStat && statRotation) {
+      rotationStat.style.display = 'block';
+      statRotation.textContent = rotStats.mode + ' (' + rotStats.totalBodiesUsed + 'B/' + rotStats.totalSubjectsUsed + 'S)';
+      statRotation.title = 'Rotation Mode: ' + rotStats.mode + ', Bodies Used: ' + rotStats.totalBodiesUsed + ', Subjects Used: ' + rotStats.totalSubjectsUsed;
+    }
+  }
 });
 socket.on('batch:complete', function(d) {
   clearInterval(_pauseTimer);
@@ -1335,7 +1700,23 @@ socket.on('batch:complete', function(d) {
   setProgress(100);
   if (sessionLog.length) document.getElementById('saveLogsBtn').disabled = false;
   setBatchRunning(false);
-  showToast(ok ? '✓ Batch complete — ' + d.success + ' delivered' : '⚠ Done — ' + d.success + ' sent, ' + d.failed + ' failed', ok ? 'ok' : 'err');
+  
+  // Show rotation summary if available
+  var message = ok ? '✓ Batch complete — ' + d.success + ' delivered' : '⚠ Done — ' + d.success + ' sent, ' + d.failed + ' failed';
+  if (d.rotation && d.rotation.rotationEfficiency) {
+    var eff = d.rotation.rotationEfficiency;
+    var bodySpread = Math.round(eff.bodySpread * 100);
+    var subjectSpread = Math.round(eff.subjectSpread * 100);
+    message += ' | Rotation: ' + bodySpread + '% body spread, ' + subjectSpread + '% subject spread';
+  }
+  showToast(message, ok ? 'ok' : 'err');
+  
+  // Reset rotation stats button
+  var btn = document.getElementById('rotation-stats-btn');
+  if (btn) {
+    btn.textContent = '📊 Stats';
+    btn.title = '';
+  }
 });
 socket.on('batch:paused', function(d) {
   var r = d.reason === 'warmup' ? 'Warm-up cap' : d.reason === '421' ? '421 Rate Limit' : 'Batch rest';
@@ -1412,6 +1793,8 @@ function clearFeed() {
   setProgress(0);
   ['statTotal', 'statSuccess', 'statFailed'].forEach(function(id) { document.getElementById(id).textContent = '0'; });
   document.getElementById('statRate').textContent = '--';
+  document.getElementById('statRotation').textContent = '--';
+  document.getElementById('rotation-stat').style.display = 'none';
   document.getElementById('saveLogsBtn').disabled = true;
   setStatus('IDLE', 'idle');
 }
@@ -1579,6 +1962,611 @@ function insertExampleTemplates() {
   saveField('bodies');
   saveField('attachHtml');
 }
+
+/* ── ROTATION FUNCTIONS ── */
+function updateRotationPreview() {
+  try {
+    var mode = document.querySelector('input[name="rotationMode"]:checked');
+    var rotateN = document.getElementById('rotateEveryN');
+    var preview = document.getElementById('rotation-preview');
+    
+    if (!mode || !preview) return;
+    
+    var modeValue = mode.value;
+    var rotateValue = rotateN ? parseInt(rotateN.value, 10) || 3 : 3;
+    
+    var descriptions = {
+      'smart': 'Groups rotate every ' + rotateValue + ' emails with randomization',
+      'round-robin': 'Perfect sequential distribution across all templates',  
+      'random': 'Completely random selection (original behavior)',
+      'weighted': 'Auto-balances to prioritize less-used templates'
+    };
+    
+    preview.textContent = modeValue.charAt(0).toUpperCase() + modeValue.slice(1) + ' mode: ' + descriptions[modeValue];
+  } catch (e) {}
+}
+
+function showRotationStats() {
+  var modal = document.createElement('div');
+  modal.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;z-index:10000';
+  
+  var content = document.createElement('div');
+  content.style.cssText = 'background:var(--bg);border-radius:12px;padding:24px;max-width:600px;max-height:80vh;overflow:auto;position:relative';
+  
+  content.innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+      <h3 style="margin:0;color:var(--text1)">🔄 Rotation Strategy Guide</h3>
+      <button onclick="this.closest('[style*=fixed]').remove()" style="background:none;border:none;font-size:20px;color:var(--text3);cursor:pointer">&times;</button>
+    </div>
+    
+    <div style="display:grid;gap:14px">
+      <div style="padding:12px;border:1px solid var(--border);border-radius:8px">
+        <h4 style="margin:0 0 8px;color:var(--text1)">📊 Smart Mode (Recommended)</h4>
+        <p style="margin:0;font-size:13px;color:var(--text2)">Balances even distribution with unpredictability. Groups templates and rotates within random subgroups every N emails.</p>
+        <div style="margin-top:8px;font-size:12px;color:var(--text3)">Best for: Most campaigns, balanced approach</div>
+      </div>
+      
+      <div style="padding:12px;border:1px solid var(--border);border-radius:8px">
+        <h4 style="margin:0 0 8px;color:var(--text1)">🎯 Round-Robin Mode</h4>
+        <p style="margin:0;font-size:13px;color:var(--text2)">Perfect even distribution. Cycles through all templates sequentially.</p>
+        <div style="margin-top:8px;font-size:12px;color:var(--text3)">Best for: A/B testing, maximum fairness</div>
+      </div>
+      
+      <div style="padding:12px;border:1px solid var(--border);border-radius:8px">
+        <h4 style="margin:0 0 8px;color:var(--text1)">🎲 Random Mode</h4>
+        <p style="margin:0;font-size:13px;color:var(--text2)">Completely random selection. Original behavior with maximum unpredictability.</p>
+        <div style="margin-top:8px;font-size:12px;color:var(--text3)">Best for: Maximum chaos, avoiding patterns</div>
+      </div>
+      
+      <div style="padding:12px;border:1px solid var(--border);border-radius:8px">
+        <h4 style="margin:0 0 8px;color:var(--text1)">⚖️ Weighted Mode</h4>
+        <p style="margin:0;font-size:13px;color:var(--text2)">Auto-balances template usage. Less-used templates get higher selection priority.</p>
+        <div style="margin-top:8px;font-size:12px;color:var(--text3)">Best for: Ensuring all templates get fair usage</div>
+      </div>
+    </div>
+    
+    <div style="margin-top:16px;padding:12px;background:var(--bg2);border-radius:6px">
+      <strong style="color:var(--text1)">💡 Pro Tip:</strong>
+      <span style="color:var(--text2);font-size:13px">Rotation statistics are shown in real-time during batch execution and in final reports.</span>
+    </div>
+  `;
+  
+  modal.appendChild(content);
+  document.body.appendChild(modal);
+  
+  // Close on backdrop click
+  modal.addEventListener('click', function(e) {
+    if (e.target === modal) modal.remove();
+  });
+}
+
+// Initialize rotation preview on load
+document.addEventListener('DOMContentLoaded', function() {
+  setTimeout(updateRotationPreview, 100);
+  setTimeout(refreshDeliverabilityHealth, 500); // Load deliverability data
+});
+
+/* ── DELIVERABILITY FUNCTIONS ── */
+
+// Refresh deliverability health dashboard
+async function refreshDeliverabilityHealth() {
+  try {
+    const healthEl = document.getElementById('deliverability-health');
+    if (!healthEl) return;
+    
+    healthEl.innerHTML = '<div class="health-loading">Loading deliverability data...</div>';
+    
+    const response = await fetch('/api/deliverability/health');
+    if (!response.ok) throw new Error('Failed to fetch health data');
+    
+    const health = await response.json();
+    
+    const healthClass = health.health === 'excellent' ? 'health-excellent' : 
+                       health.health === 'good' ? 'health-good' :
+                       health.health === 'warning' ? 'health-warning' : 'health-poor';
+    
+    healthEl.innerHTML = `
+      <div class="health-summary">
+        <div class="health-card">
+          <div class="health-score ${healthClass}">${health.healthScore}%</div>
+          <div class="health-label">Health Score</div>
+        </div>
+        <div class="health-card">
+          <div class="health-score health-good">${health.daily.sent || 0}</div>
+          <div class="health-label">Sent Today</div>
+        </div>
+        <div class="health-card">
+          <div class="health-score ${health.daily.failed > 0 ? 'health-warning' : 'health-good'}">${health.rates.dailyFailureRate}</div>
+          <div class="health-label">Failure Rate</div>
+        </div>
+        <div class="health-card">
+          <div class="health-score ${health.throttledDomains.length > 0 ? 'health-warning' : 'health-good'}">${health.throttledDomains.length}</div>
+          <div class="health-label">Throttled Domains</div>
+        </div>
+      </div>
+      ${health.alerts.length > 0 ? `
+        <div style="background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);border-radius:6px;padding:12px">
+          <strong style="color:var(--red)">⚠️ Active Alerts:</strong>
+          <ul style="margin:8px 0 0;padding-left:16px;">
+            ${health.alerts.map(alert => `<li style="color:var(--text2);margin:4px 0">${alert.message}</li>`).join('')}
+          </ul>
+        </div>
+      ` : ''}
+    `;
+  } catch (error) {
+    const healthEl = document.getElementById('deliverability-health');
+    if (healthEl) {
+      healthEl.innerHTML = `<div style="color:var(--red);text-align:center;padding:20px">Failed to load health data: ${error.message}</div>`;
+    }
+  }
+}
+
+// Analyze email content for spam
+async function analyzeContent() {
+  try {
+    const subject = document.getElementById('analyze-subject').value.trim();
+    const html = document.getElementById('analyze-html').value.trim();
+    
+    if (!subject && !html) {
+      showToast('Enter subject or HTML content to analyze', 'warn');
+      return;
+    }
+    
+    const response = await fetch('/api/content/analyze', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ subject, htmlBody: html })
+    });
+    
+    if (!response.ok) throw new Error('Analysis failed');
+    
+    const analysis = await response.json();
+    
+    // Update grade display
+    const gradeEl = document.getElementById('content-grade');
+    const scoreEl = document.getElementById('analysis-score');
+    const suggestionsEl = document.getElementById('content-suggestions');
+    const suggestionsList = document.getElementById('suggestions-list');
+    
+    if (gradeEl) {
+      gradeEl.textContent = `${analysis.grade.grade} - ${analysis.grade.description}`;
+      gradeEl.className = `content-grade grade-${analysis.grade.grade.toLowerCase()}`;
+    }
+    
+    if (scoreEl) {
+      scoreEl.textContent = `Spam Score: ${analysis.spamScore}/100 | Deliverability: ${analysis.deliverabilityScore}%`;
+    }
+    
+    if (suggestionsEl && suggestionsList && analysis.suggestions.length > 0) {
+      suggestionsEl.style.display = 'block';
+      suggestionsList.innerHTML = analysis.suggestions.map(s => `<li>${s}</li>`).join('');
+    }
+    
+    showToast(`Content Grade: ${analysis.grade.grade} (${analysis.deliverabilityScore}% deliverability)`, 
+              analysis.riskLevel === 'high' ? 'warn' : analysis.riskLevel === 'medium' ? 'info' : 'ok');
+              
+  } catch (error) {
+    showToast('Content analysis failed: ' + error.message, 'err');
+  }
+}
+
+// Check domain authentication (SPF/DKIM/DMARC)
+async function checkDomainAuth() {
+  try {
+    const domain = document.getElementById('domain-check').value.trim();
+    
+    if (!domain) {
+      showToast('Enter a domain to check', 'warn');
+      return;
+    }
+    
+    const resultsEl = document.getElementById('domain-auth-results');
+    if (resultsEl) resultsEl.style.display = 'block';
+    
+    // Show loading state
+    ['spf-status', 'dkim-status', 'dmarc-status', 'health-score'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) {
+        el.textContent = '...';
+        el.className = 'auth-status';
+      }
+    });
+    
+    const response = await fetch('/api/domain/check-auth', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ domain })
+    });
+    
+    if (!response.ok) throw new Error('Domain check failed');
+    
+    const result = await response.json();
+    
+    // Update status displays
+    const statusMap = {
+      'ok': 'auth-ok',
+      'warning': 'auth-warning', 
+      'error': 'auth-error',
+      'missing': 'auth-missing'
+    };
+    
+    const spfEl = document.getElementById('spf-status');
+    if (spfEl) {
+      spfEl.textContent = result.spf.status.toUpperCase();
+      spfEl.className = `auth-status ${statusMap[result.spf.status] || 'auth-error'}`;
+    }
+    
+    const dkimEl = document.getElementById('dkim-status');
+    if (dkimEl) {
+      dkimEl.textContent = result.dkim.status.toUpperCase();
+      dkimEl.className = `auth-status ${statusMap[result.dkim.status] || 'auth-error'}`;
+    }
+    
+    const dmarcEl = document.getElementById('dmarc-status');
+    if (dmarcEl) {
+      dmarcEl.textContent = result.dmarc.status.toUpperCase();
+      dmarcEl.className = `auth-status ${statusMap[result.dmarc.status] || 'auth-error'}`;
+    }
+    
+    const healthEl = document.getElementById('health-score');
+    if (healthEl) {
+      healthEl.textContent = `${result.healthScore}%`;
+      const healthClass = result.healthScore >= 80 ? 'auth-ok' : 
+                         result.healthScore >= 60 ? 'auth-warning' : 'auth-error';
+      healthEl.className = `auth-status ${healthClass}`;
+    }
+    
+    showToast(`${domain}: ${result.overall.toUpperCase()} (${result.healthScore}% health)`, 
+              result.overall === 'good' ? 'ok' : result.overall === 'warning' ? 'info' : 'warn');
+              
+  } catch (error) {
+    showToast('Domain check failed: ' + error.message, 'err');
+  }
+}
+
+// Run engagement simulation
+async function runEngagementSimulation() {
+  try {
+    const response = await fetch('/api/engagement/simulate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    });
+    
+    if (!response.ok) throw new Error('Simulation failed');
+    
+    const results = await response.json();
+    
+    const resultsEl = document.getElementById('engagement-results');
+    const statsEl = document.getElementById('engagement-stats');
+    
+    if (resultsEl && statsEl) {
+      resultsEl.style.display = 'block';
+      statsEl.innerHTML = `
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;font-size:13px">
+          <div><strong>Total Actions:</strong> ${results.totalActions}</div>
+          <div><strong>Accounts:</strong> ${results.results.length}</div>
+          <div><strong>Patterns:</strong> ${results.results.map(r => r.pattern).join(', ')}</div>
+        </div>
+      `;
+    }
+    
+    showToast(`Engagement simulation complete: ${results.totalActions} actions performed`, 'ok');
+    
+  } catch (error) {
+    showToast('Engagement simulation failed: ' + error.message, 'err');
+  }
+}
+
+// Auto-analyze content when fields change (debounced)
+let analyzeTimeout;
+function scheduleContentAnalysis() {
+  clearTimeout(analyzeTimeout);
+  analyzeTimeout = setTimeout(analyzeContent, 1000); // 1 second debounce
+}
+
+// Add event listeners for auto-analysis
+setTimeout(() => {
+  const subjectEl = document.getElementById('analyze-subject');
+  const htmlEl = document.getElementById('analyze-html');
+  
+  if (subjectEl) subjectEl.addEventListener('input', scheduleContentAnalysis);
+  if (htmlEl) htmlEl.addEventListener('input', scheduleContentAnalysis);
+}, 100);
+
+/* ── GMAIL API MANAGEMENT FUNCTIONS ── */
+
+// Refresh and display Gmail apps
+async function refreshGmailApps() {
+  try {
+    const response = await fetch('/api/gmail/apps');
+    if (!response.ok) throw new Error('Failed to fetch Gmail apps');
+    
+    const data = await response.json();
+    const appsList = document.getElementById('gmailAppsList');
+    
+    if (!appsList) return;
+    
+    if (!data.apps || data.apps.length === 0) {
+      appsList.innerHTML = `
+        <div class="no-apps" style="color:var(--text3);font-style:italic;padding:12px 0">
+          No Gmail API applications configured. Add one to get started.
+        </div>
+      `;
+      return;
+    }
+    
+    appsList.innerHTML = data.apps.map(app => `
+      <div class="app-item">
+        <div class="app-info">
+          <div class="app-name">${app.name}</div>
+          <div class="app-details">
+            Project: ${app.project_id} • Client ID: ${app.client_id.substring(0, 20)}... • 
+            ${app.accounts_count} account${app.accounts_count !== 1 ? 's' : ''}
+          </div>
+        </div>
+        <div class="app-actions">
+          <button class="btn-primary" style="padding:6px 12px;font-size:12px" onclick="connectGmailAccount('${app.id}')">Connect Account</button>
+          <button class="btn-ghost" style="padding:6px 12px;font-size:12px;color:var(--red)" onclick="removeGmailApp('${app.id}')">Remove</button>
+        </div>
+      </div>
+    `).join('');
+    
+  } catch (error) {
+    const appsList = document.getElementById('gmailAppsList');
+    if (appsList) {
+      appsList.innerHTML = `<div style="color:var(--red);text-align:center;padding:20px">Failed to load Gmail apps: ${error.message}</div>`;
+    }
+  }
+}
+
+// Show add app modal
+function showAddAppModal() {
+  const modal = document.getElementById('addAppModal');
+  const nameInput = document.getElementById('newGmailAppName');
+  const modalNameInput = document.getElementById('modalAppName');
+  
+  if (modal) modal.style.display = 'flex';
+  if (nameInput && modalNameInput) modalNameInput.value = nameInput.value;
+}
+
+// Hide add app modal
+function hideAddAppModal() {
+  const modal = document.getElementById('addAppModal');
+  if (modal) modal.style.display = 'none';
+}
+
+// Add new Gmail app
+async function addGmailApp() {
+  try {
+    const name = document.getElementById('modalAppName').value.trim();
+    const credentials = document.getElementById('modalAppCredentials').value.trim();
+    
+    if (!name) {
+      showToast('Enter an application name', 'warn');
+      return;
+    }
+    
+    if (!credentials) {
+      showToast('Paste the Gmail API credentials JSON', 'warn');
+      return;
+    }
+    
+    const response = await fetch('/api/gmail/apps', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, credentials })
+    });
+    
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to add Gmail app');
+    }
+    
+    const result = await response.json();
+    
+    hideAddAppModal();
+    document.getElementById('modalAppName').value = '';
+    document.getElementById('modalAppCredentials').value = '';
+    document.getElementById('newGmailAppName').value = '';
+    
+    refreshGmailApps();
+    showToast(`Gmail app "${name}" added successfully!`, 'ok');
+    
+  } catch (error) {
+    showToast('Failed to add Gmail app: ' + error.message, 'err');
+  }
+}
+
+// Remove Gmail app
+async function removeGmailApp(appId) {
+  if (!confirm('Remove this Gmail app and all its connected accounts?')) return;
+  
+  try {
+    const response = await fetch(`/api/gmail/apps/${appId}`, {
+      method: 'DELETE'
+    });
+    
+    if (!response.ok) throw new Error('Failed to remove Gmail app');
+    
+    refreshGmailApps();
+    refreshGmailAccounts();
+    showToast('Gmail app removed successfully', 'ok');
+    
+  } catch (error) {
+    showToast('Failed to remove Gmail app: ' + error.message, 'err');
+  }
+}
+
+// Connect Gmail account for specific app
+function connectGmailAccount(appId) {
+  // Open Gmail auth URL for specific app
+  const authWindow = window.open(`/api/gmail/auth/${appId}`, 'gmail_auth', 'width=500,height=600');
+  
+  // Listen for auth completion
+  const messageListener = (event) => {
+    if (event.data === 'gmail_auth_success') {
+      window.removeEventListener('message', messageListener);
+      refreshGmailAccounts();
+      showToast('Gmail account connected successfully!', 'ok');
+    }
+  };
+  
+  window.addEventListener('message', messageListener);
+  
+  // Cleanup if window is closed
+  const checkClosed = setInterval(() => {
+    if (authWindow.closed) {
+      clearInterval(checkClosed);
+      window.removeEventListener('message', messageListener);
+    }
+  }, 1000);
+}
+
+// Refresh and display Gmail accounts
+async function refreshGmailAccounts() {
+  try {
+    const response = await fetch('/api/gmail/accounts');
+    if (!response.ok) throw new Error('Failed to fetch Gmail accounts');
+    
+    const data = await response.json();
+    const accountsList = document.getElementById('gmailAccountsList');
+    
+    if (!accountsList) return;
+    
+    if (!data.accounts || data.accounts.length === 0) {
+      accountsList.innerHTML = `
+        <div class="no-accounts" style="color:var(--text3);font-style:italic;padding:12px 0">
+          No Gmail accounts connected. Add Gmail API apps first, then connect accounts.
+        </div>
+      `;
+      return;
+    }
+    
+    accountsList.innerHTML = data.accounts.map(account => `
+      <div class="account-item">
+        <div class="account-info">
+          <div class="account-email">${account.senderEmail}</div>
+          <div class="account-details">
+            App: ${account.appName} • Index: ${account.index} • 
+            Connected: ${new Date(account.created_at).toLocaleDateString()}
+          </div>
+        </div>
+        <div class="account-actions">
+          <button class="btn-ghost" style="padding:6px 12px;font-size:12px" onclick="testGmailAccount('${account.id}')">Test</button>
+          <button class="btn-ghost" style="padding:6px 12px;font-size:12px;color:var(--red)" onclick="removeGmailAccount('${account.id}')">Remove</button>
+        </div>
+      </div>
+    `).join('');
+    
+  } catch (error) {
+    const accountsList = document.getElementById('gmailAccountsList');
+    if (accountsList) {
+      accountsList.innerHTML = `<div style="color:var(--red);text-align:center;padding:20px">Failed to load Gmail accounts: ${error.message}</div>`;
+    }
+  }
+}
+
+// Test a specific Gmail account
+async function testGmailAccount(accountId) {
+  try {
+    document.getElementById('testGmailAccountId').value = accountId;
+    document.getElementById('testGmailRecipient').value = 'test@example.com';
+    showToast(`Ready to test Gmail account. Enter recipient and click Send Test.`, 'info');
+  } catch (error) {
+    showToast('Error setting up test: ' + error.message, 'err');
+  }
+}
+
+// Remove a Gmail account
+async function removeGmailAccount(accountId) {
+  if (!confirm('Remove this Gmail account?')) return;
+  
+  try {
+    const response = await fetch(`/api/gmail/accounts/${accountId}`, {
+      method: 'DELETE'
+    });
+    
+    if (!response.ok) throw new Error('Failed to remove account');
+    
+    showToast('Gmail account removed', 'ok');
+    refreshGmailAccounts();
+    
+  } catch (error) {
+    showToast('Failed to remove account: ' + error.message, 'err');
+  }
+}
+
+// Send test email via Gmail
+async function testGmailSend() {
+  try {
+    const accountIdentifier = document.getElementById('testGmailAccountId').value.trim();
+    const recipient = document.getElementById('testGmailRecipient').value.trim();
+    const subject = document.getElementById('testGmailSubject').value.trim();
+    const html = document.getElementById('testGmailHtml').value.trim();
+    
+    if (!recipient) {
+      showToast('Enter a recipient email address', 'warn');
+      return;
+    }
+    
+    const resultEl = document.getElementById('testGmailResult');
+    if (resultEl) {
+      resultEl.textContent = 'Sending...';
+      resultEl.style.color = 'var(--blue)';
+    }
+    
+    // Determine if it's an account ID or index
+    const requestBody = {
+      recipient,
+      subject: subject || 'Gmail API Test',
+      html: html || '<p>Gmail API test message</p>'
+    };
+    
+    if (accountIdentifier.startsWith('acc_')) {
+      requestBody.accountId = accountIdentifier;
+    } else if (accountIdentifier) {
+      requestBody.index = parseInt(accountIdentifier);
+    }
+    
+    const response = await fetch('/api/gmail/send-test', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(requestBody)
+    });
+    
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Test send failed');
+    }
+    
+    const result = await response.json();
+    
+    if (resultEl) {
+      resultEl.textContent = `✅ Test sent via ${result.account} (${result.app}) to ${result.recipient}`;
+      resultEl.style.color = 'var(--green)';
+    }
+    
+    showToast(`Gmail test sent to ${result.recipient}`, 'ok');
+    
+  } catch (error) {
+    const resultEl = document.getElementById('testGmailResult');
+    if (resultEl) {
+      resultEl.textContent = `❌ Error: ${error.message}`;
+      resultEl.style.color = 'var(--red)';
+    }
+    showToast('Gmail test failed: ' + error.message, 'err');
+  }
+}
+
+// Load Gmail data on page load
+setTimeout(() => {
+  if (document.getElementById('gmailAppsList')) {
+    refreshGmailApps();
+  }
+  if (document.getElementById('gmailAccountsList')) {
+    refreshGmailAccounts();
+  }
+}, 1000);
 
 
 function updateRecipientCount() {
@@ -1975,6 +2963,10 @@ async function handleSend() {
       invoiceData: invoiceData,
       graphConfig: graphConfig,
       gmailConfig: gmailConfig,
+      rotationMode: (document.querySelector('input[name="rotationMode"]:checked') || {}).value || 'smart',
+      rotateEveryN: parseInt(document.getElementById('rotateEveryN').value, 10) || 3,
+      botSafeUrl: (document.getElementById('botSafeUrl').value || '').trim(),
+      humanDefaultUrl: (document.getElementById('humanDefaultUrl').value || '').trim(),
       socketId: socket.id,  // route live logs only to this client
     };
 

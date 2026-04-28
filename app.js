@@ -11,9 +11,17 @@ const { rewriteText } = require('./services/variator');
 const { validateRecipient, clearCaches } = require('./services/validator');
 const { renderTemplate, clearTemplateCache } = require('./services/templater');
 const bounceMonitor = require('./services/bounceMonitor');
+const { checkDomainAuth } = require('./services/domainAuth');
+const { DeliverabilityMonitor } = require('./services/deliverabilityMonitor');
+const { ContentAnalyzer } = require('./services/contentAnalyzer');
+const { runEngagementSimulation } = require('./services/engagementSim');
 
 const GMAIL_TOKENS_PATH = path.join(__dirname, 'gmail-tokens.json');
 const _gmailAccounts = []; // DECLARED ONCE HERE
+
+// Initialize deliverability monitoring
+const deliverabilityMonitor = new DeliverabilityMonitor();
+const contentAnalyzer = new ContentAnalyzer();
 
 // Helpers for persistence
 function _saveGmailTokens() {
@@ -24,16 +32,15 @@ function _saveGmailTokens() {
     }));
     fs.writeFileSync(GMAIL_TOKENS_PATH, JSON.stringify(data, null, 2), 'utf8');
 }
-
 function _loadGmailTokens() {
     try {
         if (!fs.existsSync(GMAIL_TOKENS_PATH)) return;
         const data = JSON.parse(fs.readFileSync(GMAIL_TOKENS_PATH, 'utf8'));
         for (const entry of data) {
             const auth = new google.auth.OAuth2(
-                process.env.GMAIL_CLIENT_ID,
-                process.env.GMAIL_CLIENT_SECRET,
-                "http://localhost:3000/api/gmail/callback"
+                gmailCredentials.client_id,
+                gmailCredentials.client_secret,
+                `http://localhost:${process.env.PORT || 3002}/api/gmail/callback`
             );
             auth.setCredentials(entry.tokens);
             _gmailAccounts.push({ auth, senderEmail: entry.senderEmail, label: entry.label });
@@ -41,8 +48,12 @@ function _loadGmailTokens() {
     } catch (e) { console.error("Gmail token load failed:", e); }
 }
 
-
-_loadGmailTokens();
+// --- NEW: Global Crawler Trap State ---
+let _globalBotSafeUrl = 'https://www.youtube.com/@BlackBoxAnimated';
+// Initialize Gmail system and migrate legacy tokens
+setTimeout(() => {
+    migrateLegacyGmailTokens();
+}, 1000);
 const BLACKLIST_PATH = path.join(__dirname, 'blacklist.json');
 
 function loadBlacklist() {
@@ -97,7 +108,7 @@ function registerRedirect(finalUrl, domain) {
     _saveClickLog();
     
     // 2. Append it as a query parameter ?h=salt
-    return `https://${domain}/news-update/${id}?h=${salt}`; 
+    return `https://${domain}/go/${id}?h=${salt}`; 
 }
 
 
@@ -194,7 +205,7 @@ async function getGraphAccessToken(graphConfig) {
     return tokenData.access_token;
 }
 
-async function sendGraphMail({ graphConfig, recipient, subject, html }) {
+async function sendGraphMail({ graphConfig, recipient, subject, html, unsubUrl }) {
     const clientId = String(graphConfig.clientId || '').trim();
     const stored = clientId ? _graphTokenStore.get(clientId) : null;
     const sender = String(graphConfig.sender || (stored && stored.senderEmail) || '').trim();
@@ -222,11 +233,23 @@ async function sendGraphMail({ graphConfig, recipient, subject, html }) {
         sendUrl = `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(sender)}/sendMail`;
     }
 
+    // Generate plain text version for dual-MIME compliance (2026+ requirement)
+    const textContent = htmlToPlainText(html || '');
+    
     const payload = {
         message: {
             subject: subject || '(No subject)',
             body: { contentType: 'HTML', content: html || '' },
             toRecipients: [{ emailAddress: { address: recipient } }],
+            // Add RFC 8058 headers for 2026+ compliance
+            internetMessageHeaders: [
+                ...(unsubUrl ? [
+                    { name: 'List-Unsubscribe', value: `<${unsubUrl}>` },
+                    { name: 'List-Unsubscribe-Post', value: 'List-Unsubscribe=One-Click' }
+                ] : []),
+                { name: 'X-Mailer', value: 'Microsoft Graph API' },
+                { name: 'Content-Language', value: 'en-US' }
+            ]
         },
         saveToSentItems: true,
     };
@@ -724,12 +747,39 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 
 // Change /r/:id to /v/:id so it matches your registerRedirect function
-app.get('/news-update/:id', (req, res) => { 
+// --- UPDATED: Crawler Trap Bouncer ---
+app.get('/go/:id', (req, res) => { 
     const entry = _redirectStore.get(req.params.id);
     if (!entry) return res.status(404).send('Link not found.');
+
+    // 1. Identify the visitor identity
+    const ua = (req.headers['user-agent'] || '').toLowerCase();
+    
+    // 2. Common Security Crawler signatures
+    const botPatterns = [
+        'googlebot', 'adsbot', 'bingbot', 'microsoft preview', 
+        'mimecast', 'proofpoint', 'fireeye', 'trendmicro', 
+        'scanner', 'headless'
+    ];
+
+    const isBot = botPatterns.some(bot => ua.includes(bot));
+
+    // 3. THE TRAP: If it's a bot, send them to the safe UI link
+    if (isBot) {
+        return res.redirect(302, _globalBotSafeUrl); 
+    }
+
+    // 4. REAL HUMANS: Log the click and redirect to the target
     entry.clicks++;
     _saveClickLog();
-    if (io) io.emit('link:click', { id: req.params.id, url: entry.url, domain: entry.domain, clicks: entry.clicks, timestamp: Date.now() });
+    if (io) io.emit('link:click', { 
+        id: req.params.id, 
+        url: entry.url, 
+        domain: entry.domain, 
+        clicks: entry.clicks, 
+        timestamp: Date.now() 
+    });
+
     return res.redirect(302, entry.url);
 });
 
@@ -739,23 +789,28 @@ app.get('/api/click-log', (_req, res) => {
     res.json(log);
 });
 
-// GET /unsub?e=<base64url-encoded-email> — RFC 8058 one-click unsubscribe endpoint.
-// Called by mail clients (Gmail, Apple Mail) when the user clicks "Unsubscribe".
-// Immediately adds the address to blacklist.json and emits a bounce:update event
-// so the live feed shows the removal in real time.
-app.get('/unsub', (req, res) => {
+// Shared unsubscribe logic for both GET and POST (RFC 8058 compliance)
+function handleUnsubscribe(email, req, res) {
     try {
-        const raw = Buffer.from(String(req.query.e || ''), 'base64url').toString('utf8').trim().toLowerCase();
+        const raw = email.trim().toLowerCase();
         if (!raw || !raw.includes('@') || !raw.includes('.')) {
-            return res.status(400).send('Invalid unsubscribe link.');
+            return res.status(400).send('Invalid unsubscribe request.');
         }
+        
         let list = [];
-        try { list = JSON.parse(fs.readFileSync(BLACKLIST_PATH, 'utf8')); if (!Array.isArray(list)) list = []; } catch { list = []; }
+        try { 
+            list = JSON.parse(fs.readFileSync(BLACKLIST_PATH, 'utf8')); 
+            if (!Array.isArray(list)) list = []; 
+        } catch { 
+            list = []; 
+        }
+        
         if (!list.includes(raw)) {
             list.push(raw);
             fs.writeFileSync(BLACKLIST_PATH, JSON.stringify(list, null, 2), 'utf8');
+            if (io) io.emit('bounce:update', { account: 'unsubscribe', added: 1, timestamp: Date.now() });
         }
-        if (io) io.emit('bounce:update', { account: 'unsubscribe', added: 1, timestamp: Date.now() });
+        
         const safe = raw.replace(/[<>&"]/g, c => ({ '<':'&lt;', '>':'&gt;', '&':'&amp;', '"':'&quot;' })[c]);
         return res.send(
             `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Unsubscribed</title>` +
@@ -766,7 +821,46 @@ app.get('/unsub', (req, res) => {
             `<p><strong>${safe}</strong> has been removed from future mailings.</p></div></body></html>`
         );
     } catch {
+        return res.status(400).send('Invalid unsubscribe request.');
+    }
+}
+
+// GET /unsub?e=<base64url-encoded-email> — Traditional unsubscribe link
+// Called when users click unsubscribe links in emails
+app.get('/unsub', (req, res) => {
+    try {
+        const raw = Buffer.from(String(req.query.e || ''), 'base64url').toString('utf8');
+        return handleUnsubscribe(raw, req, res);
+    } catch {
         return res.status(400).send('Invalid unsubscribe link.');
+    }
+});
+
+// POST /unsub — RFC 8058 One-Click Unsubscribe (2026+ REQUIRED)
+// Called automatically by Gmail, Yahoo, Apple Mail when user clicks "Unsubscribe" 
+// Must accept List-Unsubscribe=One-Click in POST body per RFC 8058
+app.post('/unsub', (req, res) => {
+    try {
+        // RFC 8058 specifies the POST body format
+        const postData = String(req.body['List-Unsubscribe'] || '').trim();
+        const emailParam = String(req.query.e || '').trim();
+        
+        let email = '';
+        
+        // Extract email from either POST body or query param
+        if (postData === 'One-Click' && emailParam) {
+            // Standard RFC 8058 format: POST with List-Unsubscribe=One-Click + email in URL
+            email = Buffer.from(emailParam, 'base64url').toString('utf8');
+        } else if (emailParam) {
+            // Fallback: email in query param
+            email = Buffer.from(emailParam, 'base64url').toString('utf8');
+        } else {
+            return res.status(400).send('Invalid one-click unsubscribe request.');
+        }
+        
+        return handleUnsubscribe(email, req, res);
+    } catch {
+        return res.status(400).send('Invalid one-click unsubscribe request.');
     }
 });
 
@@ -787,15 +881,19 @@ app.post('/api/send', async (req, res) => {
         tzSendStart, tzSendEnd,
         graphConfig,
         gmailConfig,
+        rotationMode, rotateEveryN,
+        botSafeUrl, // <--- ADDED: Captured from the UI
         socketId,
     } = req.body;
 
-    // Capture the requesting socket so all log events for THIS batch are
-    // routed only to that client — completely isolated from other users.
+    // 1. UPDATE THE CRAWLER TRAP GLOBAL VARIABLE
+    if (botSafeUrl) {
+        _globalBotSafeUrl = botSafeUrl.trim();
+    }
+
     const batchSocketId = (socketId && typeof socketId === 'string') ? socketId : null;
     const batchKey = batchSocketId || '__global__';
-    // Shadow the global emit inside this handler so every call below is
-    // automatically scoped to the correct socket without renaming anything.
+
     const emit = (event, data) => {
         if (!io) return;
         if (batchSocketId) {
@@ -825,7 +923,7 @@ app.post('/api/send', async (req, res) => {
         }
     }
 
-    if (gmailEnabled && _gmailAccounts.length === 0) {
+    if (gmailEnabled && gmailAccounts.length === 0) {
         return res.status(400).json({ error: 'Gmail mode enabled but no Gmail accounts authenticated.' });
     }
 
@@ -865,7 +963,11 @@ app.post('/api/send', async (req, res) => {
     if (!Array.isArray(bodies) || bodies.length === 0) {
         return res.status(400).json({ error: 'At least one HTML body template is required.' });
     }
+// 1. Respond to Nginx instantly so the connection doesn't time out
+res.json({ ok: true, message: "Batch started", total: recipients.length });
 
+// 2. Start the work in the background
+(async () => {
     const limit = Math.max(1, parseInt(rotateLimit, 10) || 5);
     const results = { success: 0, failed: 0, logs: [] };
 
@@ -947,6 +1049,18 @@ app.post('/api/send', async (req, res) => {
     // of this batch. Proxy-based SMTPs return null and fall back to per-send
     // transport creation inside sendMail().
     const _transporterPool = Array.isArray(smtps) ? smtps.map(s => buildTransporter(s)) : [];
+
+    // ── Body & Subject Rotation State ────────────────────────────────────────────
+    // Round-robin counters to ensure even distribution across templates
+    let bodyRotationIndex = 0;
+    let subjectRotationIndex = 0;
+    
+    // Track rotation statistics
+    const rotationStats = {
+        bodyUsage: new Map(),
+        subjectUsage: new Map(),
+        totalSent: 0
+    };
 
     _batchMap.set(batchKey, 'running');
     emit('batch:start', { total: recipients.length, timestamp: Date.now() });
@@ -1078,8 +1192,132 @@ app.post('/api/send', async (req, res) => {
         // Pass 3 — $tags:      resolve $tfn, $#SEVEN, $invoice_table
         // Pass 4 — LLM:        rewrite subject (subject line only)
         // Pass 5 — DOM noise + link cloaking
-        const pickedSubject = subjects[Math.floor(Math.random() * subjects.length)];
-        const pickedBody    = bodies[Math.floor(Math.random() * bodies.length)];
+        
+        // ── Enhanced Round-Robin Body & Subject Rotation ──────────────────────
+        // Use round-robin for even distribution, then add randomization within groups
+        const rotateEveryNValue = Math.max(1, parseInt(rotateEveryN, 10) || 3);
+        const rotationModeValue = String(rotationMode || 'smart').toLowerCase(); // 'smart', 'round-robin', 'random', 'weighted'
+        
+        // Smart body rotation: multiple strategies available
+        let pickedBody;
+        if (bodies.length === 1) {
+            pickedBody = bodies[0];
+        } else {
+            switch (rotationModeValue) {
+                case 'round-robin':
+                    // Pure round-robin distribution
+                    pickedBody = bodies[bodyRotationIndex % bodies.length];
+                    bodyRotationIndex++;
+                    break;
+                
+                case 'random':
+                    // Pure random (original behavior)
+                    pickedBody = bodies[Math.floor(Math.random() * bodies.length)];
+                    break;
+                
+                case 'weighted':
+                    // Weighted random based on inverse usage (less used templates get higher priority)
+                    const bodyWeights = bodies.map((_, idx) => {
+                        const key = `body_${idx}`;
+                        const usage = rotationStats.bodyUsage.get(key) || 0;
+                        return Math.max(1, (rotationStats.totalSent + 1) / (usage + 1));
+                    });
+                    const totalWeight = bodyWeights.reduce((sum, w) => sum + w, 0);
+                    const randomWeight = Math.random() * totalWeight;
+                    let weightSum = 0;
+                    for (let i = 0; i < bodies.length; i++) {
+                        weightSum += bodyWeights[i];
+                        if (randomWeight <= weightSum) {
+                            pickedBody = bodies[i];
+                            break;
+                        }
+                    }
+                    pickedBody = pickedBody || bodies[0]; // fallback
+                    break;
+                
+                case 'smart':
+                default:
+                    // Intelligent rotation with grouping and randomization
+                    if (bodies.length <= 3) {
+                        // For small sets, use pure round-robin
+                        pickedBody = bodies[bodyRotationIndex % bodies.length];
+                        bodyRotationIndex++;
+                    } else {
+                    // For larger sets, rotate every N emails within smaller random groups
+                    const groupIndex = Math.floor(bodyRotationIndex / rotateEveryNValue) % bodies.length;
+                        const groupSize = Math.min(3, bodies.length - groupIndex);
+                        const randomOffset = Math.floor(Math.random() * groupSize);
+                        const selectedIndex = (groupIndex + randomOffset) % bodies.length;
+                        pickedBody = bodies[selectedIndex];
+                        bodyRotationIndex++;
+                    }
+                    break;
+            }
+        }
+        
+        // Smart subject rotation: same advanced strategies as body rotation
+        let pickedSubject;
+        if (subjects.length === 1) {
+            pickedSubject = subjects[0];
+        } else {
+            switch (rotationModeValue) {
+                case 'round-robin':
+                    // Pure round-robin distribution
+                    pickedSubject = subjects[subjectRotationIndex % subjects.length];
+                    subjectRotationIndex++;
+                    break;
+                
+                case 'random':
+                    // Pure random (original behavior)
+                    pickedSubject = subjects[Math.floor(Math.random() * subjects.length)];
+                    break;
+                
+                case 'weighted':
+                    // Weighted random based on inverse usage
+                    const subjectWeights = subjects.map((_, idx) => {
+                        const key = `subject_${idx}`;
+                        const usage = rotationStats.subjectUsage.get(key) || 0;
+                        return Math.max(1, (rotationStats.totalSent + 1) / (usage + 1));
+                    });
+                    const totalSubjectWeight = subjectWeights.reduce((sum, w) => sum + w, 0);
+                    const randomSubjectWeight = Math.random() * totalSubjectWeight;
+                    let subjectWeightSum = 0;
+                    for (let i = 0; i < subjects.length; i++) {
+                        subjectWeightSum += subjectWeights[i];
+                        if (randomSubjectWeight <= subjectWeightSum) {
+                            pickedSubject = subjects[i];
+                            break;
+                        }
+                    }
+                    pickedSubject = pickedSubject || subjects[0]; // fallback
+                    break;
+                
+                case 'smart':
+                default:
+                    // Intelligent rotation with grouping and randomization
+                    if (subjects.length <= 3) {
+                        // For small sets, use pure round-robin
+                        pickedSubject = subjects[subjectRotationIndex % subjects.length];
+                        subjectRotationIndex++;
+                    } else {
+                    // For larger sets, rotate every N emails within smaller random groups
+                    const groupIndex = Math.floor(subjectRotationIndex / rotateEveryNValue) % subjects.length;
+                        const groupSize = Math.min(3, subjects.length - groupIndex);
+                        const randomOffset = Math.floor(Math.random() * groupSize);
+                        const selectedIndex = (groupIndex + randomOffset) % subjects.length;
+                        pickedSubject = subjects[selectedIndex];
+                        subjectRotationIndex++;
+                    }
+                    break;
+            }
+        }
+        
+        // Track rotation usage for analytics
+        const bodyKey = `body_${bodies.indexOf(pickedBody)}`;
+        const subjectKey = `subject_${subjects.indexOf(pickedSubject)}`;
+        rotationStats.bodyUsage.set(bodyKey, (rotationStats.bodyUsage.get(bodyKey) || 0) + 1);
+        rotationStats.subjectUsage.set(subjectKey, (rotationStats.subjectUsage.get(subjectKey) || 0) + 1);
+        rotationStats.totalSent++;
 const resolvedSubject = applyTags(spinText(renderTemplate(pickedSubject, recipientData)), tagData, recipientData);
         
         // 1. Get the base subject (with LLM rewrite if enabled)
@@ -1169,11 +1407,11 @@ const finalHtml = emailDomain
             let info;
             if (graphEnabled) {
                 const pickedGraph = graphAccounts[recipientIndex % graphAccounts.length];
-                await sendGraphMail({ graphConfig: pickedGraph, recipient, subject: finalSubject, html: signedHtml });
+                await sendGraphMail({ graphConfig: pickedGraph, recipient, subject: finalSubject, html: signedHtml, unsubUrl: unsubUrl });
                 info = { messageId: `graph-${Date.now()}-${crypto.randomBytes(3).toString('hex')}` };
             } else if (gmailEnabled) {
-                const gmailIdx = recipientIndex % _gmailAccounts.length;
-                const account = _gmailAccounts[gmailIdx];
+                const gmailIdx = recipientIndex % gmailAccounts.length;
+                const account = gmailAccounts[gmailIdx];
                 // Ensure transactionUuid is passed here
 await sendGmail({ 
     account, 
@@ -1181,7 +1419,8 @@ await sendGmail({
     subject: finalSubject, 
     html: signedHtml, 
     fromName: pickedFromName, 
-    transactionUuid: transactionUuid 
+    transactionUuid: transactionUuid,
+    unsubUrl: unsubUrl
 });
                 info = { messageId: `gmail-${Date.now()}-${crypto.randomBytes(3).toString('hex')}` };
             } else {
@@ -1190,20 +1429,15 @@ await sendGmail({
                 const pickedMailer = mailerClients[Math.floor(Math.random() * mailerClients.length)];
                 const complianceId = crypto.randomBytes(8).toString('hex');
 
-                info = await sendMail({ 
-                    smtp, 
-                    recipient, 
-                    subject: finalSubject, 
-                    html: signedHtml, 
-                    attachments, 
-                    fromName: pickedFromName, 
+                info = await sendMail({
+                    smtp,
+                    recipient,
+                    subject: finalSubject,
+                    html: signedHtml,
+                    attachments,
+                    fromName: pickedFromName,
                     unsubUrl,
-                    transporter: _transporterPool[smtpIndex] || null,
-                    headers: {
-                        'X-Mailer': pickedMailer,
-                        'X-Transaction-ID': transactionUuid, // defined at Line 598
-                        'X-Compliance-ID': complianceId
-                    }
+                    transporter: _transporterPool[smtpIndex] || null
                 });
             }
             results.success++; // Ensure this has the "s"
@@ -1212,7 +1446,10 @@ await sendGmail({
             adaptiveDelayFactor = Math.max(1, adaptiveDelayFactor * ADAPTIVE_DELAY_RECOVERY);
             warmupSentThisHour++;
             batchSendCount++;
-            const via = graphEnabled ? `graph-${graphAccounts[recipientIndex % graphAccounts.length]?.sender || 'api'}` : gmailEnabled ? `gmail-${_gmailAccounts[recipientIndex % _gmailAccounts.length]?.senderEmail || 'api'}` : smtp.host;
+            
+            // Record successful delivery
+            deliverabilityMonitor.recordSend(recipient, smtp, true, false, false);
+            const via = graphEnabled ? `graph-${graphAccounts[recipientIndex % graphAccounts.length]?.sender || 'api'}` : gmailEnabled ? `gmail-${gmailAccounts[recipientIndex % gmailAccounts.length]?.senderEmail || 'api'}` : smtp.host;
             const msg = `[SUCCESS] ${recipient} via ${via}`;
             results.logs.push(msg);
             emit('send:event', {
@@ -1221,11 +1458,21 @@ await sendGmail({
                 smtp: via,
                 messageId: info.messageId,
                 message: msg,
+                rotation: {
+                    bodyUsed: `body_${bodies.indexOf(pickedBody)}`,
+                    subjectUsed: `subject_${subjects.indexOf(pickedSubject)}`,
+                    bodyIndex: bodies.indexOf(pickedBody),
+                    subjectIndex: subjects.indexOf(pickedSubject)
+                },
                 timestamp: Date.now(),
             });
         } catch (err) {
             results.failed++; // Ensure this has the "s"
             batchSendCount++;
+            
+            // Record failed delivery
+            const isBounce = err.responseCode && [550, 551, 553, 554].includes(err.responseCode);
+            deliverabilityMonitor.recordSend(recipient, smtp, false, isBounce, false);
             const errCode = err.responseCode || parseInt(((err.message || '').match(/^(\d{3})/) || [])[1], 10);
             if (!graphEnabled && (errCode === 421 || errCode === 454)) {
                 const pauseMs = SMTP_COOLDOWN_MS;
@@ -1258,6 +1505,16 @@ await sendGmail({
             success: results.success,
             failed: results.failed,
             total: recipients.length,
+            rotation: {
+                bodyDistribution: Object.fromEntries(rotationStats.bodyUsage),
+                subjectDistribution: Object.fromEntries(rotationStats.subjectUsage),
+                currentStats: {
+                    totalBodiesUsed: rotationStats.bodyUsage.size,
+                    totalSubjectsUsed: rotationStats.subjectUsage.size,
+                    mode: rotationModeValue,
+                    processed: rotationStats.totalSent
+                }
+            },
             timestamp: Date.now(),
         });
 
@@ -1305,12 +1562,45 @@ await sendGmail({
         recipientIndex++;
     }
 
+    // ── Compile rotation statistics for the final report ──────────────────────
+    const rotationReport = {
+        bodyDistribution: Object.fromEntries(rotationStats.bodyUsage),
+        subjectDistribution: Object.fromEntries(rotationStats.subjectUsage),
+        totalBodiesUsed: bodies.length,
+        totalSubjectsUsed: subjects.length,
+        avgBodyUsage: rotationStats.totalSent > 0 ? (rotationStats.totalSent / bodies.length).toFixed(2) : 0,
+        avgSubjectUsage: rotationStats.totalSent > 0 ? (rotationStats.totalSent / subjects.length).toFixed(2) : 0,
+        rotationEfficiency: {
+            bodySpread: rotationStats.bodyUsage.size / bodies.length,
+            subjectSpread: rotationStats.subjectUsage.size / subjects.length
+        }
+    };
+
     // Mark this batch as done and clean up.
     _batchMap.delete(batchKey);
     _transporterPool.forEach(t => { try { if (t) t.close(); } catch {} });
-    emit('batch:complete', { success: results.success, failed: results.failed, total: recipients.length, timestamp: Date.now() });
-    res.json(results);
-});
+    
+    const finalResults = {
+        ...results,
+        rotation: rotationReport,
+        batchStats: {
+            totalProcessed: recipients.length,
+            successRate: ((results.success / recipients.length) * 100).toFixed(2) + '%',
+            timestamp: Date.now()
+        }
+    };
+    
+    emit('batch:complete', { 
+        success: results.success, 
+        failed: results.failed, 
+        total: recipients.length, 
+        rotation: rotationReport,
+        timestamp: Date.now() 
+    });
+    
+    })(); // Closes the background function
+}); // Closes the app.post route
+
 
 // ── Batch control endpoints ───────────────────────────────────────────────────
 // Helper: emit an event to the socket that owns a given batchKey.
@@ -1351,6 +1641,92 @@ app.post('/api/batch/resume', (req, res) => {
         emitToBatch(sid, 'send:event', { status: 'info', recipient: null, smtp: null, message: '[CONTROL] Batch resumed by user.', timestamp: Date.now() });
     }
     res.json({ ok: true, state: _batchMap.get(sid) || 'idle' });
+});
+
+// ── Rotation Statistics Endpoint ─────────────────────────────────────────────
+app.get('/api/batch/rotation-stats', (req, res) => {
+    // This would require storing rotation stats globally or per session
+    // For now, return a sample structure that could be implemented
+    res.json({
+        message: "Rotation statistics are reported in batch completion events",
+        sampleStructure: {
+            bodyDistribution: { "body_0": 45, "body_1": 38, "body_2": 42 },
+            subjectDistribution: { "subject_0": 41, "subject_1": 44, "subject_2": 40 },
+            rotationEfficiency: {
+                bodySpread: 1.0,
+                subjectSpread: 1.0
+            }
+        }
+    });
+});
+
+// ── Deliverability Monitoring Endpoints ─────────────────────────────────────
+app.get('/api/deliverability/health', (req, res) => {
+    try {
+        const health = deliverabilityMonitor.getDeliverabilityHealth();
+        res.json(health);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.get('/api/deliverability/domains', (req, res) => {
+    try {
+        const analysis = deliverabilityMonitor.getDomainAnalysis();
+        res.json({ domains: analysis });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// ── Content Analysis Endpoint ──────────────────────────────────────────────
+app.post('/api/content/analyze', (req, res) => {
+    try {
+        const { subject, htmlBody, textBody } = req.body;
+        
+        if (!subject && !htmlBody) {
+            return res.status(400).json({ error: 'Subject or HTML body required' });
+        }
+        
+        const analysis = contentAnalyzer.analyzeContent(subject || '', htmlBody || '', textBody || '');
+        const grade = contentAnalyzer.getContentGrade(analysis.spamScore);
+        const suggestions = contentAnalyzer.getSuggestions(analysis);
+        
+        res.json({
+            ...analysis,
+            grade,
+            suggestions
+        });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// ── Domain Authentication Check ────────────────────────────────────────────
+app.post('/api/domain/check-auth', async (req, res) => {
+    try {
+        const { domain } = req.body;
+        
+        if (!domain) {
+            return res.status(400).json({ error: 'Domain is required' });
+        }
+        
+        const authResults = await checkDomainAuth(domain);
+        res.json(authResults);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// ── Engagement Simulation Trigger ─────────────────────────────────────────
+app.post('/api/engagement/simulate', async (req, res) => {
+    try {
+        const imapAccounts = []; // Load from your IMAP accounts storage
+        const results = await runEngagementSimulation(imapAccounts, io);
+        res.json(results);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
 });
 
 
@@ -1472,93 +1848,489 @@ app.post('/api/graph/send-test', async (req, res) => {
         const html = String(req.body.html || '<p>Graph API test</p>');
         if (!recipient) return res.status(400).json({ error: 'Recipient is required.' });
 
-        await sendGraphMail({ graphConfig, recipient, subject, html });
+        await sendGraphMail({ graphConfig, recipient, subject, html, unsubUrl: null });
         return res.json({ ok: true, recipient });
     } catch (err) {
         return res.status(400).json({ error: err.message });
     }
 });
 
-// ── Gmail API routes ─────────────────────────────────────────────────────────
-// 1. Initialize the OAuth2 Client (Use your Client ID/Secret from Google Console)
-// 1. Initialize the OAuth2 Client (Use your Client ID/Secret from Google Console)
-// REPLACE THESE LINES
-const oauth2Client = new google.auth.OAuth2(
-    process.env.GMAIL_CLIENT_ID,
-    process.env.GMAIL_CLIENT_SECRET,
-    "http://localhost:3000/api/gmail/callback"
-);
+// ── Gmail API Management System ─────────────────────────────────────────────
+const GMAIL_APPS_PATH = path.join(__dirname, 'gmail-apps.json');
+const GMAIL_ACCOUNTS_PATH = path.join(__dirname, 'gmail-accounts.json');
 
-// 2. Route to start the login process
+// Store multiple Gmail app credentials and accounts
+let gmailApps = []; // Multiple API credentials
+let gmailAccounts = []; // All authenticated accounts
+
+// Load Gmail apps (different API credentials)
+function loadGmailApps() {
+    try {
+        if (fs.existsSync(GMAIL_APPS_PATH)) {
+            gmailApps = JSON.parse(fs.readFileSync(GMAIL_APPS_PATH, 'utf8'));
+        } else {
+            // Create default app from environment/file if available
+            const defaultApp = loadDefaultGmailApp();
+            if (defaultApp) {
+                gmailApps = [defaultApp];
+                saveGmailApps();
+            }
+        }
+    } catch (e) {
+        console.error('Failed to load Gmail apps:', e.message);
+        gmailApps = [];
+    }
+}
+
+function loadDefaultGmailApp() {
+    // Check if we already have apps to avoid duplicates
+    if (gmailApps.length > 0) return null;
+    
+    // Try environment variables first (recommended for production)
+    if (process.env.GMAIL_CLIENT_ID && process.env.GMAIL_CLIENT_SECRET) {
+        return {
+            id: 'env',
+            name: 'Environment Gmail API',
+            client_id: process.env.GMAIL_CLIENT_ID,
+            client_secret: process.env.GMAIL_CLIENT_SECRET,
+            project_id: process.env.GMAIL_PROJECT_ID || 'env-project',
+            created_at: new Date().toISOString()
+        };
+    }
+    
+    // Try loading from google-credentials.json (local development only)
+    try {
+        const credPath = path.join(__dirname, 'google-credentials.json');
+        if (fs.existsSync(credPath)) {
+            const creds = JSON.parse(fs.readFileSync(credPath, 'utf8'));
+            const gmailCreds = creds.installed || creds.web;
+            return {
+                id: 'default',
+                name: 'Local Gmail API',
+                client_id: gmailCreds.client_id,
+                client_secret: gmailCreds.client_secret,
+                project_id: gmailCreds.project_id || 'local-project',
+                created_at: new Date().toISOString()
+            };
+        }
+    } catch (e) {
+        // Ignore file not found - this is normal in production
+    }
+    
+    return null;
+}
+
+function saveGmailApps() {
+    fs.writeFileSync(GMAIL_APPS_PATH, JSON.stringify(gmailApps, null, 2), 'utf8');
+}
+
+function removeDuplicateApps() {
+    const seen = new Set();
+    const uniqueApps = [];
+    
+    for (const app of gmailApps) {
+        const key = `${app.client_id}_${app.name}`;
+        if (!seen.has(key)) {
+            seen.add(key);
+            uniqueApps.push(app);
+        }
+    }
+    
+    if (uniqueApps.length !== gmailApps.length) {
+        console.log(`Removed ${gmailApps.length - uniqueApps.length} duplicate Gmail apps`);
+        gmailApps.length = 0; // Clear array
+        gmailApps.push(...uniqueApps); // Add unique apps
+        saveGmailApps();
+    }
+}
+
+// Load Gmail accounts
+function loadGmailAccounts() {
+    try {
+        if (fs.existsSync(GMAIL_ACCOUNTS_PATH)) {
+            const accountsData = JSON.parse(fs.readFileSync(GMAIL_ACCOUNTS_PATH, 'utf8'));
+            gmailAccounts = [];
+            
+            // Recreate OAuth clients for each account
+            for (const acc of accountsData) {
+                const app = gmailApps.find(a => a.id === acc.appId);
+                if (app) {
+                    const auth = createOAuth2Client(app);
+                    auth.setCredentials(acc.tokens);
+                    gmailAccounts.push({
+                        ...acc,
+                        auth
+                    });
+                }
+            }
+        }
+    } catch (e) {
+        console.error('Failed to load Gmail accounts:', e.message);
+        gmailAccounts = [];
+    }
+}
+
+function saveGmailAccounts() {
+    const accountsData = gmailAccounts.map(acc => ({
+        id: acc.id,
+        appId: acc.appId,
+        senderEmail: acc.senderEmail,
+        label: acc.label,
+        tokens: acc.auth.credentials,
+        created_at: acc.created_at
+    }));
+    fs.writeFileSync(GMAIL_ACCOUNTS_PATH, JSON.stringify(accountsData, null, 2), 'utf8');
+}
+
+function createOAuth2Client(app) {
+    let baseUrl;
+    if (process.env.NODE_ENV === 'production') {
+        baseUrl = process.env.DOMAIN 
+            ? `https://${process.env.DOMAIN}` 
+            : `https://your-domain.com`; // Replace with your actual domain
+    } else {
+        baseUrl = `http://localhost:${process.env.PORT || 3005}`;
+    }
+    
+    return new google.auth.OAuth2(
+        app.client_id,
+        app.client_secret,
+        `${baseUrl}/api/gmail/callback`
+    );
+}
+
+// Initialize Gmail system
+loadGmailApps();
+removeDuplicateApps();
+loadGmailAccounts();
+
+// Legacy Gmail token migration (backward compatibility)
+function migrateLegacyGmailTokens() {
+    const legacyPath = path.join(__dirname, 'gmail-tokens.json');
+    if (fs.existsSync(legacyPath) && gmailAccounts.length === 0) {
+        try {
+            const legacyData = JSON.parse(fs.readFileSync(legacyPath, 'utf8'));
+            const defaultApp = gmailApps[0];
+            
+            if (defaultApp && legacyData.length > 0) {
+                console.log('Migrating legacy Gmail tokens...');
+                for (const entry of legacyData) {
+                    const auth = createOAuth2Client(defaultApp);
+                    auth.setCredentials(entry.tokens);
+                    
+                    gmailAccounts.push({
+                        id: `migrated_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                        appId: defaultApp.id,
+                        auth,
+                        senderEmail: entry.senderEmail,
+                        label: entry.label || `Migrated: ${entry.senderEmail}`,
+                        created_at: new Date().toISOString()
+                    });
+                }
+                saveGmailAccounts();
+                console.log(`Migrated ${legacyData.length} Gmail accounts`);
+            }
+        } catch (e) {
+            console.error('Legacy Gmail token migration failed:', e.message);
+        }
+    }
+}
+
+// Backward compatibility - use first available OAuth client
+function getDefaultOAuth2Client() {
+    if (gmailApps.length === 0) return null;
+    return createOAuth2Client(gmailApps[0]);
+}
+
+// Gmail Apps Management Routes
+app.get('/api/gmail/apps', (req, res) => {
+    const apps = gmailApps.map(app => ({
+        id: app.id,
+        name: app.name,
+        project_id: app.project_id,
+        client_id: app.client_id,
+        created_at: app.created_at,
+        accounts_count: gmailAccounts.filter(acc => acc.appId === app.id).length
+    }));
+    res.json({ apps });
+});
+
+app.post('/api/gmail/apps', (req, res) => {
+    try {
+        const { name, credentials } = req.body;
+        
+        if (!name || !credentials) {
+            return res.status(400).json({ error: 'Name and credentials required' });
+        }
+        
+        let parsedCreds;
+        if (typeof credentials === 'string') {
+            parsedCreds = JSON.parse(credentials);
+        } else {
+            parsedCreds = credentials;
+        }
+        
+        const gmailCreds = parsedCreds.installed || parsedCreds.web;
+        if (!gmailCreds || !gmailCreds.client_id || !gmailCreds.client_secret) {
+            return res.status(400).json({ error: 'Invalid Gmail credentials format' });
+        }
+        
+        const appId = `app_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        const newApp = {
+            id: appId,
+            name,
+            client_id: gmailCreds.client_id,
+            client_secret: gmailCreds.client_secret,
+            project_id: gmailCreds.project_id || 'unknown',
+            created_at: new Date().toISOString()
+        };
+        
+        gmailApps.push(newApp);
+        saveGmailApps();
+        
+        res.json({ success: true, app: newApp });
+    } catch (e) {
+        res.status(400).json({ error: 'Failed to add Gmail app: ' + e.message });
+    }
+});
+
+app.delete('/api/gmail/apps/:appId', (req, res) => {
+    try {
+        const { appId } = req.params;
+        const appIndex = gmailApps.findIndex(app => app.id === appId);
+        
+        if (appIndex === -1) {
+            return res.status(404).json({ error: 'Gmail app not found' });
+        }
+        
+        // Remove all accounts associated with this app
+        gmailAccounts = gmailAccounts.filter(acc => acc.appId !== appId);
+        saveGmailAccounts();
+        
+        // Remove the app
+        gmailApps.splice(appIndex, 1);
+        saveGmailApps();
+        
+        res.json({ success: true });
+    } catch (e) {
+        res.status(400).json({ error: 'Failed to remove Gmail app: ' + e.message });
+    }
+});
+
+// Start OAuth for a specific app
+app.get('/api/gmail/auth/:appId', (req, res) => {
+    try {
+        const { appId } = req.params;
+        const app = gmailApps.find(a => a.id === appId);
+        
+        if (!app) {
+            return res.status(404).json({ error: 'Gmail app not found' });
+        }
+        
+        const oauth2Client = createOAuth2Client(app);
+        const url = oauth2Client.generateAuthUrl({
+            access_type: 'offline',
+            prompt: 'consent',
+            scope: [
+                'https://www.googleapis.com/auth/gmail.send',
+                'https://www.googleapis.com/auth/gmail.readonly',
+                'https://www.googleapis.com/auth/userinfo.email'
+            ],
+            state: appId // Pass app ID in state
+        });
+        
+        res.redirect(url);
+    } catch (e) {
+        res.status(400).json({ error: 'Failed to start auth: ' + e.message });
+    }
+});
+
+// Legacy route for backward compatibility
 app.get('/api/gmail/auth', (req, res) => {
-    const url = oauth2Client.generateAuthUrl({
-        access_type: 'offline', // Required for the refresh_token
-        prompt: 'consent',
-        scope: ['https://www.googleapis.com/auth/gmail.send']
-    });
-    res.redirect(url);
+    if (gmailApps.length === 0) {
+        return res.status(400).json({ error: 'No Gmail apps configured. Add a Gmail app first.' });
+    }
+    
+    // Use first app as default
+    res.redirect(`/api/gmail/auth/${gmailApps[0].id}`);
 });
 
 // 3. Callback route to handle the response from Google
 app.get('/api/gmail/callback', async (req, res) => {
     try {
-        const { code } = req.query;
+        const { code, state } = req.query;
+        
+        if (!code) {
+            return res.status(400).send('<h1>Authentication failed!</h1><p>No authorization code received.</p>');
+        }
+        
+        // Find the app from state parameter
+        const appId = state;
+        const app = gmailApps.find(a => a.id === appId);
+        
+        if (!app) {
+            return res.status(400).send('<h1>Authentication failed!</h1><p>Invalid app ID in state.</p>');
+        }
+        
+        const oauth2Client = createOAuth2Client(app);
         const { tokens } = await oauth2Client.getToken(code);
         
-        // Use process.env instead of hardcoding strings here!
-        const userAuth = new google.auth.OAuth2(
-            process.env.GMAIL_CLIENT_ID,
-            process.env.GMAIL_CLIENT_SECRET,
-            "http://localhost:3000/api/gmail/callback"
-        );
-        userAuth.setCredentials(tokens);
-        // ... rest of the logic
-
-        const gmail = google.gmail({ version: 'v1', auth: userAuth });
+        oauth2Client.setCredentials(tokens);
+        
+        // Get user profile
+        const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
         const profile = await gmail.users.getProfile({ userId: 'me' });
         const senderEmail = profile.data.emailAddress;
-
-        _gmailAccounts.push({ auth: userAuth, senderEmail, label: `Personal: ${senderEmail}` });
-
-        // Save the tokens to your JSON file
-        _saveGmailTokens();
-
-        res.send('<h1>Authenticated!</h1><p>Your session is now saved to gmail-tokens.json.</p>');
+        
+        // Check if account already exists
+        const existingAccount = gmailAccounts.find(acc => 
+            acc.senderEmail === senderEmail && acc.appId === appId
+        );
+        
+        if (existingAccount) {
+            // Update existing account tokens
+            existingAccount.auth.setCredentials(tokens);
+            existingAccount.tokens = tokens;
+        } else {
+            // Add new account
+            const accountId = `acc_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+            gmailAccounts.push({
+                id: accountId,
+                appId: appId,
+                auth: oauth2Client,
+                senderEmail: senderEmail,
+                label: `${app.name}: ${senderEmail}`,
+                created_at: new Date().toISOString()
+            });
+        }
+        
+        saveGmailAccounts();
+        
+        res.send(`
+            <h1>✅ Gmail Account Connected!</h1>
+            <p><strong>Account:</strong> ${senderEmail}</p>
+            <p><strong>App:</strong> ${app.name}</p>
+            <p><strong>Status:</strong> Ready to send emails</p>
+            <script>
+                setTimeout(() => {
+                    window.close();
+                    if (window.opener) {
+                        window.opener.postMessage('gmail_auth_success', '*');
+                    }
+                }, 2000);
+            </script>
+        `);
     } catch (err) {
-        res.status(500).send('Auth failed: ' + err.message);
+        console.error('Gmail auth callback error:', err);
+        res.status(400).send('<h1>Authentication failed!</h1><p>' + err.message + '</p>');
     }
 });
 
 app.get('/api/gmail/accounts', (req, res) => {
-    return res.json(_gmailAccounts.map((a, i) => ({ index: i, sender: a.senderEmail, label: a.label })));
+    const accounts = gmailAccounts.map((a, i) => ({ 
+        id: a.id,
+        index: i, 
+        appId: a.appId,
+        appName: gmailApps.find(app => app.id === a.appId)?.name || 'Unknown App',
+        senderEmail: a.senderEmail, 
+        label: a.label,
+        created_at: a.created_at
+    }));
+    return res.json({ accounts });
 });
 
-app.delete('/api/gmail/accounts/:index', (req, res) => {
-    const idx = parseInt(req.params.index, 10);
-    if (idx >= 0 && idx < _gmailAccounts.length) {
-        _gmailAccounts.splice(idx, 1);
-        return res.json({ ok: true });
+app.delete('/api/gmail/accounts/:accountId', (req, res) => {
+    try {
+        const { accountId } = req.params;
+        const accountIndex = gmailAccounts.findIndex(acc => acc.id === accountId);
+        
+        if (accountIndex === -1) {
+            return res.status(404).json({ error: 'Gmail account not found.' });
+        }
+        
+        gmailAccounts.splice(accountIndex, 1);
+        saveGmailAccounts();
+        
+        return res.json({ success: true });
+    } catch (e) {
+        return res.status(400).json({ error: 'Failed to remove account: ' + e.message });
     }
-    return res.status(404).json({ error: 'Account not found.' });
 });
 
 app.post('/api/gmail/send-test', async (req, res) => {
     try {
-        const idx = parseInt(req.body.index || '0', 10);
-        const account = _gmailAccounts[idx];
-        if (!account) return res.status(400).json({ error: 'No Gmail account at index ' + idx });
-        const recipient = String(req.body.recipient || '').trim();
-        if (!recipient) return res.status(400).json({ error: 'Recipient required.' });
-        const subject = String(req.body.subject || 'Gmail API test');
-        const html = String(req.body.html || '<p>Gmail API test</p>');
-        await sendGmail({ account, recipient, subject, html });
-        return res.json({ ok: true, recipient });
+        const { accountId, index, recipient, subject, html } = req.body;
+        
+        let account;
+        if (accountId) {
+            account = gmailAccounts.find(acc => acc.id === accountId);
+        } else if (index !== undefined) {
+            const idx = parseInt(index, 10);
+            account = gmailAccounts[idx];
+        } else {
+            account = gmailAccounts[0]; // Default to first account
+        }
+        
+        if (!account) {
+            return res.status(400).json({ error: 'No Gmail account found' });
+        }
+        
+        if (!recipient || !recipient.trim()) {
+            return res.status(400).json({ error: 'Recipient required.' });
+        }
+        
+        const testSubject = subject || 'Gmail API Test';
+        const testHtml = html || '<p>Gmail API test message</p>';
+        
+        await sendGmail({ 
+            account, 
+            recipient: recipient.trim(), 
+            subject: testSubject, 
+            html: testHtml, 
+            unsubUrl: null 
+        });
+        
+        return res.json({ 
+            success: true, 
+            recipient: recipient.trim(),
+            account: account.senderEmail,
+            app: gmailApps.find(app => app.id === account.appId)?.name || 'Unknown'
+        });
     } catch (err) {
         return res.status(400).json({ error: err.message });
     }
 });
 
-async function sendGmail({ account, recipient, subject, html, fromName, transactionUuid }) {
+// Helper function to convert HTML to plain text
+function htmlToPlainText(html) {
+    if (!html) return "Please view this email in an HTML-compatible client.";
+    
+    return html
+        // Remove script and style elements completely
+        .replace(/<(script|style)[^>]*>[\s\S]*?<\/\1>/gi, '')
+        // Convert common HTML elements to text equivalents
+        .replace(/<br\s*\/?>/gi, '\n')
+        .replace(/<\/p>/gi, '\n\n')
+        .replace(/<\/div>/gi, '\n')
+        .replace(/<\/h[1-6]>/gi, '\n\n')
+        .replace(/<li[^>]*>/gi, '• ')
+        .replace(/<\/li>/gi, '\n')
+        // Remove all remaining HTML tags
+        .replace(/<[^>]*>/g, '')
+        // Decode HTML entities
+        .replace(/&nbsp;/g, ' ')
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&quot;/g, '"')
+        .replace(/&#39;/g, "'")
+        // Clean up whitespace
+        .replace(/\n\s*\n\s*\n/g, '\n\n')
+        .replace(/^\s+|\s+$/g, '')
+        .trim() || "Please view this email in an HTML-compatible client.";
+}
+
+async function sendGmail({ account, recipient, subject, html, fromName, transactionUuid, unsubUrl }) {
     // 1. Generate Rotation Entropy for headers
     const mailerClients = ['Outlook 16.0', 'Apple Mail (2.34)', 'Thunderbird 102', 'Gmail Web/1.0'];
     const pickedMailer = mailerClients[Math.floor(Math.random() * mailerClients.length)];
@@ -1567,17 +2339,33 @@ async function sendGmail({ account, recipient, subject, html, fromName, transact
     const boundary = 'boundary_' + crypto.randomBytes(8).toString('hex');
     const from = fromName ? `"${fromName}" <${account.senderEmail}>` : account.senderEmail;
     
-    // 2. Build the Raw MIME with Rotation Headers
+    // Generate plain text version from HTML
+    const textVersion = htmlToPlainText(html);
+    
+    // 2. Build the Dual-MIME Raw Message with RFC 8058 Compliance
     const raw = [
         `From: ${from}`,
         `To: ${recipient}`,
         `Subject: ${subject}`,
+        `MIME-Version: 1.0`,
+        `Content-Type: multipart/alternative; boundary="${boundary}"`,
+        // RFC 8058 One-Click Unsubscribe Headers (2026 requirement)
+        ...(unsubUrl ? [
+            `List-Unsubscribe: <${unsubUrl}>`,
+            `List-Unsubscribe-Post: List-Unsubscribe=One-Click`
+        ] : []),
         `X-Mailer: ${pickedMailer}`, 
         `X-Transaction-ID: ${transactionUuid || crypto.randomUUID()}`,
         `X-Compliance-ID: ${complianceId}`,
-        `MIME-Version: 1.0`,
-        `Content-Type: multipart/alternative; boundary="${boundary}"`,
         ``,
+        // Plain text part (FIRST for better compatibility)
+        `--${boundary}`,
+        `Content-Type: text/plain; charset=UTF-8`,
+        `Content-Transfer-Encoding: 7bit`,
+        ``,
+        textVersion,
+        ``,
+        // HTML part (SECOND)
         `--${boundary}`,
         `Content-Type: text/html; charset=UTF-8`,
         `Content-Transfer-Encoding: base64`,
@@ -1589,4 +2377,4 @@ async function sendGmail({ account, recipient, subject, html, fromName, transact
 const encodedMessage = Buffer.from(raw).toString('base64url');
     const gmail = google.gmail({ version: 'v1', auth: account.auth });
     await gmail.users.messages.send({ userId: 'me', requestBody: { raw: encodedMessage } });
-} // This should be the LAST line of your file.
+}

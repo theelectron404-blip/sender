@@ -4,7 +4,7 @@ const app = require('./app');
 const { setIo } = require('./app');
 const bounceMonitor = require('./services/bounceMonitor');
 
-const BASE_PORT = Number.parseInt(process.env.PORT || '3000', 10);
+const BASE_PORT = Number.parseInt(process.env.PORT || '3005', 10);
 const MAX_PORT_RETRIES = 20;
 
 const server = http.createServer(app);
