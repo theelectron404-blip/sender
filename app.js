@@ -2140,7 +2140,7 @@ app.get('/api/gmail/auth/:appId', (req, res) => {
         const oauth2Client = createOAuth2Client(app, req);
         const url = oauth2Client.generateAuthUrl({
             access_type: 'offline',
-            prompt: 'consent',
+            prompt: 'select_account consent',
             scope: [
                 'https://www.googleapis.com/auth/gmail.send',
                 'https://www.googleapis.com/auth/gmail.readonly',
@@ -2167,7 +2167,7 @@ app.get('/api/gmail/auth', (req, res) => {
         const oauth2Client = createOAuth2Client(app, req);
         const url = oauth2Client.generateAuthUrl({
             access_type: 'offline',
-            prompt: 'consent',
+            prompt: 'select_account consent',
             scope: [
                 'https://www.googleapis.com/auth/gmail.send',
                 'https://www.googleapis.com/auth/gmail.readonly',
