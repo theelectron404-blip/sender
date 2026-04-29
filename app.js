@@ -817,21 +817,25 @@ app.get('/go/:id', (req, res) => {
         return res.redirect(302, _globalBotSafeUrl); 
     }
 
-    // Real human: count the click and redirect to real URL
+    // Real human: count the click and redirect to human destination (if set) or real URL
     entry.clicks++;
     entry.lastClick = Date.now();
     _saveClickLog();
 
+    // Use humanDefaultUrl if set, otherwise use original URL
+    const finalDestination = global._humanDefaultUrl || entry.url;
+
     if (io) io.emit('link:click', { 
         id: req.params.id, 
         url: entry.url, 
+        finalDestination: finalDestination,
         domain: entry.domain, 
         clicks: entry.clicks, 
         timestamp: Date.now() 
     });
 
-    console.log(`[ClickTrack] Human click on ${req.params.id} → ${entry.url}`);
-    return res.redirect(302, entry.url);
+    console.log(`[ClickTrack] Human click on ${req.params.id} → ${finalDestination} (original: ${entry.url})`);
+    return res.redirect(302, finalDestination);
 });
 
 // Test endpoint for crawler trap (for debugging)
