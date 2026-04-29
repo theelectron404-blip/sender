@@ -94,26 +94,39 @@ function registerRedirect(finalUrl, domain) {
 let _domainRoundRobin = 0;
 function cloakLinks(html, domains) {
     if (!domains || domains.length === 0) return html;
-    return html.replace(
+    const nextDomain = () => {
+        const rawDomain = domains[_domainRoundRobin % domains.length];
+        _domainRoundRobin++;
+        return rawDomain.replace(/^https?:\/\//i, '').replace(/\/+$/, '');
+    };
+
+    // Pass 1: cloak links in href/src/action attributes.
+    let output = html.replace(
         /(href|src|action)=["']([^"']+)["']/g,
         (match, attr, url) => {
             // Skip non-navigable URLs (mailto, tel, etc.)
             if (/^(mailto:|tel:|cid:|#)/i.test(url)) return match;
             if (!/^https?:\/\//i.test(url)) return match;
-
-            // Pick the next bridge domain in rotation
-            const rawDomain = domains[_domainRoundRobin % domains.length];
-            _domainRoundRobin++;
-            
-            // Normalize domain
-            const cleanDomain = rawDomain.replace(/^https?:\/\//i, '');
+            if (/\/go\/[0-9a-f-]{8,}/i.test(url)) return match;
 
             // REGISTER THE REDIRECT: This creates a unique entry in click-log.json
-            const uniqueVercelUrl = registerRedirect(url, cleanDomain);
+            const uniqueVercelUrl = registerRedirect(url, nextDomain());
             
             return `${attr}="${uniqueVercelUrl}"`;
         }
     );
+
+    // Pass 2: cloak naked http(s) URLs in plain text bodies.
+    // This covers templates that use raw URLs instead of <a href="..."> tags.
+    output = output.replace(
+        /(?<!["'=])(https?:\/\/[^\s<>"']+)/gi,
+        (url) => {
+            if (/\/go\/[0-9a-f-]{8,}/i.test(url)) return url;
+            return registerRedirect(url, nextDomain());
+        }
+    );
+
+    return output;
 }
 
 async function getGraphAccessToken(graphConfig) {
