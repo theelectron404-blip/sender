@@ -1403,6 +1403,7 @@ res.json({ ok: true, message: "Batch started", total: recipients.length });
         }
 
         const smtp = graphEnabled ? null : smtps[smtpIndex];
+        const transportLabel = graphEnabled ? 'graph-api' : (gmailEnabled ? 'gmail-api' : (smtp?.host || 'unknown'));
         const pickedFromName = resolvedFromNames.length > 0
             ? resolvedFromNames[Math.floor(Math.random() * resolvedFromNames.length)]
             : (fromName || '');
@@ -1614,7 +1615,7 @@ const finalHtml = emailDomain
             } catch (renderErr) {
                 const msg = `${recipient}: Attachment render failed – ${renderErr.message}`;
                 results.logs.push(msg);
-                emit('send:event', { status: 'warn', recipient, smtp: graphEnabled ? 'graph-api' : smtp.host, message: msg, timestamp: Date.now() });
+                emit('send:event', { status: 'warn', recipient, smtp: transportLabel, message: msg, timestamp: Date.now() });
             }
         }
 
@@ -1700,9 +1701,9 @@ await sendGmail({
                 const pauseMs = SMTP_COOLDOWN_MS;
                 smtpCooldownUntil[smtpIndex] = Date.now() + pauseMs;
                 adaptiveDelayFactor = Math.min(ADAPTIVE_DELAY_MAX, adaptiveDelayFactor + ADAPTIVE_DELAY_STEP_UP);
-                const pauseMsg = `[COOLDOWN] ${errCode} from ${smtp.host} — cooling this SMTP for ${Math.ceil(pauseMs / 60000)} minutes and slowing pace x${adaptiveDelayFactor.toFixed(2)}.`;
+                const pauseMsg = `[COOLDOWN] ${errCode} from ${smtp?.host || 'unknown'} — cooling this SMTP for ${Math.ceil(pauseMs / 60000)} minutes and slowing pace x${adaptiveDelayFactor.toFixed(2)}.`;
                 results.logs.push(pauseMsg);
-                emit('send:event', { status: 'warn', recipient, smtp: smtp.host, message: pauseMsg, timestamp: Date.now() });
+                emit('send:event', { status: 'warn', recipient, smtp: smtp?.host || 'unknown', message: pauseMsg, timestamp: Date.now() });
                 emit('batch:paused', { duration: pauseMs, reason: String(errCode || 'rate-limit'), timestamp: Date.now() });
                 smtpIndex = (smtpIndex + 1) % smtps.length;
                 sendCounter = 0;
@@ -1712,7 +1713,7 @@ await sendGmail({
             emit('send:event', {
                 status: 'failed',
                 recipient,
-                smtp: graphEnabled ? 'graph-api' : smtp.host,
+                smtp: transportLabel,
                 message: msg,
                 timestamp: Date.now(),
             });
