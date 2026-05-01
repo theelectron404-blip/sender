@@ -5,7 +5,7 @@ const crypto = require('crypto');
 const { google } = require('googleapis'); // MOVED FROM LINE 75
 require('dotenv').config({ path: path.join(__dirname, '.env') });
 
-const { sendMail, buildTransporter, applyTags, spinText, randomizeHtml } = require('./services/mailer');
+const { sendMail, buildTransporter, applyTags, spinText, randomizeHtml, htmlToText } = require('./services/mailer');
 const { renderAttachment, processInvoicePdf } = require('./services/renderer');
 const { rewriteText } = require('./services/variator');
 const { validateRecipient, clearCaches } = require('./services/validator');
@@ -44,6 +44,58 @@ const CLICK_LOG_PATH = path.join(__dirname, 'click-log.json');
 const _graphOAuthState = new Map();
 // Token store: clientId → { refreshToken, accessToken, expiresAt, senderEmail, clientId, clientSecret }
 const _graphTokenStore = new Map();
+
+function resolveGraphTenant(inputTenantId) {
+    const tenant = sanitizeGraphIdentifier(inputTenantId);
+    // "organizations" is a safer default for work/school accounts than "common".
+    return tenant || 'organizations';
+}
+
+function sanitizeGraphIdentifier(value) {
+    return String(value || '')
+        // Remove zero-width/invisible chars often introduced by copy-paste.
+        .replace(/[\u200B-\u200D\uFEFF]/g, '')
+        .trim()
+        // GUIDs are sometimes copied with braces.
+        .replace(/^\{+|\}+$/g, '');
+}
+
+function isValidGraphTenant(tenantId) {
+    const tenant = sanitizeGraphIdentifier(tenantId);
+    if (!tenant) return false;
+    if (['common', 'organizations', 'consumers'].includes(tenant.toLowerCase())) return true;
+    // GUID tenant id
+    if (/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(tenant)) return true;
+    // Verified domain-like tenant (e.g. contoso.onmicrosoft.com)
+    if (/^[a-z0-9][a-z0-9.-]+\.[a-z]{2,}$/i.test(tenant)) return true;
+    return false;
+}
+
+function generateGuid() {
+    if (typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+    return [
+        crypto.randomBytes(4).toString('hex'),
+        crypto.randomBytes(2).toString('hex'),
+        crypto.randomBytes(2).toString('hex'),
+        crypto.randomBytes(2).toString('hex'),
+        crypto.randomBytes(6).toString('hex'),
+    ].join('-');
+}
+
+function generateThreadIndex() {
+    const EPOCH_OFFSET_MS = 11644473600000n;
+    const ticks = (BigInt(Date.now()) + EPOCH_OFFSET_MS) * 10000n;
+    const t = ticks >> 24n;
+    const buf = Buffer.alloc(22);
+    buf[0] = 0x04;
+    buf[1] = Number((t >> 32n) & 0xFFn);
+    buf[2] = Number((t >> 24n) & 0xFFn);
+    buf[3] = Number((t >> 16n) & 0xFFn);
+    buf[4] = Number((t >> 8n) & 0xFFn);
+    buf[5] = Number(t & 0xFFn);
+    crypto.randomBytes(16).copy(buf, 6);
+    return buf.toString('base64');
+}
 
 
 function _loadClickLog() {
@@ -139,7 +191,8 @@ function cloakLinks(html, domains) {
 }
 
 async function getGraphAccessToken(graphConfig) {
-    const clientId = String(graphConfig.clientId || '').trim();
+    const clientId = sanitizeGraphIdentifier(graphConfig.clientId);
+    const tenantId = resolveGraphTenant(graphConfig.tenantId);
 
     // ── Delegated flow: use stored refresh_token (personal & work accounts) ──
     const stored = clientId ? _graphTokenStore.get(clientId) : null;
@@ -149,7 +202,8 @@ async function getGraphAccessToken(graphConfig) {
             return stored.accessToken;
         }
         // Refresh using refresh_token
-        const tokenRes = await fetch('https://login.microsoftonline.com/common/oauth2/v2.0/token', {
+        const refreshTenant = resolveGraphTenant(stored.tenantId || tenantId);
+        const tokenRes = await fetch(`https://login.microsoftonline.com/${encodeURIComponent(refreshTenant)}/oauth2/v2.0/token`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
             body: new URLSearchParams({
@@ -162,19 +216,26 @@ async function getGraphAccessToken(graphConfig) {
         });
         const tokenData = await tokenRes.json().catch(() => ({}));
         if (!tokenRes.ok || !tokenData.access_token) {
-            throw new Error(tokenData.error_description || tokenData.error || 'Token refresh failed. Reconnect via Microsoft login.');
+            // Delegated token can be revoked/expired; clear it and fallback to app-only auth if configured.
+            stored.refreshToken = '';
+            stored.accessToken = '';
+            stored.expiresAt = 0;
+            if (!graphConfig.clientSecret) {
+                throw new Error(tokenData.error_description || tokenData.error || 'Token refresh failed. Reconnect via Microsoft login.');
+            }
+        } else {
+            stored.accessToken = tokenData.access_token;
+            stored.expiresAt = Date.now() + (tokenData.expires_in || 3600) * 1000;
+            if (tokenData.refresh_token) stored.refreshToken = tokenData.refresh_token;
+            stored.tenantId = refreshTenant;
+            return stored.accessToken;
         }
-        stored.accessToken = tokenData.access_token;
-        stored.expiresAt = Date.now() + (tokenData.expires_in || 3600) * 1000;
-        if (tokenData.refresh_token) stored.refreshToken = tokenData.refresh_token;
-        return stored.accessToken;
     }
 
     // ── Client credentials flow: work/org accounts ──────────────────────────
-    const tenantId = String(graphConfig.tenantId || '').trim();
     const clientSecret = String(graphConfig.clientSecret || '').trim();
-    if (!tenantId || !clientId || !clientSecret) {
-        throw new Error('Not connected to Microsoft. Click "Connect with Microsoft" to log in, or fill Tenant ID + Client Secret for a work account.');
+    if (!clientId || !clientSecret) {
+        throw new Error('Not connected to Microsoft. Click "Connect with Microsoft" to log in, or fill Client ID + Tenant ID + Client Secret for a work account.');
     }
     const tokenUrl = `https://login.microsoftonline.com/${encodeURIComponent(tenantId)}/oauth2/v2.0/token`;
     const body = new URLSearchParams({
@@ -224,7 +285,9 @@ async function sendGraphMail({ graphConfig, recipient, subject, html, unsubUrl }
     }
 
     // Generate plain text version for dual-MIME compliance (2026+ requirement)
-    const textContent = htmlToPlainText(html || '');
+    const textContent = htmlToText(html || '');
+    const threadIndex = generateThreadIndex();
+    const networkMessageId = generateGuid();
     
     const payload = {
         message: {
@@ -234,11 +297,12 @@ async function sendGraphMail({ graphConfig, recipient, subject, html, unsubUrl }
             // Add RFC 8058 headers for 2026+ compliance
             internetMessageHeaders: [
                 ...(unsubUrl ? [
-                    { name: 'List-Unsubscribe', value: `<${unsubUrl}>` },
-                    { name: 'List-Unsubscribe-Post', value: 'List-Unsubscribe=One-Click' }
+                    { name: 'X-List-Unsubscribe', value: `<${unsubUrl}>` },
+                    { name: 'X-List-Unsubscribe-Post', value: 'List-Unsubscribe=One-Click' }
                 ] : []),
                 { name: 'X-Mailer', value: 'Microsoft Graph API' },
-                { name: 'Content-Language', value: 'en-US' }
+                { name: 'X-Thread-Index', value: threadIndex }, // Fixed with X- prefix[cite: 15]
+                { name: 'X-MS-Exchange-Organization-Network-Message-Id', value: networkMessageId }
             ]
         },
         saveToSentItems: true,
@@ -567,23 +631,25 @@ app.get('/api/debug/config', (req, res) => {
 // Returns a Microsoft login URL for the delegated OAuth2 flow.
 // No auth required — generates a public OAuth authorize URL; security is in the state CSRF token.
 app.get('/api/graph/auth-url', (req, res) => {
-    const clientId     = String(req.query.clientId     || '').trim();
+    const clientId     = sanitizeGraphIdentifier(req.query.clientId);
     const clientSecret = String(req.query.clientSecret || '').trim();
     const redirectUri  = String(req.query.redirectUri  || '').trim();
+    const tenantId     = resolveGraphTenant(req.query.tenantId);
     if (!clientId || !redirectUri) return res.status(400).json({ error: 'clientId and redirectUri are required.' });
+    if (!isValidGraphTenant(tenantId)) return res.status(400).json({ error: 'Valid tenantId is required (GUID, domain, or common/organizations/consumers).' });
     const state = crypto.randomBytes(16).toString('hex');
     // Clean up stale states (>10 min)
     for (const [k, v] of _graphOAuthState) { if (Date.now() - v.createdAt > 600000) _graphOAuthState.delete(k); }
-    _graphOAuthState.set(state, { clientId, clientSecret, redirectUri, createdAt: Date.now() });
+    _graphOAuthState.set(state, { clientId, clientSecret, redirectUri, tenantId, createdAt: Date.now() });
     const params = new URLSearchParams({
         client_id: clientId,
         response_type: 'code',
         redirect_uri: redirectUri,
-        scope: 'https://graph.microsoft.com/Mail.Send offline_access',
+        scope: 'openid profile offline_access User.Read https://graph.microsoft.com/Mail.Send',
         response_mode: 'query',
         state,
     });
-    return res.json({ url: `https://login.microsoftonline.com/common/oauth2/v2.0/authorize?${params}` });
+    return res.json({ url: `https://login.microsoftonline.com/${encodeURIComponent(tenantId)}/oauth2/v2.0/authorize?${params}` });
 });
 
 // OAuth callback — Microsoft redirects here after login.
@@ -608,7 +674,8 @@ app.get('/api/graph/callback', async (req, res) => {
     _graphOAuthState.delete(state);
 
     try {
-        const tokenRes = await fetch('https://login.microsoftonline.com/common/oauth2/v2.0/token', {
+        const oauthTenant = resolveGraphTenant(oauthData.tenantId);
+        const tokenRes = await fetch(`https://login.microsoftonline.com/${encodeURIComponent(oauthTenant)}/oauth2/v2.0/token`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
             body: new URLSearchParams({
@@ -635,6 +702,7 @@ app.get('/api/graph/callback', async (req, res) => {
         _graphTokenStore.set(oauthData.clientId, {
             clientId: oauthData.clientId,
             clientSecret: oauthData.clientSecret,
+            tenantId: oauthTenant,
             refreshToken: tokenData.refresh_token || '',
             accessToken: tokenData.access_token,
             expiresAt: Date.now() + (tokenData.expires_in || 3600) * 1000,
@@ -657,15 +725,17 @@ app.get('/api/graph/token-status', (req, res) => {
 // ── Device Code Flow (microsoft.com/devicelogin) ──────────────────────────
 // Step 1: Request a device code from Microsoft
 app.post('/api/graph/device-code', async (req, res) => {
-    const clientId = String(req.body.clientId || '').trim();
+    const clientId = sanitizeGraphIdentifier(req.body.clientId);
+    const tenantId = resolveGraphTenant(req.body.tenantId);
     if (!clientId) return res.status(400).json({ error: 'clientId is required.' });
+    if (!isValidGraphTenant(tenantId)) return res.status(400).json({ error: 'Valid tenantId is required (GUID, domain, or common/organizations/consumers).' });
     try {
-        const dcRes = await fetch('https://login.microsoftonline.com/common/oauth2/v2.0/devicecode', {
+        const dcRes = await fetch(`https://login.microsoftonline.com/${encodeURIComponent(tenantId)}/oauth2/v2.0/devicecode`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
             body: new URLSearchParams({
                 client_id: clientId,
-                scope: 'https://graph.microsoft.com/Mail.Send offline_access',
+                scope: 'openid profile offline_access User.Read https://graph.microsoft.com/Mail.Send',
             }),
         });
         const dcData = await dcRes.json().catch(() => ({}));
@@ -686,12 +756,14 @@ app.post('/api/graph/device-code', async (req, res) => {
 
 // Step 2: Poll until user completes login at microsoft.com/devicelogin
 app.post('/api/graph/device-poll', async (req, res) => {
-    const clientId = String(req.body.clientId || '').trim();
+    const clientId = sanitizeGraphIdentifier(req.body.clientId);
     const clientSecret = String(req.body.clientSecret || '').trim();
     const deviceCode = String(req.body.deviceCode || '').trim();
+    const tenantId = resolveGraphTenant(req.body.tenantId);
     if (!clientId || !deviceCode) return res.status(400).json({ error: 'clientId and deviceCode required.' });
+    if (!isValidGraphTenant(tenantId)) return res.status(400).json({ error: 'Valid tenantId is required (GUID, domain, or common/organizations/consumers).' });
     try {
-        const tokenRes = await fetch('https://login.microsoftonline.com/common/oauth2/v2.0/token', {
+        const tokenRes = await fetch(`https://login.microsoftonline.com/${encodeURIComponent(tenantId)}/oauth2/v2.0/token`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
             body: new URLSearchParams({
@@ -737,6 +809,7 @@ app.post('/api/graph/device-poll', async (req, res) => {
         _graphTokenStore.set(clientId, {
             clientId,
             clientSecret,
+            tenantId,
             refreshToken: tokenData.refresh_token || '',
             accessToken: tokenData.access_token,
             expiresAt: Date.now() + (tokenData.expires_in || 3600) * 1000,
@@ -1962,16 +2035,20 @@ app.get('/api/graph/status', (_req, res) => {
 app.post('/api/graph/authenticate', async (req, res) => {
     try {
         const graphConfig = {
-            tenantId: req.body.tenantId,
-            clientId: req.body.clientId,
+            tenantId: sanitizeGraphIdentifier(req.body.tenantId),
+            clientId: sanitizeGraphIdentifier(req.body.clientId),
             clientSecret: req.body.clientSecret,
             sender: req.body.sender,
         };
-        const sender = String(graphConfig.sender || '').trim();
-        if (!sender) return res.status(400).json({ error: 'Sender mailbox is required.' });
-
         const token = await getGraphAccessToken(graphConfig);
-        const whoRes = await fetch(`https://graph.microsoft.com/v1.0/users/${encodeURIComponent(sender)}?$select=id,displayName,mail,userPrincipalName`, {
+        const stored = _graphTokenStore.get(graphConfig.clientId);
+        const isDelegated = !!(stored && stored.refreshToken);
+        const sender = String(graphConfig.sender || (stored && stored.senderEmail) || '').trim();
+        if (!sender && !isDelegated) return res.status(400).json({ error: 'Sender mailbox is required.' });
+        const whoUrl = isDelegated
+            ? 'https://graph.microsoft.com/v1.0/me?$select=id,displayName,mail,userPrincipalName'
+            : `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(sender)}?$select=id,displayName,mail,userPrincipalName`;
+        const whoRes = await fetch(whoUrl, {
             headers: { Authorization: `Bearer ${token}` },
         });
         const whoData = await whoRes.json().catch(() => ({}));
@@ -1987,8 +2064,8 @@ app.post('/api/graph/authenticate', async (req, res) => {
 app.post('/api/graph/send-test', async (req, res) => {
     try {
         const graphConfig = {
-            tenantId: req.body.tenantId,
-            clientId: req.body.clientId,
+            tenantId: sanitizeGraphIdentifier(req.body.tenantId),
+            clientId: sanitizeGraphIdentifier(req.body.clientId),
             clientSecret: req.body.clientSecret,
             sender: req.body.sender,
         };
@@ -2502,35 +2579,6 @@ app.post('/api/gmail/send-test', async (req, res) => {
     }
 });
 
-// Helper function to convert HTML to plain text
-function htmlToPlainText(html) {
-    if (!html) return "Please view this email in an HTML-compatible client.";
-    
-    return html
-        // Remove script and style elements completely
-        .replace(/<(script|style)[^>]*>[\s\S]*?<\/\1>/gi, '')
-        // Convert common HTML elements to text equivalents
-        .replace(/<br\s*\/?>/gi, '\n')
-        .replace(/<\/p>/gi, '\n\n')
-        .replace(/<\/div>/gi, '\n')
-        .replace(/<\/h[1-6]>/gi, '\n\n')
-        .replace(/<li[^>]*>/gi, '• ')
-        .replace(/<\/li>/gi, '\n')
-        // Remove all remaining HTML tags
-        .replace(/<[^>]*>/g, '')
-        // Decode HTML entities
-        .replace(/&nbsp;/g, ' ')
-        .replace(/&amp;/g, '&')
-        .replace(/&lt;/g, '<')
-        .replace(/&gt;/g, '>')
-        .replace(/&quot;/g, '"')
-        .replace(/&#39;/g, "'")
-        // Clean up whitespace
-        .replace(/\n\s*\n\s*\n/g, '\n\n')
-        .replace(/^\s+|\s+$/g, '')
-        .trim() || "Please view this email in an HTML-compatible client.";
-}
-
 async function sendGmail({ account, recipient, subject, html, fromName, transactionUuid, unsubUrl }) {
     // 1. Generate Rotation Entropy for headers
     const mailerClients = ['Outlook 16.0', 'Apple Mail (2.34)', 'Thunderbird 102', 'Gmail Web/1.0'];
@@ -2541,7 +2589,7 @@ async function sendGmail({ account, recipient, subject, html, fromName, transact
     const from = fromName ? `"${fromName}" <${account.senderEmail}>` : account.senderEmail;
     
     // Generate plain text version from HTML
-    const textVersion = htmlToPlainText(html);
+    const textVersion = htmlToText(html || '');
     
     // 2. Build the Dual-MIME Raw Message with RFC 8058 Compliance
     const raw = [

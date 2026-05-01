@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -905,7 +905,7 @@ details[open] summary{margin-bottom:13px}
         <div class="card">
           <div class="lbl" style="margin-bottom:12px">Work / Organization Account <span class="hint">— Azure AD tenant (application permissions)</span></div>
           <div class="g2">
-            <div class="field"><div class="lbl">Tenant ID</div><input class="inp" id="graphTenantId" type="text" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" oninput="saveField(this.id)"></div>
+            <div class="field"><div class="lbl">Tenant ID (Default: common)</div><input class="inp" id="graphTenantId" type="text" value="common" placeholder="common or tenant GUID" oninput="saveField(this.id)"></div>
             <div class="field"><div class="lbl">Sender Mailbox</div><input class="inp" id="graphSender" type="email" placeholder="sender@yourdomain.com" oninput="saveField(this.id)"></div>
           </div>
           <div class="btn-row">
@@ -2595,12 +2595,19 @@ function toggleGraph() {
 
 var _graphPool = JSON.parse(localStorage.getItem('_graphPool') || '[]');
 
+function sanitizeGraphId(v) {
+  return String(v || '')
+    .replace(/[\u200B-\u200D\uFEFF]/g, '')
+    .trim()
+    .replace(/^\{+|\}+$/g, '');
+}
+
 function readGraphConfigFromUi() {
   return {
     enabled: !!document.getElementById('graphEnabled').checked,
     accounts: _graphPool.length ? _graphPool : [{
-      tenantId: (document.getElementById('graphTenantId').value || '').trim(),
-      clientId: (document.getElementById('graphClientId').value || '').trim(),
+      tenantId: sanitizeGraphId(document.getElementById('graphTenantId').value || ''),
+      clientId: sanitizeGraphId(document.getElementById('graphClientId').value || ''),
       clientSecret: (document.getElementById('graphClientSecret').value || '').trim(),
       sender: (document.getElementById('graphSender').value || '').trim(),
     }],
@@ -2609,8 +2616,8 @@ function readGraphConfigFromUi() {
 
 function graphAddToPool() {
   var acct = {
-    tenantId: (document.getElementById('graphTenantId').value || '').trim(),
-    clientId: (document.getElementById('graphClientId').value || '').trim(),
+    tenantId: sanitizeGraphId(document.getElementById('graphTenantId').value || ''),
+    clientId: sanitizeGraphId(document.getElementById('graphClientId').value || ''),
     clientSecret: (document.getElementById('graphClientSecret').value || '').trim(),
     sender: (document.getElementById('graphSender').value || '').trim(),
   };
@@ -2700,7 +2707,9 @@ async function gmailSendTest() {
 var _graphPollTimer = null;
 
 async function graphDeviceCodeStart() {
-  var clientId = (document.getElementById('graphClientId').value || '').trim();
+  var tenantRaw = (document.getElementById('graphTenantId').value || '').trim();
+  var tenantId = sanitizeGraphId(tenantRaw) || 'common';
+  var clientId = sanitizeGraphId(document.getElementById('graphClientId').value || '');
   var clientSecret = (document.getElementById('graphClientSecret').value || '').trim();
   if (!clientId) { showToast('Enter your Client ID first', 'warn'); return; }
 
@@ -2714,7 +2723,7 @@ async function graphDeviceCodeStart() {
     var res = await fetch('/api/graph/device-code', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ clientId: clientId })
+      body: JSON.stringify({ tenantId: tenantId, clientId: clientId })
     });
     var data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Failed to get device code');
@@ -2736,7 +2745,7 @@ async function graphDeviceCodeStart() {
         var pr = await fetch('/api/graph/device-poll', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ clientId: clientId, clientSecret: clientSecret, deviceCode: deviceCode })
+          body: JSON.stringify({ tenantId: tenantId, clientId: clientId, clientSecret: clientSecret, deviceCode: deviceCode })
         });
         var pd = await pr.json();
         if (pd.status === 'pending') return; // keep waiting
@@ -2773,7 +2782,8 @@ async function graphDeviceCodeStart() {
 
 async function graphAuthenticate() {
   var cfg = readGraphConfigFromUi();
-  if (!cfg.tenantId || !cfg.clientId || !cfg.clientSecret || !cfg.sender) {
+  var acct = (cfg.accounts && cfg.accounts[0]) ? cfg.accounts[0] : {};
+  if (!acct.tenantId || !acct.clientId || !acct.clientSecret || !acct.sender) {
     showToast('Graph (work): fill Tenant ID, Client ID, Secret, and Sender mailbox', 'warn');
     return;
   }
@@ -2783,11 +2793,11 @@ async function graphAuthenticate() {
     var res = await fetch('/api/graph/authenticate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(cfg)
+      body: JSON.stringify(acct)
     });
     var data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Auth failed');
-    if (st) st.textContent = '✓ Connected: ' + (data.sender || cfg.sender);
+    if (st) st.textContent = '✓ Connected: ' + (data.sender || acct.sender);
     showToast('Graph (work) authenticated', 'ok');
   } catch (e) {
     if (st) st.textContent = 'Auth failed';
@@ -2797,6 +2807,7 @@ async function graphAuthenticate() {
 
 async function graphSendTest() {
   var cfg = readGraphConfigFromUi();
+  var acct = (cfg.accounts && cfg.accounts[0]) ? cfg.accounts[0] : {};
   var first = parseRecipients(document.getElementById('recipients').value || '')[0];
   var to = typeof first === 'string' ? first : (first && first.email ? first.email : '');
   if (!to) {
@@ -2808,10 +2819,10 @@ async function graphSendTest() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        tenantId: cfg.tenantId,
-        clientId: cfg.clientId,
-        clientSecret: cfg.clientSecret,
-        sender: cfg.sender,
+        tenantId: acct.tenantId,
+        clientId: acct.clientId,
+        clientSecret: acct.clientSecret,
+        sender: acct.sender,
         recipient: to,
         subject: 'Graph API test',
         html: '<p>Graph API test mail from MailEngine.</p>'

@@ -767,6 +767,6 @@ function randomizeHtml(html) {
 }
 
 // FIX: Restored the missing exports so app.js doesn't crash!
-module.exports = { sendMail, buildTransporter, applyTags, spinText, randomizeHtml };;
+module.exports = { sendMail, buildTransporter, applyTags, spinText, randomizeHtml, htmlToText };
 
 
