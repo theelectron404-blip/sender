@@ -2616,7 +2616,12 @@ async function sendGmail({ account, recipient, subject, html, fromName, transact
         messageIdProviderHost: 'gmail.com',
     });
 
-    const encodedMessage = Buffer.from(raw).toString('base64url');
+    // Gmail users.messages.send: `raw` must be the entire RFC 822 message as one
+    // web-safe Base64 (Base64URL, no line breaks) string — not standard Base64.
+    const encodedMessage = Buffer.from(raw, 'utf8').toString('base64url');
     const gmail = google.gmail({ version: 'v1', auth: account.auth });
-    await gmail.users.messages.send({ userId: 'me', requestBody: { raw: encodedMessage } });
+    await gmail.users.messages.send({
+        userId: 'me',
+        requestBody: { raw: encodedMessage },
+    });
 }
