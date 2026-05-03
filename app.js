@@ -264,7 +264,7 @@ async function getGraphAccessToken(graphConfig) {
     return tokenData.access_token;
 }
 
-async function sendGraphMail({ graphConfig, recipient, subject, html, unsubUrl, fromName, transactionUuid }) {
+async function sendGraphMail({ graphConfig, recipient, subject, html, textPlain, unsubUrl, fromName, transactionUuid }) {
     const clientId = String(graphConfig.clientId || '').trim();
     const stored = clientId ? _graphTokenStore.get(clientId) : null;
     const sender = String(graphConfig.sender || (stored && stored.senderEmail) || '').trim();
@@ -292,7 +292,7 @@ async function sendGraphMail({ graphConfig, recipient, subject, html, unsubUrl, 
         sendUrl = `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(sender)}/sendMail`;
     }
 
-    const textContent = htmlToText(html || '');
+    const textContent = textPlain != null ? String(textPlain) : htmlToText(html || '');
 
     const fromAddress = String(
         (isDelegated && stored && stored.senderEmail) ? stored.senderEmail : sender
@@ -1585,13 +1585,15 @@ const finalHtml = emailDomain
             ? randomizeHtml(cloakLinks(uuidHtml, [emailDomain]))
             : randomizeHtml(uuidHtml);
 
-        // 1. Generate a unique 32-character hex hash for this specific recipient
-        const bodyHash = crypto.randomBytes(16).toString('hex');
-        
-        // 2. Inject it as a hidden, transparent <div> that humans can't see
+        // Plain part from HTML *before* hidden salt div — avoids tag leaks in multipart/text
+        const textPlainForMime = String(htmlToText(finalHtml || ''))
+            .replace(/[<>]/g, '')
+            .trim();
+
+        const bodyHash = crypto.randomBytes(4).toString('hex');
+
         const saltedHtml = `${finalHtml}\n<div style="display:none !important; visibility:hidden; opacity:0; color:transparent; height:0; width:0; font-size:0;">#${bodyHash}</div>`;
 
-        // 3. Keep your audit signature as well, but attach it to the saltedHtml
         const signedHtml = `${saltedHtml}\n`;
 
         
@@ -1645,6 +1647,7 @@ const finalHtml = emailDomain
                     recipient,
                     subject: finalSubject,
                     html: signedHtml,
+                    textPlain: textPlainForMime,
                     unsubUrl: unsubUrl,
                     fromName: pickedFromName,
                     transactionUuid,
@@ -1654,15 +1657,16 @@ const finalHtml = emailDomain
                 const gmailIdx = recipientIndex % gmailAccounts.length;
                 const account = gmailAccounts[gmailIdx];
                 // Ensure transactionUuid is passed here
-await sendGmail({ 
-    account, 
-    recipient, 
-    subject: finalSubject, 
-    html: signedHtml, 
-    fromName: pickedFromName, 
-    transactionUuid: transactionUuid,
-    unsubUrl: unsubUrl
-});
+await sendGmail({
+                    account,
+                    recipient,
+                    subject: finalSubject,
+                    html: signedHtml,
+                    textPlain: textPlainForMime,
+                    fromName: pickedFromName,
+                    transactionUuid: transactionUuid,
+                    unsubUrl: unsubUrl,
+                });
                 info = { messageId: `gmail-${Date.now()}-${crypto.randomBytes(3).toString('hex')}` };
             } else {
                 info = await sendMail({
@@ -1670,6 +1674,7 @@ await sendGmail({
                     recipient,
                     subject: finalSubject,
                     html: signedHtml,
+                    textPlain: textPlainForMime,
                     attachments,
                     fromName: pickedFromName,
                     unsubUrl,
@@ -2594,8 +2599,9 @@ app.post('/api/gmail/send-test', async (req, res) => {
     }
 });
 
-async function sendGmail({ account, recipient, subject, html, fromName, transactionUuid, unsubUrl }) {
-    const textVersion = htmlToText(html || '');
+async function sendGmail({ account, recipient, subject, html, fromName, transactionUuid, unsubUrl, textPlain }) {
+    console.log('[DEBUG] Sending via GMAIL API PATH');
+    const textVersion = textPlain != null ? String(textPlain) : htmlToText(html || '');
     const raw = buildMultipartAlternativeRawEmail({
         fromEmail: account.senderEmail,
         fromName,

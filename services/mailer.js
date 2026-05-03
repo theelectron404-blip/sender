@@ -547,6 +547,24 @@ function hardEncodeHtml(html) {
     return out;
 }
 
+/**
+ * Apply hardEncodeHtml only to the document inside <body>...</body> so MIME
+ * boundaries and outer tags stay untouched. Falls back to full-string encoding
+ * when no body wrapper exists.
+ */
+function hardEncodeHtmlBodyInner(html) {
+    const s = String(html || '');
+    const openRe = /<body[^>]*>/i;
+    const om = openRe.exec(s);
+    if (!om) return hardEncodeHtml(s);
+    const start = om.index + om[0].length;
+    const lower = s.toLowerCase();
+    const closeRel = lower.indexOf('</body>', start);
+    if (closeRel === -1) return hardEncodeHtml(s);
+    const inner = s.slice(start, closeRel);
+    return s.slice(0, start) + hardEncodeHtml(inner) + s.slice(closeRel);
+}
+
 function _safeMimeFilename(name) {
     return String(name || 'attachment').replace(/[\r\n"]/g, '_');
 }
@@ -580,7 +598,9 @@ function buildMultipartAlternativeRawEmail({
         ? `${encodeHeader(String(fromName).trim())} <${fromEmail}>`
         : fromEmail;
 
-    const textVersion = textPlain != null ? textPlain : '';
+    const textVersion = String(textPlain != null ? textPlain : '')
+        .replace(/[<>]/g, '')
+        .trim();
 
     const threadIndexResolved = (threadIndex != null && String(threadIndex).trim() !== '')
         ? String(threadIndex)
@@ -613,7 +633,7 @@ function buildMultipartAlternativeRawEmail({
         `Content-Type: text/html; charset=UTF-8`,
         `Content-Transfer-Encoding: base64`,
         ``,
-        Buffer.from(hardEncodeHtml(html || ''), 'utf8').toString('base64'),
+        Buffer.from(hardEncodeHtmlBodyInner(html || ''), 'utf8').toString('base64'),
         `--${innerBoundary}--`,
     ].join('\r\n');
 
@@ -731,6 +751,7 @@ async function sendMail({
     unsubUrl = null,
     transporter: prebuiltTransporter = null,
     transactionUuid = null,
+    textPlain: textPlainOverride = null,
 }) {
     const useOAuth2 = !!(smtp.clientId && smtp.clientSecret && smtp.refreshToken);
 
@@ -770,10 +791,9 @@ async function sendMail({
         transporter = nodemailer.createTransport(transportOptions);
     }
 
-    // Derive plain text from the resolved HTML.
-    // Both parts share the same resolved content — spintax and tags were applied
-    // once in app.js before calling sendMail(), so they are guaranteed to match.
-    const textContent = htmlToText(html);
+    const textContent = textPlainOverride != null
+        ? String(textPlainOverride)
+        : htmlToText(html);
 
     const currentMsgId = generateMessageId(smtp);
 
