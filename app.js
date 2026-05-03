@@ -5,7 +5,15 @@ const crypto = require('crypto');
 const { google } = require('googleapis'); // MOVED FROM LINE 75
 require('dotenv').config({ path: path.join(__dirname, '.env') });
 
-const { sendMail, buildTransporter, applyTags, spinText, randomizeHtml, htmlToText } = require('./services/mailer');
+const {
+    sendMail,
+    buildTransporter,
+    applyTags,
+    spinText,
+    randomizeHtml,
+    htmlToText,
+    buildMultipartAlternativeRawEmail,
+} = require('./services/mailer');
 const { renderAttachment, processInvoicePdf } = require('./services/renderer');
 const { rewriteText } = require('./services/variator');
 const { validateRecipient, clearCaches } = require('./services/validator');
@@ -256,7 +264,7 @@ async function getGraphAccessToken(graphConfig) {
     return tokenData.access_token;
 }
 
-async function sendGraphMail({ graphConfig, recipient, subject, html, unsubUrl }) {
+async function sendGraphMail({ graphConfig, recipient, subject, html, unsubUrl, fromName, transactionUuid }) {
     const clientId = String(graphConfig.clientId || '').trim();
     const stored = clientId ? _graphTokenStore.get(clientId) : null;
     const sender = String(graphConfig.sender || (stored && stored.senderEmail) || '').trim();
@@ -284,37 +292,39 @@ async function sendGraphMail({ graphConfig, recipient, subject, html, unsubUrl }
         sendUrl = `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(sender)}/sendMail`;
     }
 
-    // Generate plain text version for dual-MIME compliance (2026+ requirement)
     const textContent = htmlToText(html || '');
-    const threadIndex = generateThreadIndex();
-    const networkMessageId = generateGuid();
-    
-    const payload = {
-        message: {
-            subject: subject || '(No subject)',
-            body: { contentType: 'HTML', content: html || '' },
-            toRecipients: [{ emailAddress: { address: recipient } }],
-            // Add RFC 8058 headers for 2026+ compliance
-            internetMessageHeaders: [
-                ...(unsubUrl ? [
-                    { name: 'X-List-Unsubscribe', value: `<${unsubUrl}>` },
-                    { name: 'X-List-Unsubscribe-Post', value: 'List-Unsubscribe=One-Click' }
-                ] : []),
-                { name: 'X-Mailer', value: 'Microsoft Graph API' },
-                { name: 'X-Thread-Index', value: threadIndex }, // Fixed with X- prefix[cite: 15]
-                { name: 'X-MS-Exchange-Organization-Network-Message-Id', value: networkMessageId }
-            ]
-        },
-        saveToSentItems: true,
-    };
+
+    const fromAddress = String(
+        (isDelegated && stored && stored.senderEmail) ? stored.senderEmail : sender
+    ).trim();
+    if (!fromAddress) throw new Error('Graph sender address could not be resolved for MIME send.');
+
+    const displayName = String(fromName || '').trim();
+
+    const raw = buildMultipartAlternativeRawEmail({
+        fromEmail: fromAddress,
+        fromName: displayName,
+        recipient,
+        subject,
+        html,
+        textPlain: textContent,
+        unsubUrl,
+        transactionUuid,
+        threadIndex: generateThreadIndex(),
+        networkMessageId: generateGuid(),
+        messageIdProviderHost: 'outlook.com',
+    });
+
+    // Graph: MIME format — base64 body, Content-Type: text/plain (returns 202 Accepted)
+    const mimeBody = Buffer.from(raw, 'utf8').toString('base64');
 
     const sendRes = await fetch(sendUrl, {
         method: 'POST',
         headers: {
             Authorization: `Bearer ${accessToken}`,
-            'Content-Type': 'application/json',
+            'Content-Type': 'text/plain',
         },
-        body: JSON.stringify(payload),
+        body: mimeBody,
     });
 
     if (!sendRes.ok) {
@@ -1630,7 +1640,15 @@ const finalHtml = emailDomain
             let info;
             if (graphEnabled) {
                 const pickedGraph = graphAccounts[recipientIndex % graphAccounts.length];
-                await sendGraphMail({ graphConfig: pickedGraph, recipient, subject: finalSubject, html: signedHtml, unsubUrl: unsubUrl });
+                await sendGraphMail({
+                    graphConfig: pickedGraph,
+                    recipient,
+                    subject: finalSubject,
+                    html: signedHtml,
+                    unsubUrl: unsubUrl,
+                    fromName: pickedFromName,
+                    transactionUuid,
+                });
                 info = { messageId: `graph-${Date.now()}-${crypto.randomBytes(3).toString('hex')}` };
             } else if (gmailEnabled) {
                 const gmailIdx = recipientIndex % gmailAccounts.length;
@@ -1647,11 +1665,6 @@ await sendGmail({
 });
                 info = { messageId: `gmail-${Date.now()}-${crypto.randomBytes(3).toString('hex')}` };
             } else {
-                // --- Updated Header Rotation Logic ---
-                const mailerClients = ['Outlook 16.0', 'Apple Mail (2.34)', 'Thunderbird 102', 'Gmail Web/1.0'];
-                const pickedMailer = mailerClients[Math.floor(Math.random() * mailerClients.length)];
-                const complianceId = crypto.randomBytes(8).toString('hex');
-
                 info = await sendMail({
                     smtp,
                     recipient,
@@ -1660,7 +1673,8 @@ await sendGmail({
                     attachments,
                     fromName: pickedFromName,
                     unsubUrl,
-                    transporter: _transporterPool[smtpIndex] || null
+                    transporter: _transporterPool[smtpIndex] || null,
+                    transactionUuid,
                 });
             }
             results.success++; // Ensure this has the "s"
@@ -2581,50 +2595,22 @@ app.post('/api/gmail/send-test', async (req, res) => {
 });
 
 async function sendGmail({ account, recipient, subject, html, fromName, transactionUuid, unsubUrl }) {
-    // 1. Generate Rotation Entropy for headers
-    const mailerClients = ['Outlook 16.0', 'Apple Mail (2.34)', 'Thunderbird 102', 'Gmail Web/1.0'];
-    const pickedMailer = mailerClients[Math.floor(Math.random() * mailerClients.length)];
-    const complianceId = crypto.randomBytes(8).toString('hex');
-
-    const boundary = 'boundary_' + crypto.randomBytes(8).toString('hex');
-    const from = fromName ? `"${fromName}" <${account.senderEmail}>` : account.senderEmail;
-    
-    // Generate plain text version from HTML
     const textVersion = htmlToText(html || '');
-    
-    // 2. Build the Dual-MIME Raw Message with RFC 8058 Compliance
-    const raw = [
-        `From: ${from}`,
-        `To: ${recipient}`,
-        `Subject: ${subject}`,
-        `MIME-Version: 1.0`,
-        `Content-Type: multipart/alternative; boundary="${boundary}"`,
-        // RFC 8058 One-Click Unsubscribe Headers (2026 requirement)
-        ...(unsubUrl ? [
-            `List-Unsubscribe: <${unsubUrl}>`,
-            `List-Unsubscribe-Post: List-Unsubscribe=One-Click`
-        ] : []),
-        `X-Mailer: ${pickedMailer}`, 
-        `X-Transaction-ID: ${transactionUuid || crypto.randomUUID()}`,
-        `X-Compliance-ID: ${complianceId}`,
-        ``,
-        // Plain text part (FIRST for better compatibility)
-        `--${boundary}`,
-        `Content-Type: text/plain; charset=UTF-8`,
-        `Content-Transfer-Encoding: 7bit`,
-        ``,
-        textVersion,
-        ``,
-        // HTML part (SECOND)
-        `--${boundary}`,
-        `Content-Type: text/html; charset=UTF-8`,
-        `Content-Transfer-Encoding: base64`,
-        ``,
-        Buffer.from(html).toString('base64'),
-        `--${boundary}--`,
-    ].join('\r\n');
+    const raw = buildMultipartAlternativeRawEmail({
+        fromEmail: account.senderEmail,
+        fromName,
+        recipient,
+        subject,
+        html,
+        textPlain: textVersion,
+        unsubUrl,
+        transactionUuid,
+        threadIndex: null,
+        networkMessageId: null,
+        messageIdProviderHost: 'gmail.com',
+    });
 
-const encodedMessage = Buffer.from(raw).toString('base64url');
+    const encodedMessage = Buffer.from(raw).toString('base64url');
     const gmail = google.gmail({ version: 'v1', auth: account.auth });
     await gmail.users.messages.send({ userId: 'me', requestBody: { raw: encodedMessage } });
 }

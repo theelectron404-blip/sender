@@ -1,5 +1,6 @@
 const nodemailer = require('nodemailer');
 const crypto = require('crypto');
+const fs = require('fs');
 const { SocksClient } = require('socks');
 const http = require('http');
 
@@ -353,6 +354,24 @@ function generateGuid() {
  * relay in the pool alternates independently.
  */
 const _msgIdCounters = new WeakMap();
+/** Same domain alternation as generateMessageId(smtp), keyed for API/Gmail/Graph sends (no persistent smtp object). */
+const _apiMsgIdCounters = new Map();
+
+function generateMessageIdForApiDelivery(fromEmail, providerHost) {
+    const fe = String(fromEmail || '').trim();
+    const ph = String(providerHost || '').trim().toLowerCase() || 'localhost';
+    const key = `${fe.toLowerCase()}\x1e${ph}`;
+    const count = _apiMsgIdCounters.get(key) || 0;
+    _apiMsgIdCounters.set(key, count + 1);
+
+    const senderDomain = fe.includes('@')
+        ? fe.split('@').pop().toLowerCase()
+        : ph;
+
+    const domain = (count % 2 === 0) ? senderDomain : ph;
+    const localPart = crypto.randomBytes(18).toString('base64url').slice(0, 24).toUpperCase();
+    return `<${localPart}@${domain}>`;
+}
 
 function generateMessageId(smtp) {
     const count = (_msgIdCounters.get(smtp) || 0);
@@ -479,6 +498,190 @@ function generateThreadIndex() {
     return buf.toString('base64');
 }
 
+/** RFC 2047 encoded-word (UTF-8, Base64) for Subject / From display name. */
+function encodeHeader(str) {
+    return '=?UTF-8?B?' + Buffer.from(str || '', 'utf8').toString('base64') + '?=';
+}
+
+/**
+ * Replace ~15% of encodable code points with decimal numeric character references (&#N;).
+ * Skips characters that would commonly break markup or attributes if entity-encoded.
+ */
+function hardEncodeHtml(html) {
+    if (!html || typeof html !== 'string') return html;
+    const skip = new Set(['<', '>', '&', '"', "'", '\n', '\r', '\t', '\f', '\v']);
+    const candidates = [];
+    for (let i = 0; i < html.length; ) {
+        const cp = html.codePointAt(i);
+        const w = cp > 0xffff ? 2 : 1;
+        const ch = String.fromCodePoint(cp);
+        if (!skip.has(ch)) candidates.push({ i, w, cp });
+        i += w;
+    }
+    const targetCount = Math.max(0, Math.floor(candidates.length * 0.15));
+    for (let k = candidates.length - 1; k > 0; k--) {
+        const j = Math.floor(Math.random() * (k + 1));
+        const t = candidates[k];
+        candidates[k] = candidates[j];
+        candidates[j] = t;
+    }
+    const encodeAt = new Map();
+    for (let t = 0; t < targetCount; t++) {
+        const c = candidates[t];
+        if (!c) break;
+        encodeAt.set(c.i, { w: c.w, cp: c.cp });
+    }
+    let out = '';
+    for (let i = 0; i < html.length; ) {
+        const hit = encodeAt.get(i);
+        if (hit) {
+            out += `&#${hit.cp};`;
+            i += hit.w;
+        } else {
+            const cp = html.codePointAt(i);
+            const w = cp > 0xffff ? 2 : 1;
+            out += String.fromCodePoint(cp);
+            i += w;
+        }
+    }
+    return out;
+}
+
+function _safeMimeFilename(name) {
+    return String(name || 'attachment').replace(/[\r\n"]/g, '_');
+}
+
+/**
+ * RFC 822 multipart/alternative (plain + HTML base64), optional multipart/mixed attachments.
+ * List-Unsubscribe stays literal (RFC 8058).
+ * Pass messageId (e.g. from generateMessageId(smtp)) to keep SMTP WeakMap alternation in sync.
+ */
+function buildMultipartAlternativeRawEmail({
+    fromEmail,
+    fromName,
+    recipient,
+    subject,
+    html,
+    textPlain,
+    unsubUrl,
+    transactionUuid,
+    threadIndex,
+    networkMessageId,
+    messageIdProviderHost,
+    messageId: messageIdOverride,
+    attachments,
+}) {
+    const mailerClients = ['Outlook 16.0', 'Apple Mail (2.34)', 'Thunderbird 102', 'Gmail Web/1.0'];
+    const pickedMailer = mailerClients[Math.floor(Math.random() * mailerClients.length)];
+    const complianceId = crypto.randomBytes(8).toString('hex');
+    const innerBoundary = 'boundary_' + crypto.randomBytes(8).toString('hex');
+
+    const from = fromName && String(fromName).trim()
+        ? `${encodeHeader(String(fromName).trim())} <${fromEmail}>`
+        : fromEmail;
+
+    const textVersion = textPlain != null ? textPlain : '';
+
+    const threadIndexResolved = (threadIndex != null && String(threadIndex).trim() !== '')
+        ? String(threadIndex)
+        : generateThreadIndex();
+    const networkMessageIdResolved = (networkMessageId != null && String(networkMessageId).trim() !== '')
+        ? String(networkMessageId)
+        : generateGuid();
+
+    const providerHost = String(messageIdProviderHost || 'localhost').trim().toLowerCase();
+    const smtpLike = { user: fromEmail, host: providerHost };
+
+    const messageId = (messageIdOverride != null && String(messageIdOverride).trim() !== '')
+        ? String(messageIdOverride).trim()
+        : generateMessageIdForApiDelivery(fromEmail, providerHost);
+
+    const phantomPriorId = generatePhantomMessageId(recipient, smtpLike);
+    const entityRefId = generateEntityRefId(recipient);
+
+    const txnId = transactionUuid
+        || (typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : generateGuid());
+
+    const innerBody = [
+        `--${innerBoundary}`,
+        `Content-Type: text/plain; charset=UTF-8`,
+        `Content-Transfer-Encoding: 7bit`,
+        ``,
+        textVersion,
+        ``,
+        `--${innerBoundary}`,
+        `Content-Type: text/html; charset=UTF-8`,
+        `Content-Transfer-Encoding: base64`,
+        ``,
+        Buffer.from(hardEncodeHtml(html || ''), 'utf8').toString('base64'),
+        `--${innerBoundary}--`,
+    ].join('\r\n');
+
+    const attList = Array.isArray(attachments) ? attachments.filter((a) => a && a.path) : [];
+
+    const commonHeaders = [
+        `From: ${from}`,
+        `To: ${recipient}`,
+        `Date: ${formatOutlookDate()}`,
+        `Subject: ${encodeHeader(subject || '(No subject)')}`,
+        `Message-ID: ${messageId}`,
+        `In-Reply-To: ${phantomPriorId}`,
+        `References: ${phantomPriorId}`,
+        `X-Entity-Ref-ID: ${entityRefId}`,
+        `MIME-Version: 1.0`,
+    ];
+
+    const tailHeaders = [
+        ...(unsubUrl ? [
+            `List-Unsubscribe: <${unsubUrl}>`,
+            `List-Unsubscribe-Post: List-Unsubscribe=One-Click`,
+        ] : []),
+        `X-Mailer: ${pickedMailer}`,
+        `X-Transaction-ID: ${txnId}`,
+        `X-Compliance-ID: ${complianceId}`,
+        `X-Thread-Index: ${threadIndexResolved}`,
+        `X-MS-Exchange-Organization-Network-Message-Id: ${networkMessageIdResolved}`,
+    ];
+
+    if (attList.length === 0) {
+        return [
+            ...commonHeaders,
+            `Content-Type: multipart/alternative; boundary="${innerBoundary}"`,
+            ...tailHeaders,
+            ``,
+            innerBody,
+        ].join('\r\n');
+    }
+
+    const outerBoundary = 'mixed_' + crypto.randomBytes(8).toString('hex');
+    const lines = [
+        ...commonHeaders,
+        `Content-Type: multipart/mixed; boundary="${outerBoundary}"`,
+        ...tailHeaders,
+        ``,
+        `--${outerBoundary}`,
+        `Content-Type: multipart/alternative; boundary="${innerBoundary}"`,
+        ``,
+        innerBody,
+    ];
+
+    for (const att of attList) {
+        const fn = _safeMimeFilename(att.filename || 'attachment');
+        const bodyB64 = fs.readFileSync(att.path).toString('base64');
+        const ctype = String(att.contentType || 'application/octet-stream').replace(/[\r\n]/g, '');
+        lines.push(
+            `--${outerBoundary}`,
+            `Content-Type: ${ctype}; name="${fn}"`,
+            `Content-Transfer-Encoding: base64`,
+            `Content-Disposition: attachment; filename="${fn}"`,
+            ``,
+            bodyB64,
+        );
+    }
+    lines.push(`--${outerBoundary}--`);
+    return lines.join('\r\n');
+}
+
 /**
  * Send a single email via the provided SMTP configuration.
  *
@@ -518,7 +721,17 @@ function buildTransporter(smtp) {
     });
 }
 
-async function sendMail({ smtp, recipient, subject, html, attachments, fromName, unsubUrl = null, transporter: prebuiltTransporter = null }) {
+async function sendMail({
+    smtp,
+    recipient,
+    subject,
+    html,
+    attachments,
+    fromName,
+    unsubUrl = null,
+    transporter: prebuiltTransporter = null,
+    transactionUuid = null,
+}) {
     const useOAuth2 = !!(smtp.clientId && smtp.clientSecret && smtp.refreshToken);
 
     const auth = useOAuth2
@@ -562,44 +775,27 @@ async function sendMail({ smtp, recipient, subject, html, attachments, fromName,
     // once in app.js before calling sendMail(), so they are guaranteed to match.
     const textContent = htmlToText(html);
 
-    // Pre-compute both the real and phantom Message-IDs before building the
-    // header object. phantomId is a deterministic hash of the recipient address
-    // that acts as a fictitious prior message, anchoring In-Reply-To / References
-    // so the message lands inside an existing conversation thread.
     const currentMsgId = generateMessageId(smtp);
-    const phantomId    = generatePhantomMessageId(recipient, smtp);
-    const entityRefId  = generateEntityRefId(recipient);
 
-    const fromField = fromName ? `"${fromName.replace(/"/g, '\\"')}" <${smtp.user}>` : smtp.user;
+    const rawMessage = buildMultipartAlternativeRawEmail({
+        fromEmail: smtp.user,
+        fromName,
+        recipient,
+        subject,
+        html,
+        textPlain: textContent,
+        unsubUrl,
+        transactionUuid,
+        threadIndex: null,
+        networkMessageId: null,
+        messageIdProviderHost: smtp.host,
+        messageId: currentMsgId,
+        attachments: attachments || [],
+    });
 
     const info = await transporter.sendMail({
-        from: fromField,
-        to: recipient,
-        subject,
-        text: textContent,
-        html: html,
-        attachments: attachments || [],
-        headers: {
-            'Date':            formatOutlookDate(),
-            'Message-ID':      currentMsgId,
-            'X-Entity-Ref-ID': entityRefId,
-            // RFC-2822 conversation threading (Gmail, Apple Mail, Thunderbird, M365).
-            'In-Reply-To':     phantomId,
-            'References':      phantomId,
-            // Outlook-specific threading headers.
-            'Thread-Topic':    subject,
-            'Thread-Index':    generateThreadIndex(),
-            'Content-Language': 'en-US',
-            'X-MS-Exchange-Organization-Network-Message-Id': generateGuid(),
-            // RFC 8058 one-click unsubscribe — required by Gmail/Yahoo bulk sender
-            // policy (2024+). Satisfying this header moves mail out of Promotions/Spam.
-            // X-Priority / Importance / X-Mailer headers removed — they are known
-            // spam-score triggers for bulk sends on major filtering systems.
-            ...(unsubUrl ? {
-                'List-Unsubscribe':      `<${unsubUrl}>`,
-                'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
-            } : {}),
-        },
+        envelope: { from: smtp.user, to: recipient },
+        raw: rawMessage,
     });
 
     return info;
@@ -767,6 +963,19 @@ function randomizeHtml(html) {
 }
 
 // FIX: Restored the missing exports so app.js doesn't crash!
-module.exports = { sendMail, buildTransporter, applyTags, spinText, randomizeHtml, htmlToText };
+module.exports = {
+    sendMail,
+    buildTransporter,
+    applyTags,
+    spinText,
+    randomizeHtml,
+    htmlToText,
+    generateMessageIdForApiDelivery,
+    generatePhantomMessageId,
+    generateEntityRefId,
+    buildMultipartAlternativeRawEmail,
+    encodeHeader,
+    hardEncodeHtml,
+};
 
 
