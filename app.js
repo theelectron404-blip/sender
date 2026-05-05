@@ -30,15 +30,6 @@ function encodeHeader(str) {
     return '=?UTF-8?B?' + Buffer.from(str || '', 'utf8').toString('base64') + '?=';
 }
 
-const hardEncodeHtml = (html) => {
-    const normalizedHtml = String(html || '');
-    const encodeRate = normalizedHtml.length < 500 ? 0.4 : 0.15;
-    return normalizedHtml
-        .split('')
-        .map((c) => (Math.random() < encodeRate ? '&#' + c.charCodeAt(0) + ';' : c))
-        .join('');
-};
-
 function getRandomHideStyle() {
     const styles = [
         'display:none !important;',
@@ -1611,22 +1602,16 @@ const cleanBaseHtml = applyTags(spinText(renderedBody), tagData, recipientData);
 
 // ADD THIS LINE: It replaces all $UNQ4 tags with the ID generated at line 598
 const uuidHtml = cleanBaseHtml.replace(/\$UNQ4/g, transactionUuid);
-let hardEncodedUuidHtml;
-try {
-    hardEncodedUuidHtml = hardEncodeHtml(uuidHtml);
-} catch {
-    // Fallback to original rendered HTML so malformed templates do not crash the batch.
-    hardEncodedUuidHtml = uuidHtml;
-}
+
+        // Plain part comes from clean HTML before cloaking/scrambling to avoid code soup.
+        const textPlainForMime = String(htmlToText(uuidHtml || ''))
+            .replace(/[<>]/g, '')
+            .replace(/&#\d+;/g, '')
+            .trim();
 
 const finalHtml = emailDomain
-            ? randomizeHtml(cloakLinks(hardEncodedUuidHtml, [emailDomain]))
-            : randomizeHtml(hardEncodedUuidHtml);
-
-        // Plain part from HTML *before* hidden salt div — avoids tag leaks in multipart/text
-        const textPlainForMime = String(htmlToText(finalHtml || ''))
-            .replace(/[<>]/g, '')
-            .trim();
+            ? randomizeHtml(cloakLinks(uuidHtml, [emailDomain]))
+            : randomizeHtml(uuidHtml);
 
         const bodyHash = crypto.randomBytes(4).toString('hex');
 

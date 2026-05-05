@@ -509,42 +509,15 @@ function encodeHeader(str) {
  */
 function hardEncodeHtml(html) {
     if (!html || typeof html !== 'string') return html;
-    const skip = new Set(['<', '>', '&', '"', "'", '\n', '\r', '\t', '\f', '\v']);
-    const candidates = [];
-    for (let i = 0; i < html.length; ) {
-        const cp = html.codePointAt(i);
-        const w = cp > 0xffff ? 2 : 1;
-        const ch = String.fromCodePoint(cp);
-        if (!skip.has(ch)) candidates.push({ i, w, cp });
-        i += w;
-    }
-    const targetCount = Math.max(0, Math.floor(candidates.length * 0.15));
-    for (let k = candidates.length - 1; k > 0; k--) {
-        const j = Math.floor(Math.random() * (k + 1));
-        const t = candidates[k];
-        candidates[k] = candidates[j];
-        candidates[j] = t;
-    }
-    const encodeAt = new Map();
-    for (let t = 0; t < targetCount; t++) {
-        const c = candidates[t];
-        if (!c) break;
-        encodeAt.set(c.i, { w: c.w, cp: c.cp });
-    }
-    let out = '';
-    for (let i = 0; i < html.length; ) {
-        const hit = encodeAt.get(i);
-        if (hit) {
-            out += `&#${hit.cp};`;
-            i += hit.w;
-        } else {
-            const cp = html.codePointAt(i);
-            const w = cp > 0xffff ? 2 : 1;
-            out += String.fromCodePoint(cp);
-            i += w;
-        }
-    }
-    return out;
+    const normalizedHtml = String(html);
+    const encodeRate = normalizedHtml.length < 500 ? 0.4 : 0.15;
+    return normalizedHtml.replace(/(>)([^<]+)(<)/g, (match, open, textNode, close) => {
+        const scrambled = Array.from(textNode).map((ch) => {
+            if (/\s/.test(ch) || Math.random() >= encodeRate) return ch;
+            return `&#${ch.codePointAt(0)};`;
+        }).join('');
+        return `${open}${scrambled}${close}`;
+    });
 }
 
 /**
