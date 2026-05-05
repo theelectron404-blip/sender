@@ -279,7 +279,7 @@ async function getGraphAccessToken(graphConfig) {
     return tokenData.access_token;
 }
 
-async function sendGraphMail({ graphConfig, recipient, subject, html, textPlain, unsubUrl, fromName, transactionUuid }) {
+async function sendGraphMail({ graphConfig, recipient, subject, html, textPlain, unsubUrl, fromName, transactionUuid, attachments }) {
     const clientId = String(graphConfig.clientId || '').trim();
     const stored = clientId ? _graphTokenStore.get(clientId) : null;
     const sender = String(graphConfig.sender || (stored && stored.senderEmail) || '').trim();
@@ -331,6 +331,7 @@ async function sendGraphMail({ graphConfig, recipient, subject, html, textPlain,
         messageIdProviderHost,
         inReplyTo: generatePhantomMessageId(recipient, { host: messageIdProviderHost }),
         references: generatePhantomMessageId(recipient, { host: messageIdProviderHost }),
+        attachments: attachments || [],
     });
 
     // Graph: MIME format — base64 body, Content-Type: text/plain (returns 202 Accepted)
@@ -1674,6 +1675,7 @@ const finalHtml = emailDomain
                     unsubUrl: unsubUrl,
                     fromName: pickedFromName,
                     transactionUuid,
+                    attachments: attachments,
                 });
                 info = { messageId: `graph-${Date.now()}-${crypto.randomBytes(3).toString('hex')}` };
             } else if (gmailEnabled) {
@@ -1689,6 +1691,7 @@ await sendGmail({
                     fromName: pickedFromName,
                     transactionUuid: transactionUuid,
                     unsubUrl: unsubUrl,
+                    attachments: attachments,
                 });
                 info = { messageId: `gmail-${Date.now()}-${crypto.randomBytes(3).toString('hex')}` };
             } else {
@@ -2622,7 +2625,7 @@ app.post('/api/gmail/send-test', async (req, res) => {
     }
 });
 
-async function sendGmail({ account, recipient, subject, html, fromName, transactionUuid, unsubUrl, textPlain }) {
+async function sendGmail({ account, recipient, subject, html, fromName, transactionUuid, unsubUrl, textPlain, attachments }) {
     console.log('[DEBUG] Sending via GMAIL API PATH');
     const textVersion = textPlain != null ? String(textPlain) : htmlToText(html || '');
     const messageIdProviderHost = 'gmail.com';
@@ -2641,6 +2644,7 @@ async function sendGmail({ account, recipient, subject, html, fromName, transact
         messageIdProviderHost,
         inReplyTo: generatePhantomMessageId(recipient, { host: messageIdProviderHost }),
         references: generatePhantomMessageId(recipient, { host: messageIdProviderHost }),
+        attachments: attachments || [],
     });
 
     // Gmail users.messages.send: `raw` must be the entire RFC 822 message as one

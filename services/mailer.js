@@ -967,7 +967,7 @@ function randomizeHtml(html) {
         let chars = p2.split('');
         for(let j = 0; j < chars.length; j++) {
             if (Math.random() > 0.98 && /[a-zA-Z]/.test(chars[j])) {
-                chars[j] += '&#8203;';
+                chars[j] += '\u200B';
             }
         }
         return p1 + chars.join('') + p3;
