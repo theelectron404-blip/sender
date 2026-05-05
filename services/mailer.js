@@ -567,7 +567,8 @@ function buildMultipartAlternativeRawEmail({
     const mailerClients = ['Outlook 16.0', 'Apple Mail (2.34)', 'Thunderbird 102', 'Gmail Web/1.0'];
     const pickedMailer = mailerClients[Math.floor(Math.random() * mailerClients.length)];
     const complianceId = crypto.randomBytes(8).toString('hex');
-    const innerBoundary = 'boundary_' + crypto.randomBytes(8).toString('hex');
+    const randomBoundary = () => `_NextPart_${crypto.randomBytes(4).toString('hex')}_${crypto.randomBytes(4).toString('hex')}`;
+    const innerBoundary = randomBoundary();
 
     const from = fromName && String(fromName).trim()
         ? `${encodeHeader(String(fromName).trim())} <${fromEmail}>`
@@ -612,7 +613,7 @@ function buildMultipartAlternativeRawEmail({
         encodedHtmlPart = Buffer.from(String(html || ''), 'utf8').toString('base64');
     }
 
-    const innerBody = [
+    const plainPart = [
         `--${innerBoundary}`,
         `Content-Type: text/plain; charset=UTF-8`,
         `Content-Transfer-Encoding: 7bit`,
@@ -620,12 +621,19 @@ function buildMultipartAlternativeRawEmail({
         ``,
         textVersion,
         ``,
+    ];
+    const htmlPart = [
         `--${innerBoundary}`,
         `Content-Type: text/html; charset=UTF-8`,
         `Content-Transfer-Encoding: base64`,
         `Date: ${mimeDate}`,
         ``,
         encodedHtmlPart,
+    ];
+    const swapAlternativeOrder = Math.random() < 0.10;
+    const orderedParts = swapAlternativeOrder ? [...htmlPart, ...plainPart] : [...plainPart, ...htmlPart];
+    const innerBody = [
+        ...orderedParts,
         `--${innerBoundary}--`,
     ].join('\r\n');
 
@@ -667,7 +675,7 @@ function buildMultipartAlternativeRawEmail({
         ].join('\r\n');
     }
 
-    const outerBoundary = 'mixed_' + crypto.randomBytes(8).toString('hex');
+    const outerBoundary = randomBoundary();
     const lines = [
         ...commonHeaders,
         `Content-Type: multipart/mixed; boundary="${outerBoundary}"`,
