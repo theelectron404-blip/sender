@@ -229,6 +229,13 @@ details[open] summary{margin-bottom:13px}
 .compliance-text .hint { color: var(--text3); font-size: 13px; }
 
 .engagement-results { background: var(--surface2); border-radius: 6px; padding: 12px; }
+.header-audit-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; }
+.header-audit-item { display: flex; align-items: center; gap: 8px; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; }
+.audit-light { width: 10px; height: 10px; border-radius: 999px; background: #6b7280; box-shadow: 0 0 0 2px rgba(107,114,128,.22); flex-shrink: 0; }
+.audit-light.ok { background: #22c55e; box-shadow: 0 0 0 2px rgba(34,197,94,.24); }
+.audit-light.bad { background: #ef4444; box-shadow: 0 0 0 2px rgba(239,68,68,.2); }
+.header-audit-item .name { font-size: 13px; color: var(--text3); }
+.header-audit-item .state { margin-left: auto; font-size: 12px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--text3); }
 
 /* ─── Gmail Apps Management ─── */
 .gmail-apps-list { margin-top: 12px; }
@@ -1146,6 +1153,50 @@ details[open] summary{margin-bottom:13px}
             <div class="health-loading">Loading deliverability data...</div>
           </div>
         </div>
+        
+        <div class="card">
+          <div class="lbl" style="margin-bottom:14px">🧾 Header Compliance Audit</div>
+          <div id="header-compliance-audit" class="header-audit-grid">
+            <div class="header-audit-item">
+              <span id="audit-thread-index-light" class="audit-light"></span>
+              <span class="name">Thread-Index</span>
+              <span id="audit-thread-index-state" class="state">Unknown</span>
+            </div>
+            <div class="header-audit-item">
+              <span id="audit-org-id-light" class="audit-light"></span>
+              <span class="name">Org-ID</span>
+              <span id="audit-org-id-state" class="state">Unknown</span>
+            </div>
+            <div class="header-audit-item">
+              <span id="audit-entity-ref-light" class="audit-light"></span>
+              <span class="name">Entity-Ref</span>
+              <span id="audit-entity-ref-state" class="state">Unknown</span>
+            </div>
+            <div class="header-audit-item">
+              <span id="audit-one-click-light" class="audit-light"></span>
+              <span class="name">One-Click</span>
+              <span id="audit-one-click-state" class="state">Unknown</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Backend Endpoint Tools -->
+        <div class="card">
+          <div class="lbl" style="margin-bottom:14px">🧩 Backend Endpoint Tools</div>
+          <div class="btn-row" style="margin-top:0">
+            <button class="btn-ghost" onclick="loadDeliverabilityDomains()">Deliverability Domains</button>
+            <button class="btn-ghost" onclick="loadRotationStatsApi()">Rotation Stats API</button>
+            <button class="btn-ghost" onclick="loadGraphStatusApi()">Graph Status API</button>
+            <button class="btn-ghost" onclick="loadDebugConfigApi()">Debug Config</button>
+            <button class="btn-ghost" onclick="loadCrawlerTrapTestApi()">Crawler Trap Test</button>
+            <button class="btn-ghost" onclick="loadClickLogApi()">Click Log</button>
+            <button class="btn-ghost" onclick="loadGraphAuthUrlApi()">Graph Auth URL</button>
+          </div>
+          <div class="callout c-blue" style="margin-top:12px">
+            These tools expose backend diagnostics directly in UI so every implemented API route can be tested from frontend.
+          </div>
+          <textarea class="inp" id="backend-tools-output" rows="10" readonly style="font-size:13px;margin-top:10px" placeholder="API results will appear here..."></textarea>
+        </div>
 
         <!-- Content Analysis -->
         <div class="card">
@@ -2044,9 +2095,30 @@ function showRotationStats() {
 document.addEventListener('DOMContentLoaded', function() {
   setTimeout(updateRotationPreview, 100);
   setTimeout(refreshDeliverabilityHealth, 500); // Load deliverability data
+  setTimeout(loadGraphStatusApi, 700);
 });
 
 /* ── DELIVERABILITY FUNCTIONS ── */
+
+function setBackendToolsOutput(title, data) {
+  var out = document.getElementById('backend-tools-output');
+  if (!out) return;
+  var rendered = '';
+  try {
+    rendered = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
+  } catch (e) {
+    rendered = String(data);
+  }
+  out.value = '[' + new Date().toLocaleTimeString() + '] ' + title + '\n\n' + rendered;
+}
+
+async function fetchBackendTool(path, options, title) {
+  var res = await fetch(path, options || {});
+  var data = await res.json().catch(function() { return {}; });
+  if (!res.ok) throw new Error((data && data.error) || ('Request failed: ' + res.status));
+  setBackendToolsOutput(title, data);
+  return data;
+}
 
 // Refresh deliverability health dashboard
 async function refreshDeliverabilityHealth() {
@@ -2060,6 +2132,19 @@ async function refreshDeliverabilityHealth() {
     if (!response.ok) throw new Error('Failed to fetch health data');
     
     const health = await response.json();
+    const headerAudit = health.headerAudit || {};
+    const hasThreadIndex = Boolean(
+      headerAudit.threadIndex ?? headerAudit.xThreadIndex ?? health.hasThreadIndex
+    );
+    const hasOrgId = Boolean(
+      headerAudit.orgId ?? headerAudit.xMsExchangeOrganizationId ?? health.hasOrgId
+    );
+    const hasEntityRef = Boolean(
+      headerAudit.entityRef ?? headerAudit.xEntityRefId ?? health.hasEntityRef
+    );
+    const hasOneClick = Boolean(
+      headerAudit.oneClick ?? headerAudit.rfc8058 ?? health.hasOneClick
+    );
     
     const healthClass = health.health === 'excellent' ? 'health-excellent' : 
                        health.health === 'good' ? 'health-good' :
@@ -2093,11 +2178,127 @@ async function refreshDeliverabilityHealth() {
         </div>
       ` : ''}
     `;
+
+    const setAuditIndicator = (lightId, stateId, isOk) => {
+      const lightEl = document.getElementById(lightId);
+      const stateEl = document.getElementById(stateId);
+      if (lightEl) {
+        lightEl.classList.remove('ok', 'bad');
+        lightEl.classList.add(isOk ? 'ok' : 'bad');
+      }
+      if (stateEl) {
+        stateEl.textContent = isOk ? 'PASS' : 'MISS';
+      }
+    };
+
+    setAuditIndicator('audit-thread-index-light', 'audit-thread-index-state', hasThreadIndex);
+    setAuditIndicator('audit-org-id-light', 'audit-org-id-state', hasOrgId);
+    setAuditIndicator('audit-entity-ref-light', 'audit-entity-ref-state', hasEntityRef);
+    setAuditIndicator('audit-one-click-light', 'audit-one-click-state', hasOneClick);
   } catch (error) {
     const healthEl = document.getElementById('deliverability-health');
     if (healthEl) {
       healthEl.innerHTML = `<div style="color:var(--red);text-align:center;padding:20px">Failed to load health data: ${error.message}</div>`;
     }
+    const resetIndicator = (lightId, stateId) => {
+      const lightEl = document.getElementById(lightId);
+      const stateEl = document.getElementById(stateId);
+      if (lightEl) {
+        lightEl.classList.remove('ok', 'bad');
+      }
+      if (stateEl) {
+        stateEl.textContent = 'Unknown';
+      }
+    };
+    resetIndicator('audit-thread-index-light', 'audit-thread-index-state');
+    resetIndicator('audit-org-id-light', 'audit-org-id-state');
+    resetIndicator('audit-entity-ref-light', 'audit-entity-ref-state');
+    resetIndicator('audit-one-click-light', 'audit-one-click-state');
+  }
+}
+
+async function loadDeliverabilityDomains() {
+  try {
+    var data = await fetchBackendTool('/api/deliverability/domains', {}, 'Deliverability Domains');
+    var count = Array.isArray(data.domains) ? data.domains.length : 0;
+    showToast('Loaded domain analysis (' + count + ' domains)', 'ok');
+  } catch (error) {
+    showToast('Failed to load deliverability domains: ' + error.message, 'err');
+  }
+}
+
+async function loadRotationStatsApi() {
+  try {
+    var data = await fetchBackendTool('/api/batch/rotation-stats', {}, 'Batch Rotation Stats');
+    showToast(data.message || 'Rotation stats loaded', 'ok');
+  } catch (error) {
+    showToast('Failed to load rotation stats: ' + error.message, 'err');
+  }
+}
+
+async function loadGraphStatusApi() {
+  try {
+    var data = await fetchBackendTool('/api/graph/status', {}, 'Graph Status');
+    if (data && data.message) {
+      var st = document.getElementById('graphWorkStatus');
+      if (st) st.textContent = data.message;
+    }
+  } catch (error) {
+    showToast('Failed to load graph status: ' + error.message, 'err');
+  }
+}
+
+async function loadDebugConfigApi() {
+  try {
+    await fetchBackendTool('/api/debug/config', {}, 'Debug Config');
+    showToast('Loaded backend debug config', 'ok');
+  } catch (error) {
+    showToast('Failed to load debug config: ' + error.message, 'err');
+  }
+}
+
+async function loadCrawlerTrapTestApi() {
+  try {
+    var data = await fetchBackendTool('/api/crawler-trap/test', {}, 'Crawler Trap Test');
+    showToast(data.isBot ? 'Bot detected by trap test' : 'Human-like request detected', 'info');
+  } catch (error) {
+    showToast('Failed to test crawler trap: ' + error.message, 'err');
+  }
+}
+
+async function loadClickLogApi() {
+  try {
+    var data = await fetchBackendTool('/api/click-log', {}, 'Click Log');
+    var rows = Array.isArray(data) ? data.length : 0;
+    showToast('Loaded click log entries: ' + rows, 'ok');
+  } catch (error) {
+    showToast('Failed to load click log: ' + error.message, 'err');
+  }
+}
+
+async function loadGraphAuthUrlApi() {
+  try {
+    var clientId = sanitizeGraphId(document.getElementById('graphClientId').value || '');
+    var tenantId = sanitizeGraphId(document.getElementById('graphTenantId').value || '') || 'organizations';
+    var clientSecret = (document.getElementById('graphClientSecret').value || '').trim();
+    if (!clientId) {
+      showToast('Enter Graph Client ID first', 'warn');
+      return;
+    }
+    var redirectUri = window.location.origin + '/api/graph/callback';
+    var qs = new URLSearchParams({
+      clientId: clientId,
+      tenantId: tenantId,
+      redirectUri: redirectUri
+    });
+    if (clientSecret) qs.set('clientSecret', clientSecret);
+    var data = await fetchBackendTool('/api/graph/auth-url?' + qs.toString(), {}, 'Graph Auth URL');
+    if (data && data.url) {
+      setBackendToolsOutput('Graph Auth URL', data.url);
+      showToast('Graph auth URL generated', 'ok');
+    }
+  } catch (error) {
+    showToast('Failed to generate graph auth URL: ' + error.message, 'err');
   }
 }
 

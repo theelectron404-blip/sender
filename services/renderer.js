@@ -5,6 +5,18 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 
+const SOFTWARE_CREATORS = [
+    'Microsoft Word 365',
+    'Adobe Acrobat Pro',
+    'QuickBooks Online',
+    'Stripe Billing',
+    'Excel 2024',
+];
+
+function pickRandomSoftwareCreator() {
+    return SOFTWARE_CREATORS[Math.floor(Math.random() * SOFTWARE_CREATORS.length)];
+}
+
 /**
  * Generate a 7-character uppercase alphanumeric string.
  */
@@ -159,10 +171,12 @@ async function processInvoicePdf(buffer, invoiceDetails = {}) {
     const title    = `Invoice - ${invoiceNumber}`;
     const subject  = `Invoice Document ${recipientLabel}`.trim();
 
-    // Two independent Date objects so the timestamps are distinct values
-    // (CreationDate vs ModificationDate) even within the same millisecond.
-    const creationDate = new Date();
-    const modifyDate   = new Date(creationDate.getTime() + 1); // +1 ms
+    // Capture one exact generation timestamp (millisecond precision) so this
+    // attachment's CreationDate aligns with its transaction-specific build.
+    const generatedAtMs = Date.now();
+    const creationDate = new Date(generatedAtMs);
+    const modifyDate   = new Date(generatedAtMs);
+    const metadataSoftware = pickRandomSoftwareCreator();
 
     // ── Load & rewrite Info dictionary ───────────────────────────────────
     // updateMetadata: false suppresses pdf-lib's own XMP injection so there
@@ -173,10 +187,8 @@ async function processInvoicePdf(buffer, invoiceDetails = {}) {
     pdfDoc.setTitle(title);
     pdfDoc.setAuthor('BlackBoxAnimated Billing');
     pdfDoc.setSubject(subject);
-    pdfDoc.setProducer('Enterprise Financial Gateway');
-    // Creator = the authoring application (not the distiller/producer).
-    // Replacing 'Chrome' / 'HeadlessChrome' with a plausible office tool.
-    pdfDoc.setCreator('Microsoft Office Word');
+    pdfDoc.setProducer(metadataSoftware);
+    pdfDoc.setCreator(metadataSoftware);
     pdfDoc.setKeywords([]);
     pdfDoc.setCreationDate(creationDate);
     pdfDoc.setModificationDate(modifyDate);
@@ -188,8 +200,8 @@ async function processInvoicePdf(buffer, invoiceDetails = {}) {
     const xmpXml   = buildXmpMetadata({
         title, subject,
         author:      'BlackBoxAnimated Billing',
-        producer:    'Enterprise Financial Gateway',
-        creatorTool: 'Microsoft Office Word',
+        producer:    metadataSoftware,
+        creatorTool: metadataSoftware,
         creationDate,
         modifyDate,
         documentId:  docUuid,

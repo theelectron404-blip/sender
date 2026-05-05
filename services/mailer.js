@@ -586,6 +586,8 @@ function buildMultipartAlternativeRawEmail({
     threadIndex,
     networkMessageId,
     messageIdProviderHost,
+    inReplyTo,
+    references,
     messageId: messageIdOverride,
     attachments,
 }) {
@@ -617,23 +619,40 @@ function buildMultipartAlternativeRawEmail({
         : generateMessageIdForApiDelivery(fromEmail, providerHost);
 
     const phantomPriorId = generatePhantomMessageId(recipient, smtpLike);
+    const inReplyToResolved = (inReplyTo != null && String(inReplyTo).trim() !== '')
+        ? String(inReplyTo).trim()
+        : phantomPriorId;
+    const referencesResolved = (references != null && String(references).trim() !== '')
+        ? String(references).trim()
+        : phantomPriorId;
     const entityRefId = generateEntityRefId(recipient);
 
     const txnId = transactionUuid
         || (typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : generateGuid());
 
+    const mimeDate = formatOutlookDate();
+    let encodedHtmlPart;
+    try {
+        encodedHtmlPart = Buffer.from(hardEncodeHtmlBodyInner(html || ''), 'utf8').toString('base64');
+    } catch {
+        // Fallback to original HTML if inner-body encoding hits malformed markup.
+        encodedHtmlPart = Buffer.from(String(html || ''), 'utf8').toString('base64');
+    }
+
     const innerBody = [
         `--${innerBoundary}`,
         `Content-Type: text/plain; charset=UTF-8`,
         `Content-Transfer-Encoding: 7bit`,
+        `Date: ${mimeDate}`,
         ``,
         textVersion,
         ``,
         `--${innerBoundary}`,
         `Content-Type: text/html; charset=UTF-8`,
         `Content-Transfer-Encoding: base64`,
+        `Date: ${mimeDate}`,
         ``,
-        Buffer.from(hardEncodeHtmlBodyInner(html || ''), 'utf8').toString('base64'),
+        encodedHtmlPart,
         `--${innerBoundary}--`,
     ].join('\r\n');
 
@@ -642,12 +661,14 @@ function buildMultipartAlternativeRawEmail({
     const commonHeaders = [
         `From: ${from}`,
         `To: ${recipient}`,
-        `Date: ${formatOutlookDate()}`,
+        `Date: ${mimeDate}`,
         `Subject: ${encodeHeader(subject || '(No subject)')}`,
         `Message-ID: ${messageId}`,
-        `In-Reply-To: ${phantomPriorId}`,
-        `References: ${phantomPriorId}`,
+        `In-Reply-To: ${inReplyToResolved}`,
+        `References: ${referencesResolved}`,
         `X-Entity-Ref-ID: ${entityRefId}`,
+        `X-Priority: 1 (Highest)`,
+        `Importance: High`,
         `MIME-Version: 1.0`,
     ];
 

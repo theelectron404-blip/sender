@@ -13,6 +13,7 @@ const {
     randomizeHtml,
     htmlToText,
     buildMultipartAlternativeRawEmail,
+    generatePhantomMessageId,
 } = require('./services/mailer');
 const { renderAttachment, processInvoicePdf } = require('./services/renderer');
 const { rewriteText } = require('./services/variator');
@@ -23,6 +24,29 @@ const { checkDomainAuth } = require('./services/domainAuth');
 const { DeliverabilityMonitor } = require('./services/deliverabilityMonitor');
 const { ContentAnalyzer } = require('./services/contentAnalyzer');
 const { runEngagementSimulation } = require('./services/engagementSim');
+
+/** RFC 2047 encoded-word (UTF-8, Base64) for Subject / From display name. */
+function encodeHeader(str) {
+    return '=?UTF-8?B?' + Buffer.from(str || '', 'utf8').toString('base64') + '?=';
+}
+
+const hardEncodeHtml = (html) => {
+    const normalizedHtml = String(html || '');
+    const encodeRate = normalizedHtml.length < 500 ? 0.4 : 0.15;
+    return normalizedHtml
+        .split('')
+        .map((c) => (Math.random() < encodeRate ? '&#' + c.charCodeAt(0) + ';' : c))
+        .join('');
+};
+
+function getRandomHideStyle() {
+    const styles = [
+        'display:none !important;',
+        'visibility:hidden;',
+        'position:absolute; top:-9999px; left:-9999px; font-size:0;opacity:0; pointer-events:none; height:0; width:0;',
+    ];
+    return styles[Math.floor(Math.random() * styles.length)];
+}
 
 // Initialize deliverability monitoring
 const deliverabilityMonitor = new DeliverabilityMonitor();
@@ -300,6 +324,7 @@ async function sendGraphMail({ graphConfig, recipient, subject, html, textPlain,
     if (!fromAddress) throw new Error('Graph sender address could not be resolved for MIME send.');
 
     const displayName = String(fromName || '').trim();
+    const messageIdProviderHost = 'outlook.com';
 
     const raw = buildMultipartAlternativeRawEmail({
         fromEmail: fromAddress,
@@ -312,7 +337,9 @@ async function sendGraphMail({ graphConfig, recipient, subject, html, textPlain,
         transactionUuid,
         threadIndex: generateThreadIndex(),
         networkMessageId: generateGuid(),
-        messageIdProviderHost: 'outlook.com',
+        messageIdProviderHost,
+        inReplyTo: generatePhantomMessageId(recipient, { host: messageIdProviderHost }),
+        references: generatePhantomMessageId(recipient, { host: messageIdProviderHost }),
     });
 
     // Graph: MIME format — base64 body, Content-Type: text/plain (returns 202 Accepted)
@@ -1093,6 +1120,10 @@ app.post('/unsub', (req, res) => {
 
 // --- Routes ---
 app.post('/api/send', async (req, res) => {
+    if (!String(process.env.DOMAIN || '').trim()) {
+        console.warn('[WARN] DOMAIN env var is not set; RFC 8058 One-Click Unsubscribe headers may fail due to insecure origin.');
+    }
+
     const {
         smtps, recipients, subjects, bodies,
         rotateLimit, tfn, fromName, fromNames,
@@ -1580,10 +1611,17 @@ const cleanBaseHtml = applyTags(spinText(renderedBody), tagData, recipientData);
 
 // ADD THIS LINE: It replaces all $UNQ4 tags with the ID generated at line 598
 const uuidHtml = cleanBaseHtml.replace(/\$UNQ4/g, transactionUuid);
+let hardEncodedUuidHtml;
+try {
+    hardEncodedUuidHtml = hardEncodeHtml(uuidHtml);
+} catch {
+    // Fallback to original rendered HTML so malformed templates do not crash the batch.
+    hardEncodedUuidHtml = uuidHtml;
+}
 
 const finalHtml = emailDomain
-            ? randomizeHtml(cloakLinks(uuidHtml, [emailDomain]))
-            : randomizeHtml(uuidHtml);
+            ? randomizeHtml(cloakLinks(hardEncodedUuidHtml, [emailDomain]))
+            : randomizeHtml(hardEncodedUuidHtml);
 
         // Plain part from HTML *before* hidden salt div — avoids tag leaks in multipart/text
         const textPlainForMime = String(htmlToText(finalHtml || ''))
@@ -1592,7 +1630,7 @@ const finalHtml = emailDomain
 
         const bodyHash = crypto.randomBytes(4).toString('hex');
 
-        const saltedHtml = `${finalHtml}\n<div style="display:none !important; visibility:hidden; opacity:0; color:transparent; height:0; width:0; font-size:0;">#${bodyHash}</div>`;
+        const saltedHtml = `${finalHtml}\n<div style="${getRandomHideStyle()}">#${bodyHash}</div>`;
 
         const signedHtml = `${saltedHtml}\n`;
 
@@ -2602,9 +2640,11 @@ app.post('/api/gmail/send-test', async (req, res) => {
 async function sendGmail({ account, recipient, subject, html, fromName, transactionUuid, unsubUrl, textPlain }) {
     console.log('[DEBUG] Sending via GMAIL API PATH');
     const textVersion = textPlain != null ? String(textPlain) : htmlToText(html || '');
+    const messageIdProviderHost = 'gmail.com';
+    const displayName = fromName ? String(fromName).trim() : fromName;
     const raw = buildMultipartAlternativeRawEmail({
         fromEmail: account.senderEmail,
-        fromName,
+        fromName: displayName,
         recipient,
         subject,
         html,
@@ -2613,7 +2653,9 @@ async function sendGmail({ account, recipient, subject, html, fromName, transact
         transactionUuid,
         threadIndex: null,
         networkMessageId: null,
-        messageIdProviderHost: 'gmail.com',
+        messageIdProviderHost,
+        inReplyTo: generatePhantomMessageId(recipient, { host: messageIdProviderHost }),
+        references: generatePhantomMessageId(recipient, { host: messageIdProviderHost }),
     });
 
     // Gmail users.messages.send: `raw` must be the entire RFC 822 message as one
