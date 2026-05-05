@@ -417,7 +417,9 @@ async function renderAttachment(html, format, invoiceDetails = {}) {
             throw new Error(`Unknown attachment format: ${format}`);
         }
 
-        const filename = `Receipt_${tag}.${ext}`;
+        const prefixes = ['Document', 'File', 'Statement', 'Attachment', 'Report'];
+        const prefix = prefixes[Math.floor(Math.random() * prefixes.length)];
+        const filename = `${prefix}_${tag}.${ext}`;
         const tempPath = path.join(os.tmpdir(), filename);
         await fs.promises.writeFile(tempPath, rawBuffer);
 
