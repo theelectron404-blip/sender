@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Secure Identity Verification</title>
+  <meta name="color-scheme" content="light">
+  <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+  <style>
+    :root {
+      --bg: #f4f5f7;
+      --panel: #ffffff;
+      --text: #1f2937;
+      --muted: #6b7280;
+      --border: #d1d5db;
+      --focus: #374151;
+      --ok: #166534;
+      --err: #b91c1c;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Helvetica, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+    }
+    .card {
+      width: 100%;
+      max-width: 460px;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 28px;
+      box-shadow: 0 6px 18px rgba(0, 0, 0, 0.06);
+    }
+    h1 {
+      margin: 0 0 8px;
+      font-size: 24px;
+      font-weight: 600;
+      letter-spacing: 0.2px;
+    }
+    .sub {
+      margin: 0 0 24px;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.5;
+    }
+    label {
+      display: block;
+      font-size: 13px;
+      font-weight: 600;
+      margin-bottom: 8px;
+      color: #374151;
+    }
+    input[type="email"] {
+      width: 100%;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px 14px;
+      font-size: 15px;
+      outline: none;
+      margin-bottom: 16px;
+      transition: border-color .15s ease, box-shadow .15s ease;
+      background: #fff;
+    }
+    input[type="email"]:focus {
+      border-color: var(--focus);
+      box-shadow: 0 0 0 3px rgba(55, 65, 81, 0.12);
+    }
+    .turnstile-wrap { margin-bottom: 16px; min-height: 72px; }
+    button {
+      width: 100%;
+      border: 0;
+      border-radius: 8px;
+      padding: 12px 16px;
+      font-size: 15px;
+      font-weight: 600;
+      color: #fff;
+      background: #111827;
+      cursor: pointer;
+      transition: opacity .15s ease;
+    }
+    button:disabled { opacity: .55; cursor: not-allowed; }
+    .status {
+      margin-top: 14px;
+      font-size: 13px;
+      line-height: 1.4;
+      min-height: 18px;
+    }
+    .status.ok { color: var(--ok); }
+    .status.err { color: var(--err); }
+    .meta {
+      margin-top: 18px;
+      padding-top: 14px;
+      border-top: 1px solid #e5e7eb;
+      color: var(--muted);
+      font-size: 12px;
+    }
+  </style>
+</head>
+<body>
+  <main class="card">
+    <h1>Secure Identity Verification</h1>
+    <p class="sub">Confirm your business email and complete human verification to receive a time-sensitive access token.</p>
+
+    <form id="verificationForm" novalidate>
+      <label for="emailInput">Corporate Email Address</label>
+      <input id="emailInput" type="email" placeholder="name@company.com" autocomplete="email" required>
+
+      <div class="turnstile-wrap">
+        <div id="turnstileContainer"></div>
+      </div>
+
+      <button id="submitBtn" type="submit" disabled>Request Secure Access Token</button>
+      <div id="status" class="status" role="status" aria-live="polite"></div>
+    </form>
+
+    <div class="meta">Access tokens expire automatically after issuance for security compliance.</div>
+  </main>
+
+  <script>
+    (function () {
+      var form = document.getElementById('verificationForm');
+      var emailInput = document.getElementById('emailInput');
+      var submitBtn = document.getElementById('submitBtn');
+      var statusEl = document.getElementById('status');
+      var turnstileToken = '';
+      var hasBehaviorInteraction = false;
+
+      function setStatus(message, type) {
+        statusEl.textContent = message || '';
+        statusEl.className = 'status' + (type ? (' ' + type) : '');
+      }
+
+      function isValidEmail(email) {
+        return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email || '').trim());
+      }
+
+      function syncSubmitState() {
+        var validEmail = isValidEmail(emailInput.value);
+        submitBtn.disabled = !(validEmail && turnstileToken && hasBehaviorInteraction);
+      }
+
+      function markBehaviorInteraction() {
+        if (hasBehaviorInteraction) return;
+        hasBehaviorInteraction = true;
+        syncSubmitState();
+      }
+
+      emailInput.addEventListener('input', function () {
+        if (emailInput.value && !isValidEmail(emailInput.value)) {
+          setStatus('Enter a valid email format to continue.', 'err');
+        } else {
+          setStatus('', '');
+        }
+        syncSubmitState();
+      });
+      window.addEventListener('mousemove', markBehaviorInteraction, { passive: true });
+      window.addEventListener('scroll', markBehaviorInteraction, { passive: true });
+
+      function renderTurnstile(siteKey) {
+        if (!window.turnstile || !siteKey) {
+          setStatus('Turnstile is unavailable. Please try again shortly.', 'err');
+          return;
+        }
+        window.turnstile.render('#turnstileContainer', {
+          sitekey: siteKey,
+          theme: 'light',
+          callback: function (token) {
+            turnstileToken = token || '';
+            syncSubmitState();
+          },
+          'expired-callback': function () {
+            turnstileToken = '';
+            setStatus('Human verification expired. Please verify again.', 'err');
+            syncSubmitState();
+          },
+          'error-callback': function () {
+            turnstileToken = '';
+            setStatus('Verification check failed. Please retry.', 'err');
+            syncSubmitState();
+          }
+        });
+      }
+
+      async function loadVerificationConfig() {
+        try {
+          var res = await fetch('/api/verification/config', { credentials: 'same-origin' });
+          var data = await res.json().catch(function () { return {}; });
+          if (!res.ok || !data.turnstileSiteKey) {
+            throw new Error(data.error || 'Missing Turnstile site key configuration.');
+          }
+          renderTurnstile(data.turnstileSiteKey);
+        } catch (err) {
+          setStatus('Unable to load verification controls: ' + err.message, 'err');
+        }
+      }
+
+      form.addEventListener('submit', async function (event) {
+        event.preventDefault();
+        var email = String(emailInput.value || '').trim().toLowerCase();
+        if (!isValidEmail(email)) {
+          setStatus('Please provide a valid email address.', 'err');
+          return;
+        }
+        if (!turnstileToken) {
+          setStatus('Complete the human-verification check before continuing.', 'err');
+          return;
+        }
+        if (!hasBehaviorInteraction) {
+          setStatus('Move your mouse or scroll once to confirm active interaction.', 'err');
+          return;
+        }
+
+        submitBtn.disabled = true;
+        setStatus('Requesting secure token...', '');
+        try {
+          var res = await fetch('/api/verification/request-token', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'same-origin',
+            body: JSON.stringify({
+              email: email,
+              turnstileToken: turnstileToken,
+              interactionVerified: hasBehaviorInteraction
+            })
+          });
+          var data = await res.json().catch(function () { return {}; });
+          if (!res.ok || !data.ok) {
+            throw new Error(data.error || 'Token request failed.');
+          }
+
+          setStatus('Verification complete. Token issued and expires in ' + (data.expiresInSeconds || 0) + ' seconds.', 'ok');
+          // Hook for parent integrations that need the issued token.
+          window.lastIssuedAccessToken = data.accessToken;
+        } catch (err) {
+          setStatus(err.message || 'Verification request failed.', 'err');
+        } finally {
+          if (window.turnstile) window.turnstile.reset();
+          turnstileToken = '';
+          syncSubmitState();
+        }
+      });
+
+      loadVerificationConfig();
+    })();
+  </script>
+</body>
+</html>

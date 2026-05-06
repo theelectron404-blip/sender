@@ -873,41 +873,133 @@ const _NOISE_WORDS = [
     'version','widget','window','workflow','workspace'
 ];
 
-function randomizeHtml(html) {
-    if (!html) return html;
+function escapeRegExp(value) {
+    return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
 
-    // ── Pass 1: Identifier scrambling ──────────────────────────────────────
-    const identMap = new Map(); 
-
-    function getRandom(name) {
-        if (!identMap.has(name)) {
-            identMap.set(name, crypto.randomBytes(4).toString('hex').slice(0, 5));
-        }
-        return identMap.get(name);
+function createRandomIdentifier(length = 4) {
+    const alphabet = 'abcdefghijklmnopqrstuvwxyz0123456789';
+    let result = '';
+    for (let i = 0; i < length; i += 1) {
+        result += alphabet[Math.floor(Math.random() * alphabet.length)];
     }
+    return result;
+}
 
-    let out = html.replace(/\bclass=["']([^"']+)["']/g, (_, names) => {
-        const replaced = names
+/**
+ * Build a per-document map of class/id names to randomized alphanumeric values.
+ *
+ * @param {string} html
+ * @param {Object} [options]
+ * @param {number} [options.length=4] Random identifier length.
+ * @returns {{ classMap: Object<string,string>, idMap: Object<string,string> }}
+ */
+function generateDomIdentifierMapping(html, options = {}) {
+    if (!html) return { classMap: {}, idMap: {} };
+    const length = Number.isInteger(options.length) && options.length > 0 ? options.length : 4;
+
+    const classMap = {};
+    const idMap = {};
+    const usedIdentifiers = new Set();
+
+    const assign = (store, originalName) => {
+        const cleaned = String(originalName || '').trim();
+        if (!cleaned || store[cleaned]) return;
+        let candidate = createRandomIdentifier(length);
+        while (usedIdentifiers.has(candidate)) {
+            candidate = createRandomIdentifier(length);
+        }
+        store[cleaned] = candidate;
+        usedIdentifiers.add(candidate);
+    };
+
+    html.replace(/\bclass\s*=\s*["']([^"']+)["']/gi, (_, names) => {
+        String(names)
             .split(/\s+/)
             .filter(Boolean)
-            .map((n) => getRandom(n))
+            .forEach((name) => assign(classMap, name));
+        return _;
+    });
+
+    html.replace(/\bid\s*=\s*["']([^"']+)["']/gi, (_, name) => {
+        assign(idMap, name);
+        return _;
+    });
+
+    return { classMap, idMap };
+}
+
+/**
+ * Apply an identifier mapping to HTML class/id attributes and selectors inside
+ * <style> blocks.
+ *
+ * Supported mapping shapes:
+ *   - { classMap: { oldClass: newClass }, idMap: { oldId: newId } }
+ *   - { classes: { ... }, ids: { ... } }
+ *   - { oldName: newName } (shared for both class and id)
+ *
+ * @param {string} html
+ * @param {Object} mapping
+ * @returns {string}
+ */
+function applyDomIdentifierMapping(html, mapping) {
+    if (!html || !mapping || typeof mapping !== 'object') return html;
+
+    const classSource = mapping.classMap || mapping.classes || mapping.classesMap || mapping;
+    const idSource = mapping.idMap || mapping.ids || mapping.identifiersMap || mapping;
+    const classMap = classSource instanceof Map ? Object.fromEntries(classSource) : classSource;
+    const idMap = idSource instanceof Map ? Object.fromEntries(idSource) : idSource;
+
+    let out = html.replace(/(\bclass\s*=\s*)(["'])([\s\S]*?)\2/gi, (_, prefix, quote, names) => {
+        const replaced = String(names)
+            .split(/\s+/)
+            .filter(Boolean)
+            .map((name) => classMap[name] || name)
             .join(' ');
-        return `class="${replaced}"`;
+        return `${prefix}${quote}${replaced}${quote}`;
     });
 
-    out = out.replace(/\bid=["']([^"']+)["']/g, (_, name) =>
-        `id="${getRandom(name)}"`
-    );
-
-    out = out.replace(/(<style[^>]*>)(.*?)(<\/style>)/gis, (_, open, css, close) => {
-        let newCss = css.replace(/\.([a-zA-Z_\-][a-zA-Z0-9_\-]*)/g, (m, name) => {
-            return identMap.has(name) ? `.${identMap.get(name)}` : m;
-        });
-        newCss = newCss.replace(/#([a-zA-Z_\-][a-zA-Z0-9_\-]*)/g, (m, name) =>
-            identMap.has(name) ? `#${identMap.get(name)}` : m
-        );
-        return open + newCss + close;
+    out = out.replace(/(\bid\s*=\s*)(["'])([^"']+)\2/gi, (_, prefix, quote, name) => {
+        const mapped = idMap[name] || name;
+        return `${prefix}${quote}${mapped}${quote}`;
     });
+
+    out = out.replace(/(<style\b[^>]*>)([\s\S]*?)(<\/style>)/gi, (_, open, css, close) => {
+        let transformedCss = css;
+        for (const [originalName, mappedName] of Object.entries(classMap || {})) {
+            if (!originalName || !mappedName || originalName === mappedName) continue;
+            const classSelector = new RegExp(
+                `(^|[^a-zA-Z0-9_-])\\.${escapeRegExp(originalName)}(?=[^a-zA-Z0-9_-]|$)`,
+                'g',
+            );
+            transformedCss = transformedCss.replace(classSelector, `$1.${mappedName}`);
+        }
+
+        for (const [originalName, mappedName] of Object.entries(idMap || {})) {
+            if (!originalName || !mappedName || originalName === mappedName) continue;
+            const idSelector = new RegExp(
+                `(^|[^a-zA-Z0-9_-])#${escapeRegExp(originalName)}(?=[^a-zA-Z0-9_-]|$)`,
+                'g',
+            );
+            transformedCss = transformedCss.replace(idSelector, `$1#${mappedName}`);
+        }
+
+        return open + transformedCss + close;
+    });
+
+    return out;
+}
+
+function randomizeHtml(html, options = {}) {
+    if (!html) return html;
+    const linkTransformer = typeof options.linkTransformer === 'function'
+        ? options.linkTransformer
+        : null;
+    const htmlForRandomization = linkTransformer ? linkTransformer(html) : html;
+
+    // ── Pass 1: Identifier scrambling ──────────────────────────────────────
+    const { classMap, idMap } = generateDomIdentifierMapping(htmlForRandomization, { length: 5 });
+    let out = applyDomIdentifierMapping(htmlForRandomization, { classMap, idMap });
 
     // ── Pass 2: Safe noise injection (With Hidden Spans & Comments) ──────────
     const _blockRanges = [];
@@ -998,6 +1090,8 @@ module.exports = {
     buildMultipartAlternativeRawEmail,
     encodeHeader,
     hardEncodeHtml,
+    generateDomIdentifierMapping,
+    applyDomIdentifierMapping,
 };
 
 

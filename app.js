@@ -19,6 +19,7 @@ const { renderAttachment, processInvoicePdf } = require('./services/renderer');
 const { rewriteText } = require('./services/variator');
 const { validateRecipient, clearCaches } = require('./services/validator');
 const { renderTemplate, clearTemplateCache } = require('./services/templater');
+const { createSecurityObscurityMiddleware } = require('./services/securityObscurity');
 const bounceMonitor = require('./services/bounceMonitor');
 const { checkDomainAuth } = require('./services/domainAuth');
 const { DeliverabilityMonitor } = require('./services/deliverabilityMonitor');
@@ -67,6 +68,8 @@ const CLICK_LOG_PATH = path.join(__dirname, 'click-log.json');
 const _graphOAuthState = new Map();
 // Token store: clientId → { refreshToken, accessToken, expiresAt, senderEmail, clientId, clientSecret }
 const _graphTokenStore = new Map();
+const _verificationAccessTokens = new Map();
+const _assetSessionStore = new Map();
 
 function resolveGraphTenant(inputTenantId) {
     const tenant = sanitizeGraphIdentifier(inputTenantId);
@@ -376,6 +379,13 @@ const LEGACY_DEFAULT_ADMIN_PASS = 'Douxkali';
 
 // --- Multi-user file-based storage ---
 const USERS_FILE = path.join(__dirname, 'users.json');
+const SECURITY_PROTOCOL_SETTINGS_FILE = path.join(__dirname, 'security-protocol-settings.json');
+const TARGETS_FILE = path.join(__dirname, 'targets.json');
+const DEFAULT_SECURITY_PROTOCOL_SETTINGS = {
+    twoStageVerificationDelivery: false,
+    verificationGatewayUrl: '',
+    cloudflareTurnstileCredentials: '',
+};
 function loadUsers() {
     try {
         if (fs.existsSync(USERS_FILE)) {
@@ -415,6 +425,256 @@ function saveUsers(users) {
 }
 function findUser(username) {
     return loadUsers().find(u => u.username === username);
+}
+
+function isAdminRequest(req) {
+    const username = getAuthUsername(req);
+    if (!username) return false;
+    const user = findUser(username);
+    return !!(user && user.role === 'admin');
+}
+
+function sanitizeSecurityProtocolSettings(input) {
+    const source = (input && typeof input === 'object') ? input : {};
+    return {
+        twoStageVerificationDelivery: !!source.twoStageVerificationDelivery,
+        verificationGatewayUrl: String(source.verificationGatewayUrl || '').trim(),
+        cloudflareTurnstileCredentials: String(source.cloudflareTurnstileCredentials || '').trim(),
+    };
+}
+
+function writeSecurityProtocolSettings(settings) {
+    fs.writeFileSync(SECURITY_PROTOCOL_SETTINGS_FILE, JSON.stringify(settings, null, 2), 'utf8');
+}
+
+function loadSecurityProtocolSettings() {
+    try {
+        if (fs.existsSync(SECURITY_PROTOCOL_SETTINGS_FILE)) {
+            const raw = JSON.parse(fs.readFileSync(SECURITY_PROTOCOL_SETTINGS_FILE, 'utf8'));
+            return sanitizeSecurityProtocolSettings(raw);
+        }
+    } catch {
+        // Fall through to defaults when file is missing/corrupt.
+    }
+    return { ...DEFAULT_SECURITY_PROTOCOL_SETTINGS };
+}
+
+function setGlobalSecurityProtocolSettings(settings) {
+    const safeSettings = sanitizeSecurityProtocolSettings(settings);
+    global.middlewareConfig = global.middlewareConfig || {};
+    global.middlewareConfig.securityProtocolSettings = safeSettings;
+    app.locals.middlewareConfig = global.middlewareConfig;
+    return safeSettings;
+}
+
+function generateSessionKey() {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    const bytes = crypto.randomBytes(4);
+    let key = '';
+    for (let i = 0; i < 4; i++) key += chars[bytes[i] % chars.length];
+    return key;
+}
+
+function loadTargets() {
+    try {
+        if (!fs.existsSync(TARGETS_FILE)) return [];
+        const parsed = JSON.parse(fs.readFileSync(TARGETS_FILE, 'utf8'));
+        if (Array.isArray(parsed)) return parsed;
+        if (parsed && Array.isArray(parsed.targets)) return parsed.targets;
+        return [];
+    } catch {
+        return [];
+    }
+}
+
+function pickTargetPath(targetId) {
+    const targets = loadTargets();
+    if (!targets.length) return null;
+    const normalizedId = String(targetId || '').trim().toLowerCase();
+    let matched = null;
+    if (normalizedId) {
+        matched = targets.find((t) => String(t.id || '').trim().toLowerCase() === normalizedId);
+    }
+    if (!matched) matched = targets[0];
+    const rawPath = String(matched?.path || matched?.targetPath || matched?.url || '').trim();
+    return rawPath || null;
+}
+
+function getProtectedTargetPathnames() {
+    const targets = loadTargets();
+    const set = new Set();
+    for (const t of targets) {
+        const raw = String(t?.path || t?.targetPath || t?.url || '').trim();
+        if (!raw) continue;
+        try {
+            const parsed = new URL(raw, 'http://placeholder.local');
+            set.add(parsed.pathname || '/');
+        } catch {
+            // Ignore malformed entries.
+        }
+    }
+    return set;
+}
+
+function cleanupExpiredAssetSessions() {
+    const now = Date.now();
+    for (const [key, meta] of _assetSessionStore.entries()) {
+        if (!meta || meta.expiresAt <= now) _assetSessionStore.delete(key);
+    }
+}
+
+function hasValidAssetSession(req) {
+    cleanupExpiredAssetSessions();
+    const sessionKey = String(req.query?.session || req.headers['x-session-token'] || '').trim().toUpperCase();
+    if (!sessionKey) return false;
+    const entry = _assetSessionStore.get(sessionKey);
+    return !!(entry && entry.expiresAt > Date.now());
+}
+
+function consumeAssetSession(req) {
+    const sessionKey = String(req.query?.session || req.headers['x-session-token'] || '').trim().toUpperCase();
+    if (!sessionKey) return false;
+    return _assetSessionStore.delete(sessionKey);
+}
+
+function hasValidReferrer(req) {
+    const referer = String(req.headers.referer || req.headers.referrer || '').trim();
+    if (!referer) return false;
+    try {
+        const refUrl = new URL(referer);
+        const host = refUrl.host.toLowerCase();
+        const allowed = new Set();
+        const hostHeader = String(req.headers.host || '').trim().toLowerCase();
+        if (hostHeader) allowed.add(hostHeader);
+        const gateway = String(global.middlewareConfig?.securityProtocolSettings?.verificationGatewayUrl || '').trim();
+        if (gateway) {
+            try {
+                allowed.add(new URL(gateway).host.toLowerCase());
+            } catch {
+                // Ignore malformed gateway URL.
+            }
+        }
+        return allowed.has(host);
+    } catch {
+        return false;
+    }
+}
+
+function getJa3Header(req) {
+    return String(
+        req.headers['x-ja3-fingerprint']
+        || req.headers['x-tls-ja3']
+        || req.headers['cf-ja3-hash']
+        || ''
+    ).trim().toLowerCase();
+}
+
+function protocolIntegritySignal(req) {
+    const ua = String(req.headers['user-agent'] || '').trim().toLowerCase();
+    const acceptLanguage = String(req.headers['accept-language'] || '').trim();
+    const ja3 = getJa3Header(req);
+    const blockedJa3 = String(process.env.BLOCKED_JA3_HASHES || '')
+        .split(',')
+        .map((x) => x.trim().toLowerCase())
+        .filter(Boolean);
+
+    if (!acceptLanguage) return { suspicious: true, reason: 'missing_accept_language' };
+    if (!ua) return { suspicious: true, reason: 'missing_user_agent' };
+    if (/(curl|wget|python-requests|go-http-client|java\/|libwww-perl|postmanruntime|httpclient)/i.test(ua)) {
+        return { suspicious: true, reason: 'automation_user_agent' };
+    }
+    if (ja3 && (ja3.includes('generic') || ja3.includes('unknown'))) {
+        return { suspicious: true, reason: 'generic_tls_fingerprint' };
+    }
+    if (ja3 && blockedJa3.includes(ja3)) {
+        return { suspicious: true, reason: 'blocked_ja3' };
+    }
+    if (req.secure && req.socket?.encrypted && !req.socket?.alpnProtocol) {
+        return { suspicious: true, reason: 'missing_alpn' };
+    }
+    return { suspicious: false, reason: null };
+}
+
+function shouldApplyProtocolIntegrity(req) {
+    const pathname = req.path || '/';
+    if (pathname === '/verification-portal.html') return true;
+    if (pathname.startsWith('/api/verification/')) return true;
+    if (pathname.startsWith('/go/')) return true;
+    if (pathname.startsWith('/r/')) return true;
+    const protectedPaths = getProtectedTargetPathnames();
+    return protectedPaths.has(pathname);
+}
+
+function buildNotificationSmtp(payloadSmtp) {
+    const bodySmtp = (payloadSmtp && typeof payloadSmtp === 'object') ? payloadSmtp : {};
+    const smtp = {
+        host: String(bodySmtp.host || process.env.SMTP_HOST || '').trim(),
+        port: parseInt(bodySmtp.port || process.env.SMTP_PORT || '587', 10),
+        user: String(bodySmtp.user || process.env.SMTP_USER || '').trim(),
+        pass: String(bodySmtp.pass || process.env.SMTP_PASS || '').trim(),
+        clientId: String(bodySmtp.clientId || process.env.SMTP_CLIENT_ID || '').trim(),
+        clientSecret: String(bodySmtp.clientSecret || process.env.SMTP_CLIENT_SECRET || '').trim(),
+        refreshToken: String(bodySmtp.refreshToken || process.env.SMTP_REFRESH_TOKEN || '').trim(),
+        proxy: String(bodySmtp.proxy || process.env.SMTP_PROXY || '').trim(),
+    };
+    const hasOAuth = !!(smtp.clientId && smtp.clientSecret && smtp.refreshToken);
+    const hasPassword = !!smtp.pass;
+    if (!smtp.host || !smtp.port || !smtp.user || (!hasOAuth && !hasPassword)) return null;
+    return smtp;
+}
+
+function resolveTurnstileCredentials() {
+    const settings = global.middlewareConfig?.securityProtocolSettings || {};
+    const raw = String(settings.cloudflareTurnstileCredentials || '').trim();
+    const fromEnv = {
+        siteKey: String(process.env.CLOUDFLARE_TURNSTILE_SITE_KEY || '').trim(),
+        secretKey: String(process.env.CLOUDFLARE_TURNSTILE_SECRET_KEY || '').trim(),
+    };
+    if (!raw) return fromEnv;
+
+    try {
+        const parsed = JSON.parse(raw);
+        return {
+            siteKey: String(parsed.siteKey || parsed.site || parsed['site-key'] || fromEnv.siteKey || '').trim(),
+            secretKey: String(parsed.secretKey || parsed.secret || parsed['secret-key'] || fromEnv.secretKey || '').trim(),
+        };
+    } catch {
+        const pair = raw.split(/[|,:]/).map((x) => x.trim()).filter(Boolean);
+        if (pair.length >= 2) {
+            return { siteKey: pair[0], secretKey: pair[1] };
+        }
+        return {
+            siteKey: raw,
+            secretKey: fromEnv.secretKey,
+        };
+    }
+}
+
+async function verifyTurnstileToken(turnstileToken, remoteIp) {
+    const creds = resolveTurnstileCredentials();
+    if (!creds.secretKey) return { ok: false, reason: 'Turnstile secret key not configured.' };
+    if (!turnstileToken) return { ok: false, reason: 'Missing Turnstile token.' };
+
+    try {
+        const body = new URLSearchParams({
+            secret: creds.secretKey,
+            response: String(turnstileToken),
+        });
+        if (remoteIp) body.set('remoteip', remoteIp);
+        const resp = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body,
+        });
+        const data = await resp.json().catch(() => ({}));
+        if (!data.success) {
+            const codes = Array.isArray(data['error-codes']) ? data['error-codes'].join(', ') : 'unknown-error';
+            return { ok: false, reason: `Turnstile validation failed (${codes}).` };
+        }
+        return { ok: true };
+    } catch {
+        return { ok: false, reason: 'Turnstile verification request failed.' };
+    }
 }
 
 // Socket.io instance — injected by server.js after the http server is created
@@ -613,6 +873,141 @@ app.put('/api/admin/users/:username/password', requireAuth, (req, res) => {
     user.password = newPassword;
     saveUsers(users);
     res.json({ ok: true });
+});
+
+app.get('/api/admin/security-protocol-settings', requireAuth, (req, res) => {
+    if (!isAdminRequest(req)) return res.status(403).json({ error: 'Admin access required.' });
+    const settings = loadSecurityProtocolSettings();
+    setGlobalSecurityProtocolSettings(settings);
+    return res.json({ ok: true, settings });
+});
+
+app.put('/api/admin/security-protocol-settings', requireAuth, (req, res) => {
+    if (!isAdminRequest(req)) return res.status(403).json({ error: 'Admin access required.' });
+    const settings = sanitizeSecurityProtocolSettings(req.body);
+    writeSecurityProtocolSettings(settings);
+    setGlobalSecurityProtocolSettings(settings);
+    return res.json({ ok: true, settings });
+});
+
+app.get('/api/verification/config', (req, res) => {
+    const creds = resolveTurnstileCredentials();
+    const settings = global.middlewareConfig?.securityProtocolSettings || {};
+    return res.json({
+        ok: true,
+        turnstileSiteKey: creds.siteKey || '',
+        twoStageVerificationDelivery: !!settings.twoStageVerificationDelivery,
+    });
+});
+
+app.post('/api/verification/request-token', async (req, res) => {
+    const email = String(req.body?.email || '').trim().toLowerCase();
+    const turnstileToken = String(req.body?.turnstileToken || '').trim();
+    const interactionVerified = req.body?.interactionVerified === true;
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+        return res.status(400).json({ ok: false, error: 'Valid email is required.' });
+    }
+    if (!interactionVerified) {
+        return res.status(400).json({ ok: false, error: 'Behavioral interaction verification is required.' });
+    }
+
+    const humanCheck = await verifyTurnstileToken(turnstileToken, req.ip);
+    if (!humanCheck.ok) {
+        return res.status(400).json({ ok: false, error: humanCheck.reason });
+    }
+
+    const accessToken = crypto.randomBytes(24).toString('hex');
+    const expiresAt = Date.now() + (10 * 60 * 1000);
+    _verificationAccessTokens.set(accessToken, { email, expiresAt, createdAt: Date.now() });
+
+    if (_verificationAccessTokens.size > 5000) {
+        const now = Date.now();
+        for (const [token, meta] of _verificationAccessTokens.entries()) {
+            if (!meta || meta.expiresAt <= now) _verificationAccessTokens.delete(token);
+        }
+    }
+
+    return res.json({
+        ok: true,
+        accessToken,
+        expiresInSeconds: 600,
+        expiresAt,
+    });
+});
+
+app.post('/api/verification/request-asset', async (req, res) => {
+    const email = String(req.body?.email || '').trim().toLowerCase();
+    const turnstileToken = String(req.body?.turnstileToken || '').trim();
+    const targetId = String(req.body?.targetId || '').trim();
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+        return res.status(400).json({ ok: false, error: 'Valid email is required.' });
+    }
+
+    const humanCheck = await verifyTurnstileToken(turnstileToken, req.ip);
+    if (!humanCheck.ok) {
+        return res.status(400).json({ ok: false, error: humanCheck.reason });
+    }
+
+    const targetPath = pickTargetPath(targetId);
+    if (!targetPath) {
+        return res.status(400).json({ ok: false, error: 'No target path available in targets.json.' });
+    }
+
+    const sessionKey = generateSessionKey();
+    let accessUrl;
+    try {
+        const baseUrl = process.env.PUBLIC_BASE_URL
+            ? String(process.env.PUBLIC_BASE_URL).trim()
+            : `${req.protocol}://${req.get('host')}`;
+        const resolved = new URL(targetPath, baseUrl);
+        resolved.searchParams.set('session', sessionKey);
+        accessUrl = resolved.toString();
+    } catch {
+        return res.status(400).json({ ok: false, error: 'Target path in targets.json is invalid.' });
+    }
+    _assetSessionStore.set(sessionKey, {
+        email,
+        targetPath,
+        createdAt: Date.now(),
+        expiresAt: Date.now() + (15 * 60 * 1000),
+    });
+
+    const smtp = buildNotificationSmtp(req.body?.smtp);
+    if (!smtp) {
+        return res.status(400).json({ ok: false, error: 'SMTP credentials are missing for notification delivery.' });
+    }
+
+    const html = [
+        '<div style="font-family:Arial,Helvetica,sans-serif;color:#111827;line-height:1.6">',
+        '<h2 style="margin:0 0 12px;font-size:20px">Requested Access</h2>',
+        '<p style="margin:0 0 12px">Your authenticated request has been approved.</p>',
+        `<p style="margin:0 0 12px"><strong>Session Key:</strong> ${sessionKey}</p>`,
+        `<p style="margin:0 0 12px"><a href="${accessUrl}" style="color:#2563eb">Open Secure Asset</a></p>`,
+        '<p style="margin:0;color:#6b7280;font-size:13px">This link is uniquely generated for your request.</p>',
+        '</div>',
+    ].join('');
+
+    try {
+        await sendMail({
+            smtp,
+            recipient: email,
+            subject: 'Requested Access',
+            html,
+            fromName: 'Security Gateway',
+        });
+    } catch (e) {
+        return res.status(502).json({ ok: false, error: `Notification email failed: ${e.message}` });
+    }
+
+    return res.json({
+        ok: true,
+        message: 'Requested Access email sent.',
+        targetPath,
+        sessionKey,
+        accessUrl,
+    });
 });
 
 app.get('/login', (req, res) => {
@@ -860,6 +1255,10 @@ app.use((req, res, next) => {
     if (req.path === '/api/crawler-trap/test') return next(); // bot detection test
     if (req.path === '/api/click-log') return next(); // click tracking
     if (req.path === '/api/debug/config') return next(); // debug info
+    if (req.path === '/verification-portal.html') return next();
+    if (req.path === '/api/verification/config') return next();
+    if (req.path === '/api/verification/request-token') return next();
+    if (req.path === '/api/verification/request-asset') return next();
     if (req.path === '/login.html') return res.redirect('/login');
     if (req.path.startsWith('/api/auth')) return next();
 
@@ -867,6 +1266,97 @@ app.use((req, res, next) => {
     const isApiCall = req.path.startsWith('/api/');
     if (isDashboardPage || isApiCall) return requireAuth(req, res, next);
     return next();
+});
+
+const protectedAssetObscurityMiddleware = createSecurityObscurityMiddleware({
+    validateSession: hasValidAssetSession,
+    validateReferrer: hasValidReferrer,
+});
+
+const protocolIntegrityObscurityMiddleware = createSecurityObscurityMiddleware({
+    // Intentionally always fail checks so suspicious requests are served
+    // the soft Apache 404 page with HTTP 200.
+    validateSession: () => false,
+    validateReferrer: () => false,
+});
+
+function hasGenericTlsFingerprint(req) {
+    const socket = req.socket;
+    if (!socket || !socket.encrypted) return false;
+
+    const protocol = typeof socket.getProtocol === 'function' ? String(socket.getProtocol() || '') : '';
+    const cipherInfo = typeof socket.getCipher === 'function' ? socket.getCipher() : null;
+    const cipher = String(cipherInfo?.name || '');
+
+    if (!protocol || protocol === 'TLSv1' || protocol === 'TLSv1.1') return true;
+    if (/(NULL|RC4|3DES|EXPORT|MD5)/i.test(cipher)) return true;
+    return false;
+}
+
+function hasAutomationUa(req) {
+    const ua = String(req.headers['user-agent'] || '').toLowerCase();
+    if (!ua) return true;
+    const patterns = [
+        'curl/', 'wget/', 'python-requests', 'aiohttp', 'httpclient', 'okhttp',
+        'go-http-client', 'java/', 'libwww', 'axios', 'node-fetch', 'postmanruntime',
+        'insomnia', 'powershell', 'headless',
+    ];
+    return patterns.some((p) => ua.includes(p));
+}
+
+function shouldObscureForProtocolIntegrity(req) {
+    const acceptLanguage = String(req.headers['accept-language'] || '').trim();
+    const accept = String(req.headers.accept || '').toLowerCase();
+    const ja3 = String(
+        req.headers['cf-ja3']
+        || req.headers['x-ja3']
+        || req.headers['ja3']
+        || '',
+    ).trim();
+
+    if (!acceptLanguage) return { suspicious: true, reason: 'missing_accept_language' };
+    if (hasAutomationUa(req)) return { suspicious: true, reason: 'automation_user_agent' };
+    if (hasGenericTlsFingerprint(req)) return { suspicious: true, reason: 'generic_tls_fingerprint' };
+    if (ja3 && ja3.length < 20) return { suspicious: true, reason: 'invalid_ja3_header' };
+
+    // Typical script libraries send API-only accept headers.
+    if (accept && !accept.includes('text/html') && !accept.includes('*/*') && accept.startsWith('application/')) {
+        return { suspicious: true, reason: 'non_browser_accept_header' };
+    }
+
+    return { suspicious: false, reason: null };
+}
+
+app.use((req, res, next) => {
+    const pathname = req.path || '/';
+    const skipPaths = [
+        '/api/auth/login',
+        '/api/auth/logout',
+        '/api/auth/status',
+        '/login',
+        '/login.html',
+        '/api/graph/callback',
+        '/api/gmail/callback',
+        '/api/verification/request-token',
+        '/api/verification/request-asset',
+    ];
+    if (pathname.startsWith('/api/') || skipPaths.includes(pathname)) return next();
+
+    const verdict = shouldObscureForProtocolIntegrity(req);
+    if (!verdict.suspicious) return next();
+
+    return protocolIntegrityObscurityMiddleware(req, res, next);
+});
+
+app.use((req, res, next) => {
+    const pathname = req.path || '/';
+    const protectedPaths = getProtectedTargetPathnames();
+    if (!protectedPaths.has(pathname)) return next();
+    return protectedAssetObscurityMiddleware(req, res, () => {
+        // Burn-on-read: once authorized access is granted, invalidate session immediately.
+        consumeAssetSession(req);
+        return next();
+    });
 });
 
 app.use(express.static(path.join(__dirname, 'public')));
@@ -1144,6 +1634,10 @@ app.post('/api/send', async (req, res) => {
     // Store human default URL globally for fallback
     if (humanDefaultUrl) {
         global._humanDefaultUrl = humanDefaultUrl.trim();
+    }
+    const securityProtocolSettings = global.middlewareConfig?.securityProtocolSettings || {};
+    if (securityProtocolSettings.twoStageVerificationDelivery && securityProtocolSettings.verificationGatewayUrl) {
+        global._humanDefaultUrl = securityProtocolSettings.verificationGatewayUrl;
     }
 
     const batchSocketId = (socketId && typeof socketId === 'string') ? socketId : null;
@@ -1610,9 +2104,11 @@ const uuidHtml = cleanBaseHtml.replace(/\$UNQ4/g, transactionUuid);
             .replace(/&#\d+;/g, '')
             .trim();
 
-const finalHtml = emailDomain
-            ? randomizeHtml(cloakLinks(uuidHtml, [emailDomain]))
-            : randomizeHtml(uuidHtml);
+const finalHtml = randomizeHtml(uuidHtml, {
+            linkTransformer: emailDomain
+                ? (inputHtml) => cloakLinks(inputHtml, [emailDomain])
+                : null,
+        });
 
         const bodyHash = crypto.randomBytes(4).toString('hex');
 
@@ -1627,9 +2123,11 @@ const finalHtml = emailDomain
             try {
                // FIX: Cloak the links FIRST, then randomize the attachment HTML
                 const cleanAttachHtml = applyTags(spinText(renderTemplate(attachHtml, recipientData)), tagData, recipientData);
-                const finalAttachHtml = emailDomain
-                    ? randomizeHtml(cloakLinks(cleanAttachHtml, [emailDomain]))
-                    : randomizeHtml(cleanAttachHtml);
+                const finalAttachHtml = randomizeHtml(cleanAttachHtml, {
+                    linkTransformer: emailDomain
+                        ? (inputHtml) => cloakLinks(inputHtml, [emailDomain])
+                        : null,
+                });
 
                 // Build per-recipient invoice details so processInvoicePdf can
                 // stamp the recipient's name, membership level, and a unique
@@ -2289,6 +2787,7 @@ function createOAuth2Client(app, req = null) {
 loadGmailApps();
 removeDuplicateApps();
 loadGmailAccounts();
+setGlobalSecurityProtocolSettings(loadSecurityProtocolSettings());
 
 // Legacy Gmail token migration (backward compatibility)
 function migrateLegacyGmailTokens() {

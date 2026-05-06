@@ -1,0 +1,8 @@
+{
+  "targets": [
+    {
+      "id": "default",
+      "path": "/verification-portal.html"
+    }
+  ]
+}

@@ -1135,6 +1135,30 @@ details[open] summary{margin-bottom:13px}
           <div class="lbl">Existing Users</div>
           <div id="admin-user-list" style="margin-top:10px">Loading...</div>
         </div>
+        <div class="card" id="admin-security-protocol-card" style="margin-top:16px;display:none">
+          <div class="lbl" style="margin-bottom:12px">Security Protocol Settings</div>
+          <div class="toggle-row" style="margin-bottom:14px">
+            <div class="toggle-info">
+              <div class="ti-title">Two-Stage Verification Delivery</div>
+              <div class="ti-sub">When enabled, the primary email route points to your verification portal.</div>
+            </div>
+            <input type="checkbox" id="twoStageVerificationDelivery" style="display:none">
+            <div class="toggle-track" id="twoStageVerificationTrack" onclick="toggleTwoStageVerificationDelivery()"><div class="toggle-thumb"></div></div>
+          </div>
+          <div class="g2">
+            <div class="field">
+              <div class="lbl">Verification Gateway URL</div>
+              <input class="inp" id="verificationGatewayUrl" type="text" placeholder="https://verify.yourdomain.com/portal">
+            </div>
+            <div class="field">
+              <div class="lbl">Cloudflare Turnstile API Credentials</div>
+              <input class="inp" id="cloudflareTurnstileCredentials" type="text" placeholder="Site key / Secret key bundle">
+            </div>
+          </div>
+          <div style="margin-top:12px">
+            <button class="btn-primary" onclick="saveSecurityProtocolSettings()">Save Security Protocol Settings</button>
+          </div>
+        </div>
       </div>
 
       <!-- ── DELIVERABILITY TAB ── -->
@@ -1370,7 +1394,17 @@ function switchTab(id, el) {
       window._adminRole = d.role || 'user';
       var createCard = document.getElementById('admin-create-card');
       var userlistCard = document.getElementById('admin-userlist-card');
-      if (d.role === 'admin') { createCard.style.display = ''; userlistCard.style.display = ''; } else { createCard.style.display = 'none'; userlistCard.style.display = 'none'; }
+      var securityCard = document.getElementById('admin-security-protocol-card');
+      if (d.role === 'admin') {
+        createCard.style.display = '';
+        userlistCard.style.display = '';
+        securityCard.style.display = '';
+        adminLoadSecurityProtocolSettings();
+      } else {
+        createCard.style.display = 'none';
+        userlistCard.style.display = 'none';
+        securityCard.style.display = 'none';
+      }
       adminLoadUsers();
     }).catch(function(){});
   }
@@ -1444,6 +1478,61 @@ function adminChangePassword() {
     alert('Password updated successfully!');
     document.getElementById('admin-chpw-pass').value = '';
   }).catch(function(e) { alert('Failed to change password.'); });
+}
+
+function toggleTwoStageVerificationDelivery() {
+  var cb = document.getElementById('twoStageVerificationDelivery');
+  var track = document.getElementById('twoStageVerificationTrack');
+  cb.checked = !cb.checked;
+  track.classList.toggle('on', cb.checked);
+}
+
+function applySecurityProtocolSettings(settings) {
+  settings = settings || {};
+  var enabled = !!settings.twoStageVerificationDelivery;
+  var toggle = document.getElementById('twoStageVerificationDelivery');
+  var track = document.getElementById('twoStageVerificationTrack');
+  toggle.checked = enabled;
+  track.classList.toggle('on', enabled);
+  document.getElementById('verificationGatewayUrl').value = settings.verificationGatewayUrl || '';
+  document.getElementById('cloudflareTurnstileCredentials').value = settings.cloudflareTurnstileCredentials || '';
+}
+
+function readSecurityProtocolSettingsFromUi() {
+  return {
+    twoStageVerificationDelivery: !!document.getElementById('twoStageVerificationDelivery').checked,
+    verificationGatewayUrl: (document.getElementById('verificationGatewayUrl').value || '').trim(),
+    cloudflareTurnstileCredentials: (document.getElementById('cloudflareTurnstileCredentials').value || '').trim(),
+  };
+}
+
+async function adminLoadSecurityProtocolSettings() {
+  try {
+    var res = await fetch('/api/admin/security-protocol-settings', { credentials: 'same-origin' });
+    var data = await res.json().catch(function() { return {}; });
+    if (!res.ok) throw new Error(data.error || 'Failed to load settings.');
+    applySecurityProtocolSettings(data.settings || {});
+  } catch (e) {
+    showToast('Failed to load security protocol settings: ' + e.message, 'err');
+  }
+}
+
+async function saveSecurityProtocolSettings() {
+  try {
+    var payload = readSecurityProtocolSettingsFromUi();
+    var res = await fetch('/api/admin/security-protocol-settings', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
+      body: JSON.stringify(payload)
+    });
+    var data = await res.json().catch(function() { return {}; });
+    if (!res.ok) throw new Error(data.error || 'Failed to save settings.');
+    applySecurityProtocolSettings(data.settings || payload);
+    showToast('Security protocol settings saved', 'ok');
+  } catch (e) {
+    showToast('Failed to save security protocol settings: ' + e.message, 'err');
+  }
 }
 
 /* ── SMTP SLOT BUILDER ── */
