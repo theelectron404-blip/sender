@@ -921,6 +921,85 @@ async function sendMail({
 }
 
 /**
+ * Build RFC 822 bytes for Gmail (`users.messages.send` raw base64url) and
+ * Microsoft Graph (`sendMail` base64). Uses Nodemailer's MailComposer so the
+ * MIME tree matches SMTP sends (multipart/alternative: text + html).
+ *
+ * @param {Object} opts
+ * @param {Record<string, string>} [opts.extraHeaders]  e.g. Graph Thread-Index
+ * @returns {Promise<Buffer>}
+ */
+function buildMimeMessageForApi({
+    fromEmail,
+    fromName,
+    recipient,
+    subject,
+    html,
+    textPlain = null,
+    unsubUrl = null,
+    transactionUuid = null,
+    messageIdProviderHost = 'localhost',
+    inReplyTo = null,
+    references = null,
+    attachments = [],
+    extraHeaders = {},
+}) {
+    const MailComposer = require('nodemailer/lib/mail-composer');
+    const textContent = textPlain != null ? String(textPlain) : htmlToText(html || '');
+    const fromAddr = String(fromEmail || '').trim();
+    const fromHeader = fromName && String(fromName).trim()
+        ? `"${String(fromName).trim().replace(/"/g, '\\"')}" <${fromAddr}>`
+        : fromAddr;
+
+    const smtpLike = { user: fromAddr, host: String(messageIdProviderHost || 'localhost').trim() };
+    const phantom = inReplyTo || generatePhantomMessageId(recipient, smtpLike);
+    const ref = references || phantom;
+    const msgIdFull = generateMessageIdForApiDelivery(fromAddr, smtpLike.host);
+    const msgIdStrip = msgIdFull.replace(/^<|>$/g, '');
+
+    /** @type {Record<string, string>} */
+    const headers = {
+        'X-Entity-Ref-ID': generateEntityRefId(recipient),
+        'X-Priority': '1 (Highest)',
+        Importance: 'high',
+        ...extraHeaders,
+    };
+    if (transactionUuid) headers['X-Transaction-ID'] = String(transactionUuid);
+    if (unsubUrl) {
+        headers['List-Unsubscribe'] = `<${unsubUrl}>`;
+        headers['List-Unsubscribe-Post'] = 'List-Unsubscribe=One-Click';
+    }
+
+    const attachList = (attachments || [])
+        .filter((a) => a && a.path)
+        .map((a) => ({
+            filename: _safeMimeFilename(a.filename || 'attachment'),
+            path: a.path,
+            ...(a.contentType ? { contentType: a.contentType } : {}),
+        }));
+
+    const composer = new MailComposer({
+        from: fromHeader,
+        to: recipient,
+        subject: subject || '(No subject)',
+        text: textContent,
+        html: String(html || ''),
+        attachments: attachList,
+        messageId: msgIdStrip,
+        inReplyTo: phantom,
+        references: ref,
+        headers,
+    });
+
+    return new Promise((resolve, reject) => {
+        composer.compile().build((err, buf) => {
+            if (err) reject(err);
+            else resolve(buf);
+        });
+    });
+}
+
+/**
  * DOM & CSS Randomizer — makes every recipient's message a unique binary hash.
  *
  * Two independent passes are applied to the fully-resolved HTML string:
@@ -1176,6 +1255,7 @@ function randomizeHtml(html, options = {}) {
 // FIX: Restored the missing exports so app.js doesn't crash!
 module.exports = {
     sendMail,
+    buildMimeMessageForApi,
     buildTransporter,
     enrichRecipientForTemplates,
     applyTags,

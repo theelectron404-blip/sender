@@ -14,7 +14,7 @@ const {
     randomizeHtml,
     wrapProfessionalEmailHtml,
     htmlToText,
-    buildMultipartAlternativeRawEmail,
+    buildMimeMessageForApi,
     generatePhantomMessageId,
 } = require('./services/mailer');
 const { renderAttachment, processInvoicePdf } = require('./services/renderer');
@@ -337,7 +337,9 @@ async function sendGraphMail({ graphConfig, recipient, subject, html, textPlain,
     const displayName = String(fromName || '').trim();
     const messageIdProviderHost = 'outlook.com';
 
-    const raw = buildMultipartAlternativeRawEmail({
+    const smtpLike = { user: fromAddress, host: messageIdProviderHost };
+    const phantomId = generatePhantomMessageId(recipient, smtpLike);
+    const rawBuf = await buildMimeMessageForApi({
         fromEmail: fromAddress,
         fromName: displayName,
         recipient,
@@ -346,16 +348,18 @@ async function sendGraphMail({ graphConfig, recipient, subject, html, textPlain,
         textPlain: textContent,
         unsubUrl,
         transactionUuid,
-        threadIndex: generateThreadIndex(),
-        networkMessageId: generateGuid(),
         messageIdProviderHost,
-        inReplyTo: generatePhantomMessageId(recipient, { host: messageIdProviderHost }),
-        references: generatePhantomMessageId(recipient, { host: messageIdProviderHost }),
+        inReplyTo: phantomId,
+        references: phantomId,
         attachments: attachments || [],
+        extraHeaders: {
+            'X-Thread-Index': generateThreadIndex(),
+            'X-MS-Exchange-Organization-Network-Message-Id': generateGuid(),
+        },
     });
 
     // Graph: MIME format — base64 body, Content-Type: text/plain (returns 202 Accepted)
-    const mimeBody = Buffer.from(raw, 'utf8').toString('base64');
+    const mimeBody = rawBuf.toString('base64');
 
     const sendRes = await fetch(sendUrl, {
         method: 'POST',
@@ -3259,7 +3263,9 @@ async function sendGmail({ account, recipient, subject, html, fromName, transact
     const textVersion = textPlain != null ? String(textPlain) : htmlToText(html || '');
     const messageIdProviderHost = 'gmail.com';
     const displayName = fromName ? String(fromName).trim() : fromName;
-    const raw = buildMultipartAlternativeRawEmail({
+    const smtpLike = { user: account.senderEmail, host: messageIdProviderHost };
+    const phantomId = generatePhantomMessageId(recipient, smtpLike);
+    const rawBuf = await buildMimeMessageForApi({
         fromEmail: account.senderEmail,
         fromName: displayName,
         recipient,
@@ -3268,17 +3274,15 @@ async function sendGmail({ account, recipient, subject, html, fromName, transact
         textPlain: textVersion,
         unsubUrl,
         transactionUuid,
-        threadIndex: null,
-        networkMessageId: null,
         messageIdProviderHost,
-        inReplyTo: generatePhantomMessageId(recipient, { host: messageIdProviderHost }),
-        references: generatePhantomMessageId(recipient, { host: messageIdProviderHost }),
+        inReplyTo: phantomId,
+        references: phantomId,
         attachments: attachments || [],
     });
 
     // Gmail users.messages.send: `raw` must be the entire RFC 822 message as one
     // web-safe Base64 (Base64URL, no line breaks) string — not standard Base64.
-    const encodedMessage = Buffer.from(raw, 'utf8').toString('base64url');
+    const encodedMessage = rawBuf.toString('base64url');
     const gmail = google.gmail({ version: 'v1', auth: account.auth });
     await gmail.users.messages.send({
         userId: 'me',
