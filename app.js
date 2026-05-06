@@ -2206,8 +2206,8 @@ res.json({ ok: true, message: "Batch started", total: recipients.length });
 
         // Resolve spintax and tags first; wrap once (fragment only in UI—no full <!DOCTYPE>/<html>/<body> or Gmail gets a double document).
         const rawBody = applyTags(freezeTags(spinText(renderedBody)), tagData, recipientMailContext);
-        const bodyWithUuid = rawBody.replace(/\$UNQ4/gi, transactionUuid);
-        const bodyWithHash = `${bodyWithUuid}\n<div style="${getRandomHideStyle()}">#${crypto.randomBytes(4).toString('hex')}</div>`;
+        const bodyWithHash = rawBody.replace(/\$UNQ4/gi, transactionUuid);
+        // Removed the invisible hex div injection
 
         // Wrap first so <body> exists; then randomize + cloak (honeypot injects after <body>).
         const wrappedBaseHtml = wrapProfessionalEmailHtml(bodyWithHash);

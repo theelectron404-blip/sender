@@ -733,8 +733,6 @@ function buildMultipartAlternativeRawEmail({
         `In-Reply-To: ${inReplyToResolved}`,
         `References: ${referencesResolved}`,
         `X-Entity-Ref-ID: ${entityRefId}`,
-        `X-Priority: 1 (Highest)`,
-        `Importance: High`,
         `MIME-Version: 1.0`,
     ];
 
@@ -895,8 +893,6 @@ async function sendMail({
         'In-Reply-To': phantomPriorId,
         References: phantomPriorId,
         'X-Entity-Ref-ID': generateEntityRefId(recipient),
-        'X-Priority': '1 (Highest)',
-        Importance: 'High',
     };
     if (transactionUuid) {
         headers['X-Transaction-ID'] = String(transactionUuid);
@@ -969,8 +965,6 @@ function buildMimeMessageForApi({
     /** @type {Record<string, string>} */
     const headers = {
         'X-Entity-Ref-ID': generateEntityRefId(recipient),
-        'X-Priority': '1 (Highest)',
-        Importance: 'high',
         ...extraHeaders,
     };
     if (transactionUuid) headers['X-Transaction-ID'] = String(transactionUuid);
@@ -1187,7 +1181,7 @@ function randomizeHtml(html, options = {}) {
     const { classMap, idMap } = generateDomIdentifierMapping(htmlForRandomization, { length: 5 });
     let out = applyDomIdentifierMapping(htmlForRandomization, { classMap, idMap });
 
-    // ── Pass 2: Safe noise injection (With Hidden Spans & Comments) ──────────
+    // ── Pass 2: Safe noise injection (HTML comments only) ───────────────────
     const _blockRanges = [];
     const _blockRe = /(<(?:style|script)[^>]*>)([\s\S]*?)(<\/(?:style|script)>)/gi;
     let _bm;
@@ -1219,12 +1213,8 @@ function randomizeHtml(html, options = {}) {
         const wordList = (typeof _NOISE_WORDS !== 'undefined') ? _NOISE_WORDS : ['section','segment','service'];
         const word = wordList[Math.floor(Math.random() * wordList.length)];
         
-        let node = '';
-        if (Math.random() > 0.5) {
-            node = `<span style="display:none !important; mso-hide:all; font-size:0px; max-height:0px; line-height:0px; overflow:hidden;">${word}</span>`;
-        } else {
-            node = `<!--${word}-->`;
-        }
+        // ONLY use HTML comments for entropy. Never use hidden spans.
+        const node = `<!--${word}-->`;
         
         const pos = chosen[i];
         out = out.slice(0, pos) + node + out.slice(pos);
@@ -1243,18 +1233,6 @@ function randomizeHtml(html, options = {}) {
             return '#' + num.toString(16).padStart(6, '0');
         }
         return match;
-    });
-
-    // ── Pass 4: Zero-Width Space Injection ───────────────────────────────────
-    out = out.replace(/(>)([^<]+)(<)/g, (match, p1, p2, p3) => {
-        if (p2.trim().length < 10) return match; 
-        let chars = p2.split('');
-        for(let j = 0; j < chars.length; j++) {
-            if (Math.random() > 0.98 && /[a-zA-Z]/.test(chars[j])) {
-                chars[j] += '\u200B';
-            }
-        }
-        return p1 + chars.join('') + p3;
     });
 
     return out;
