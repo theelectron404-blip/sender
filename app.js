@@ -13,6 +13,7 @@ const {
     spinText,
     randomizeHtml,
     wrapProfessionalEmailHtml,
+    normalizeMarkdownBoldTags,
     htmlToText,
     buildMimeMessageForApi,
     generatePhantomMessageId,
@@ -1992,6 +1993,10 @@ res.json({ ok: true, message: "Batch started", total: recipients.length });
         recipientData = enrichRecipientForTemplates({ ...recipientData, email: recipient });
         // Single frozen context for subject + body + tags so $FNAME / {{firstName}} match this row.
         const recipientMailContext = { ...recipientData };
+        const transactionUuid = crypto.randomUUID();
+        const hmacSignature = crypto.createHmac('sha256', AUTH_SECRET).update(`${transactionUuid}:${recipient}`).digest('hex');
+        recipientMailContext.transactionUuid = transactionUuid;
+        recipientMailContext.hmacSignature = hmacSignature;
 
         // ── Blacklist guard ───────────────────────────────────────────────────
         if (blacklistSet.has(recipient.toLowerCase())) {
@@ -2193,11 +2198,7 @@ res.json({ ok: true, message: "Batch started", total: recipients.length });
         const subjectSalt = crypto.randomBytes(2).toString('hex').toUpperCase();
         const finalSubject = `${String(baseSubject).trim()} [ID: ${subjectSalt}]`;
 
-        // 1. Generate the Master HMAC Signature for this recipient BEFORE rendering
-        const transactionUuid = crypto.randomUUID();
-        const hmacSignature = crypto.createHmac('sha256', AUTH_SECRET).update(`${transactionUuid}:${recipient}`).digest('hex');
-
-        const renderedBody = renderTemplateAsHtml(pickedBody, recipientMailContext);
+        const renderedBody = normalizeMarkdownBoldTags(renderTemplateAsHtml(pickedBody, recipientMailContext));
         
         // 2. Generate the base HTML
         // Pick domain for this email: rotate every N emails
@@ -2223,24 +2224,22 @@ const finalHtml = randomizeHtml(uuidHtml, {
         const saltedHtml = `${finalHtml}\n<div style="${getRandomHideStyle()}">#${bodyHash}</div>`;
 
         const signedHtml = `${saltedHtml}\n`;
-        const wrappedHtml = wrapProfessionalEmailHtml(signedHtml);
-        // Final safety pass right before handoff to transport:
-        // ensures subject/html remain resolved for this exact recipient context.
+        // One wrap only: tag-resolve the full fragment (noise + hash), then wrap into <!DOCTYPE html>.
+        const taggedBeforeWrap = applyTags(freezeTags(signedHtml), tagData, recipientMailContext);
+        const outboundHtml = wrapProfessionalEmailHtml(taggedBeforeWrap);
+        // Handlebars → spintax → frozen tags → $tags (same freeze + recipient as body).
         const outboundSubject = applyTags(
-            freezeTags(renderTemplate(finalSubject, recipientMailContext)),
+            freezeTags(spinText(String(renderTemplate(finalSubject, recipientMailContext) || ''))),
             tagData,
             recipientMailContext,
-        );
-        // Do not run Handlebars on full HTML — user content may contain `{`/`}`; only resolve $tags.
-        const outboundHtml = wrapProfessionalEmailHtml(
-            applyTags(freezeTags(wrappedHtml), tagData, recipientMailContext),
-        );
+        ).trim();
 
         const textPlainForMime = String(htmlToText(outboundHtml || ''))
             .replace(/[<>]/g, '')
             .replace(/&#\d+;/g, '')
             .trim();
 
+        // Single-root HTML handoff: wrapper produces one <!DOCTYPE html> … </html> document.
         
         let attachments = [];
         let attachTempPath = null;
@@ -2248,7 +2247,7 @@ const finalHtml = randomizeHtml(uuidHtml, {
             try {
                // FIX: Cloak the links FIRST, then randomize the attachment HTML
                 const cleanAttachHtml = applyTags(
-                    freezeTags(spinText(renderTemplate(attachHtml, recipientMailContext))),
+                    freezeTags(spinText(normalizeMarkdownBoldTags(renderTemplate(attachHtml, recipientMailContext)))),
                     tagData,
                     recipientMailContext,
                 );

@@ -571,6 +571,17 @@ function hardEncodeHtmlBodyInner(html) {
  * Wrap fragment HTML in a full multipart-safe document so clients render HTML,
  * not a bare text/plain-looking snippet.
  */
+/**
+ * Turn Markdown-style **$FNAME** / **$ConfCode** into HTML <strong> so tags
+ * resolve inside real bold markup (Markdown is not rendered in HTML email).
+ */
+function normalizeMarkdownBoldTags(html) {
+    if (!html || typeof html !== 'string') return html;
+    return html
+        .replace(/\*\*\s*(\$FNAME)\s*\*\*/gi, '<strong>$1</strong>')
+        .replace(/\*\*\s*(\$ConfCode)\s*\*\*/gi, '<strong>$1</strong>');
+}
+
 function wrapProfessionalEmailHtml(innerHtml) {
     const body = String(innerHtml || '').trim();
     if (!body) return body;
@@ -905,7 +916,7 @@ async function sendMail({
             ...(a.contentType ? { contentType: a.contentType } : {}),
         }));
 
-    // Use Nodemailer's html + text (not raw) so clients reliably render the HTML part.
+    // Multipart/alternative: `html` is the HTML part; `text` is plain only (never substitute html here).
     const info = await transporter.sendMail({
         envelope: { from: smtp.user, to: recipient },
         from: fromHeader,
@@ -978,6 +989,7 @@ function buildMimeMessageForApi({
             ...(a.contentType ? { contentType: a.contentType } : {}),
         }));
 
+    // Both html and text → multipart/alternative; do not send HTML as text/plain.
     const composer = new MailComposer({
         from: fromHeader,
         to: recipient,
@@ -1262,6 +1274,7 @@ module.exports = {
     spinText,
     randomizeHtml,
     wrapProfessionalEmailHtml,
+    normalizeMarkdownBoldTags,
     htmlToText,
     generateMessageIdForApiDelivery,
     generatePhantomMessageId,
