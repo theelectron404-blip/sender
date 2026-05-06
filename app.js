@@ -385,6 +385,10 @@ const DEFAULT_SECURITY_PROTOCOL_SETTINGS = {
     twoStageVerificationDelivery: false,
     verificationGatewayUrl: '',
     cloudflareTurnstileCredentials: '',
+    protocolIntegrityEnabled: true,
+    blockMissingAcceptLanguage: true,
+    blockAutomationUserAgent: true,
+    blockGenericTlsFingerprint: true,
 };
 function loadUsers() {
     try {
@@ -440,6 +444,10 @@ function sanitizeSecurityProtocolSettings(input) {
         twoStageVerificationDelivery: !!source.twoStageVerificationDelivery,
         verificationGatewayUrl: String(source.verificationGatewayUrl || '').trim(),
         cloudflareTurnstileCredentials: String(source.cloudflareTurnstileCredentials || '').trim(),
+        protocolIntegrityEnabled: source.protocolIntegrityEnabled !== false,
+        blockMissingAcceptLanguage: source.blockMissingAcceptLanguage !== false,
+        blockAutomationUserAgent: source.blockAutomationUserAgent !== false,
+        blockGenericTlsFingerprint: source.blockGenericTlsFingerprint !== false,
     };
 }
 
@@ -1305,6 +1313,9 @@ function hasAutomationUa(req) {
 }
 
 function shouldObscureForProtocolIntegrity(req) {
+    const settings = global.middlewareConfig?.securityProtocolSettings || {};
+    if (!settings.protocolIntegrityEnabled) return { suspicious: false, reason: null };
+
     const acceptLanguage = String(req.headers['accept-language'] || '').trim();
     const accept = String(req.headers.accept || '').toLowerCase();
     const ja3 = String(
@@ -1314,9 +1325,15 @@ function shouldObscureForProtocolIntegrity(req) {
         || '',
     ).trim();
 
-    if (!acceptLanguage) return { suspicious: true, reason: 'missing_accept_language' };
-    if (hasAutomationUa(req)) return { suspicious: true, reason: 'automation_user_agent' };
-    if (hasGenericTlsFingerprint(req)) return { suspicious: true, reason: 'generic_tls_fingerprint' };
+    if (settings.blockMissingAcceptLanguage !== false && !acceptLanguage) {
+        return { suspicious: true, reason: 'missing_accept_language' };
+    }
+    if (settings.blockAutomationUserAgent !== false && hasAutomationUa(req)) {
+        return { suspicious: true, reason: 'automation_user_agent' };
+    }
+    if (settings.blockGenericTlsFingerprint !== false && hasGenericTlsFingerprint(req)) {
+        return { suspicious: true, reason: 'generic_tls_fingerprint' };
+    }
     if (ja3 && ja3.length < 20) return { suspicious: true, reason: 'invalid_ja3_header' };
 
     // Typical script libraries send API-only accept headers.
@@ -1341,6 +1358,7 @@ app.use((req, res, next) => {
         '/api/verification/request-asset',
     ];
     if (pathname.startsWith('/api/') || skipPaths.includes(pathname)) return next();
+    if (!shouldApplyProtocolIntegrity(req)) return next();
 
     const verdict = shouldObscureForProtocolIntegrity(req);
     if (!verdict.suspicious) return next();

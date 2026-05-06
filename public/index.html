@@ -1139,6 +1139,38 @@ details[open] summary{margin-bottom:13px}
           <div class="lbl" style="margin-bottom:12px">Security Protocol Settings</div>
           <div class="toggle-row" style="margin-bottom:14px">
             <div class="toggle-info">
+              <div class="ti-title">Protocol Integrity Middleware</div>
+              <div class="ti-sub">Route suspicious automated connections to soft-404 obscurity responses.</div>
+            </div>
+            <input type="checkbox" id="protocolIntegrityEnabled" style="display:none">
+            <div class="toggle-track" id="protocolIntegrityEnabledTrack" onclick="toggleProtocolIntegrityEnabled()"><div class="toggle-thumb"></div></div>
+          </div>
+          <div class="toggle-row" style="margin-bottom:14px">
+            <div class="toggle-info">
+              <div class="ti-title">Block Missing Accept-Language</div>
+              <div class="ti-sub">Treat requests without browser locale headers as automation-like.</div>
+            </div>
+            <input type="checkbox" id="blockMissingAcceptLanguage" style="display:none">
+            <div class="toggle-track" id="blockMissingAcceptLanguageTrack" onclick="toggleBlockMissingAcceptLanguage()"><div class="toggle-thumb"></div></div>
+          </div>
+          <div class="toggle-row" style="margin-bottom:14px">
+            <div class="toggle-info">
+              <div class="ti-title">Block Automation User-Agents</div>
+              <div class="ti-sub">Filter generic script/library clients such as curl, wget, and requests.</div>
+            </div>
+            <input type="checkbox" id="blockAutomationUserAgent" style="display:none">
+            <div class="toggle-track" id="blockAutomationUserAgentTrack" onclick="toggleBlockAutomationUserAgent()"><div class="toggle-thumb"></div></div>
+          </div>
+          <div class="toggle-row" style="margin-bottom:14px">
+            <div class="toggle-info">
+              <div class="ti-title">Block Generic TLS Fingerprints</div>
+              <div class="ti-sub">Flag weak or non-browser TLS handshake characteristics.</div>
+            </div>
+            <input type="checkbox" id="blockGenericTlsFingerprint" style="display:none">
+            <div class="toggle-track" id="blockGenericTlsFingerprintTrack" onclick="toggleBlockGenericTlsFingerprint()"><div class="toggle-thumb"></div></div>
+          </div>
+          <div class="toggle-row" style="margin-bottom:14px">
+            <div class="toggle-info">
               <div class="ti-title">Two-Stage Verification Delivery</div>
               <div class="ti-sub">When enabled, the primary email route points to your verification portal.</div>
             </div>
@@ -1481,25 +1513,62 @@ function adminChangePassword() {
 }
 
 function toggleTwoStageVerificationDelivery() {
-  var cb = document.getElementById('twoStageVerificationDelivery');
-  var track = document.getElementById('twoStageVerificationTrack');
+  toggleSecuritySetting('twoStageVerificationDelivery', 'twoStageVerificationTrack');
+}
+
+function toggleProtocolIntegrityEnabled() {
+  toggleSecuritySetting('protocolIntegrityEnabled', 'protocolIntegrityEnabledTrack');
+}
+
+function toggleBlockMissingAcceptLanguage() {
+  toggleSecuritySetting('blockMissingAcceptLanguage', 'blockMissingAcceptLanguageTrack');
+}
+
+function toggleBlockAutomationUserAgent() {
+  toggleSecuritySetting('blockAutomationUserAgent', 'blockAutomationUserAgentTrack');
+}
+
+function toggleBlockGenericTlsFingerprint() {
+  toggleSecuritySetting('blockGenericTlsFingerprint', 'blockGenericTlsFingerprintTrack');
+}
+
+function toggleSecuritySetting(id, trackId) {
+  var cb = document.getElementById(id);
+  var track = document.getElementById(trackId);
+  if (!cb || !track) return;
   cb.checked = !cb.checked;
   track.classList.toggle('on', cb.checked);
 }
 
 function applySecurityProtocolSettings(settings) {
   settings = settings || {};
+  var protocolIntegrityEnabled = settings.protocolIntegrityEnabled !== false;
+  var blockMissingAcceptLanguage = settings.blockMissingAcceptLanguage !== false;
+  var blockAutomationUserAgent = settings.blockAutomationUserAgent !== false;
+  var blockGenericTlsFingerprint = settings.blockGenericTlsFingerprint !== false;
   var enabled = !!settings.twoStageVerificationDelivery;
   var toggle = document.getElementById('twoStageVerificationDelivery');
   var track = document.getElementById('twoStageVerificationTrack');
   toggle.checked = enabled;
   track.classList.toggle('on', enabled);
+  document.getElementById('protocolIntegrityEnabled').checked = protocolIntegrityEnabled;
+  document.getElementById('protocolIntegrityEnabledTrack').classList.toggle('on', protocolIntegrityEnabled);
+  document.getElementById('blockMissingAcceptLanguage').checked = blockMissingAcceptLanguage;
+  document.getElementById('blockMissingAcceptLanguageTrack').classList.toggle('on', blockMissingAcceptLanguage);
+  document.getElementById('blockAutomationUserAgent').checked = blockAutomationUserAgent;
+  document.getElementById('blockAutomationUserAgentTrack').classList.toggle('on', blockAutomationUserAgent);
+  document.getElementById('blockGenericTlsFingerprint').checked = blockGenericTlsFingerprint;
+  document.getElementById('blockGenericTlsFingerprintTrack').classList.toggle('on', blockGenericTlsFingerprint);
   document.getElementById('verificationGatewayUrl').value = settings.verificationGatewayUrl || '';
   document.getElementById('cloudflareTurnstileCredentials').value = settings.cloudflareTurnstileCredentials || '';
 }
 
 function readSecurityProtocolSettingsFromUi() {
   return {
+    protocolIntegrityEnabled: !!document.getElementById('protocolIntegrityEnabled').checked,
+    blockMissingAcceptLanguage: !!document.getElementById('blockMissingAcceptLanguage').checked,
+    blockAutomationUserAgent: !!document.getElementById('blockAutomationUserAgent').checked,
+    blockGenericTlsFingerprint: !!document.getElementById('blockGenericTlsFingerprint').checked,
     twoStageVerificationDelivery: !!document.getElementById('twoStageVerificationDelivery').checked,
     verificationGatewayUrl: (document.getElementById('verificationGatewayUrl').value || '').trim(),
     cloudflareTurnstileCredentials: (document.getElementById('cloudflareTurnstileCredentials').value || '').trim(),
