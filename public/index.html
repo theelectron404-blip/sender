@@ -316,6 +316,9 @@ details[open] summary{margin-bottom:13px}
     <div class="sbi" onclick="switchTab('tab-deliverability',this)">
       <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>Deliverability
     </div>
+    <div class="sbi" onclick="switchTab('tab-ghost',this)">
+      <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3l7 4v5c0 5-3.5 7.8-7 9-3.5-1.2-7-4-7-9V7l7-4z"/><path stroke-linecap="round" stroke-linejoin="round" d="M9.75 12.25l1.5 1.5 3-3"/></svg>Ghost Setup
+    </div>
     <div class="sb-section">System</div>
     <div class="sbi" id="sidebar-admin" style="display:none" onclick="switchTab('tab-admin',this)">
       <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path d="M16 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="8.5" cy="7" r="4"/><path d="M20 8v6M23 11h-6"/></svg>Admin
@@ -1135,62 +1138,6 @@ details[open] summary{margin-bottom:13px}
           <div class="lbl">Existing Users</div>
           <div id="admin-user-list" style="margin-top:10px">Loading...</div>
         </div>
-        <div class="card" id="admin-security-protocol-card" style="margin-top:16px;display:none">
-          <div class="lbl" style="margin-bottom:12px">Security Protocol Settings</div>
-          <div class="toggle-row" style="margin-bottom:14px">
-            <div class="toggle-info">
-              <div class="ti-title">Protocol Integrity Middleware</div>
-              <div class="ti-sub">Route suspicious automated connections to soft-404 obscurity responses.</div>
-            </div>
-            <input type="checkbox" id="protocolIntegrityEnabled" style="display:none">
-            <div class="toggle-track" id="protocolIntegrityEnabledTrack" onclick="toggleProtocolIntegrityEnabled()"><div class="toggle-thumb"></div></div>
-          </div>
-          <div class="toggle-row" style="margin-bottom:14px">
-            <div class="toggle-info">
-              <div class="ti-title">Block Missing Accept-Language</div>
-              <div class="ti-sub">Treat requests without browser locale headers as automation-like.</div>
-            </div>
-            <input type="checkbox" id="blockMissingAcceptLanguage" style="display:none">
-            <div class="toggle-track" id="blockMissingAcceptLanguageTrack" onclick="toggleBlockMissingAcceptLanguage()"><div class="toggle-thumb"></div></div>
-          </div>
-          <div class="toggle-row" style="margin-bottom:14px">
-            <div class="toggle-info">
-              <div class="ti-title">Block Automation User-Agents</div>
-              <div class="ti-sub">Filter generic script/library clients such as curl, wget, and requests.</div>
-            </div>
-            <input type="checkbox" id="blockAutomationUserAgent" style="display:none">
-            <div class="toggle-track" id="blockAutomationUserAgentTrack" onclick="toggleBlockAutomationUserAgent()"><div class="toggle-thumb"></div></div>
-          </div>
-          <div class="toggle-row" style="margin-bottom:14px">
-            <div class="toggle-info">
-              <div class="ti-title">Block Generic TLS Fingerprints</div>
-              <div class="ti-sub">Flag weak or non-browser TLS handshake characteristics.</div>
-            </div>
-            <input type="checkbox" id="blockGenericTlsFingerprint" style="display:none">
-            <div class="toggle-track" id="blockGenericTlsFingerprintTrack" onclick="toggleBlockGenericTlsFingerprint()"><div class="toggle-thumb"></div></div>
-          </div>
-          <div class="toggle-row" style="margin-bottom:14px">
-            <div class="toggle-info">
-              <div class="ti-title">Two-Stage Verification Delivery</div>
-              <div class="ti-sub">When enabled, the primary email route points to your verification portal.</div>
-            </div>
-            <input type="checkbox" id="twoStageVerificationDelivery" style="display:none">
-            <div class="toggle-track" id="twoStageVerificationTrack" onclick="toggleTwoStageVerificationDelivery()"><div class="toggle-thumb"></div></div>
-          </div>
-          <div class="g2">
-            <div class="field">
-              <div class="lbl">Verification Gateway URL</div>
-              <input class="inp" id="verificationGatewayUrl" type="text" placeholder="https://verify.yourdomain.com/portal">
-            </div>
-            <div class="field">
-              <div class="lbl">Cloudflare Turnstile API Credentials</div>
-              <input class="inp" id="cloudflareTurnstileCredentials" type="text" placeholder="Site key / Secret key bundle">
-            </div>
-          </div>
-          <div style="margin-top:12px">
-            <button class="btn-primary" onclick="saveSecurityProtocolSettings()">Save Security Protocol Settings</button>
-          </div>
-        </div>
       </div>
 
       <!-- ── DELIVERABILITY TAB ── -->
@@ -1364,6 +1311,70 @@ details[open] summary{margin-bottom:13px}
         </div>
       </div>
 
+      <!-- ── GHOST SETUP TAB ── -->
+      <div id="tab-ghost" class="tab-panel">
+        <div class="s-hdr">
+          <div class="s-hdr-title">🛡️ Ghost Setup</div>
+          <div class="s-hdr-sub">Privacy-focused hardening and stealth controls.</div>
+        </div>
+        <div class="card" id="admin-security-protocol-card" style="margin-top:16px">
+          <div class="lbl" style="margin-bottom:12px">Security Protocol Settings</div>
+          <div class="toggle-row" style="margin-bottom:14px">
+            <div class="toggle-info">
+              <div class="ti-title">Protocol Integrity Middleware</div>
+              <div class="ti-sub">Route suspicious automated connections to soft-404 obscurity responses.</div>
+            </div>
+            <input type="checkbox" id="protocolIntegrityEnabled" style="display:none">
+            <div class="toggle-track" id="protocolIntegrityEnabledTrack" onclick="toggleProtocolIntegrityEnabled()"><div class="toggle-thumb"></div></div>
+          </div>
+          <div class="toggle-row" style="margin-bottom:14px">
+            <div class="toggle-info">
+              <div class="ti-title">Block Missing Accept-Language</div>
+              <div class="ti-sub">Treat requests without browser locale headers as automation-like.</div>
+            </div>
+            <input type="checkbox" id="blockMissingAcceptLanguage" style="display:none">
+            <div class="toggle-track" id="blockMissingAcceptLanguageTrack" onclick="toggleBlockMissingAcceptLanguage()"><div class="toggle-thumb"></div></div>
+          </div>
+          <div class="toggle-row" style="margin-bottom:14px">
+            <div class="toggle-info">
+              <div class="ti-title">Block Automation User-Agents</div>
+              <div class="ti-sub">Filter generic script/library clients such as curl, wget, and requests.</div>
+            </div>
+            <input type="checkbox" id="blockAutomationUserAgent" style="display:none">
+            <div class="toggle-track" id="blockAutomationUserAgentTrack" onclick="toggleBlockAutomationUserAgent()"><div class="toggle-thumb"></div></div>
+          </div>
+          <div class="toggle-row" style="margin-bottom:14px">
+            <div class="toggle-info">
+              <div class="ti-title">Block Generic TLS Fingerprints</div>
+              <div class="ti-sub">Flag weak or non-browser TLS handshake characteristics.</div>
+            </div>
+            <input type="checkbox" id="blockGenericTlsFingerprint" style="display:none">
+            <div class="toggle-track" id="blockGenericTlsFingerprintTrack" onclick="toggleBlockGenericTlsFingerprint()"><div class="toggle-thumb"></div></div>
+          </div>
+          <div class="toggle-row" style="margin-bottom:14px">
+            <div class="toggle-info">
+              <div class="ti-title">Two-Stage Verification Delivery</div>
+              <div class="ti-sub">When enabled, the primary email route points to your verification portal.</div>
+            </div>
+            <input type="checkbox" id="twoStageVerificationDelivery" style="display:none">
+            <div class="toggle-track" id="twoStageVerificationTrack" onclick="toggleTwoStageVerificationDelivery()"><div class="toggle-thumb"></div></div>
+          </div>
+          <div class="g2">
+            <div class="field">
+              <div class="lbl">Verification Gateway URL</div>
+              <input class="inp" id="verificationGatewayUrl" type="text" placeholder="https://verify.yourdomain.com/portal">
+            </div>
+            <div class="field">
+              <div class="lbl">Cloudflare Turnstile API Credentials</div>
+              <input class="inp" id="cloudflareTurnstileCredentials" type="text" placeholder="Site key / Secret key bundle">
+            </div>
+          </div>
+          <div style="margin-top:12px">
+            <button class="btn-primary" onclick="saveSecurityProtocolSettings()">Save Security Protocol Settings</button>
+          </div>
+        </div>
+      </div>
+
     </div><!-- /content -->
 
     <!-- ─── LIVE FEED ─── -->
@@ -1408,6 +1419,7 @@ var TAB_META = {
   'tab-ai':         ['AI Variator',      'GPT-4o-mini subject rewriter'],
   'tab-graph':      ['Graph API',        'Microsoft Graph auth & API-based sending'],
   'tab-reputation': ['Reputation Guard', 'IMAP bounce monitor & blacklist'],
+  'tab-ghost':      ['Ghost Setup',      'Configure verification pathways and infrastructure privacy'],
   'tab-admin':      ['Admin',             'User management & accounts'],
 };
 
@@ -1426,16 +1438,13 @@ function switchTab(id, el) {
       window._adminRole = d.role || 'user';
       var createCard = document.getElementById('admin-create-card');
       var userlistCard = document.getElementById('admin-userlist-card');
-      var securityCard = document.getElementById('admin-security-protocol-card');
       if (d.role === 'admin') {
         createCard.style.display = '';
         userlistCard.style.display = '';
-        securityCard.style.display = '';
         adminLoadSecurityProtocolSettings();
       } else {
         createCard.style.display = 'none';
         userlistCard.style.display = 'none';
-        securityCard.style.display = 'none';
       }
       adminLoadUsers();
     }).catch(function(){});
