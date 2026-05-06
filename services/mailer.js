@@ -300,6 +300,7 @@ function applyTags(text, data, recipient) {
         .replace(/\$KEY/gi, () => `${randAlphaNum(8)()}-${randAlphaNum(4)()}`)
 
         // Alphanumeric tags (longer pattern before shorter to avoid prefix match)
+        .replace(/\$RANDALPHA12/gi, randAlphaNum(12))
         .replace(/\$RANDALPHA10/gi, randAlphaNum(10))
         .replace(/\$RANDALPHA8/gi, randAlphaNum(8))
         .replace(/\$RANDALPHA6/gi, randAlphaNum(6))

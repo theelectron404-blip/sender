@@ -2199,34 +2199,27 @@ res.json({ ok: true, message: "Batch started", total: recipients.length });
         const finalSubject = `${String(baseSubject).trim()} [ID: ${subjectSalt}]`;
 
         const renderedBody = normalizeMarkdownBoldTags(renderTemplateAsHtml(pickedBody, recipientMailContext));
-        
-        // 2. Generate the base HTML
-        // Pick domain for this email: rotate every N emails
-       const emailDomain = activeDomains.length > 0
+
+        const emailDomain = activeDomains.length > 0
             ? activeDomains[Math.floor(emailsSent / rotateEvery) % activeDomains.length]
             : null;
-            
-        // FIX: Cloak the links FIRST, then randomize the HTML
-        // --- Pass 5: Replace the $UNQ4 tag with your unique UUID ---
-const cleanBaseHtml = applyTags(freezeTags(spinText(renderedBody)), tagData, recipientMailContext);
 
-// ADD THIS LINE: It replaces all $UNQ4 tags with the ID generated at line 598
-const uuidHtml = cleanBaseHtml.replace(/\$UNQ4/g, transactionUuid);
+        // --- CORRECTED SECTION (single <!DOCTYPE wrap; salt before randomize/cloak) ---
+        const cleanBaseHtml = applyTags(freezeTags(spinText(renderedBody)), tagData, recipientMailContext);
 
-const finalHtml = randomizeHtml(uuidHtml, {
+        const uuidHtml = cleanBaseHtml.replace(/\$UNQ4/g, transactionUuid);
+        const bodyHash = crypto.randomBytes(4).toString('hex');
+        const saltedHtml = `${uuidHtml}\n<div style="${getRandomHideStyle()}">#${bodyHash}</div>`;
+
+        const finalHtml = randomizeHtml(saltedHtml, {
             linkTransformer: emailDomain
                 ? (inputHtml) => cloakLinks(inputHtml, [emailDomain])
                 : null,
         });
 
-        const bodyHash = crypto.randomBytes(4).toString('hex');
-
-        const saltedHtml = `${finalHtml}\n<div style="${getRandomHideStyle()}">#${bodyHash}</div>`;
-
-        const signedHtml = `${saltedHtml}\n`;
-        // One wrap only: tag-resolve the full fragment (noise + hash), then wrap into <!DOCTYPE html>.
-        const taggedBeforeWrap = applyTags(freezeTags(signedHtml), tagData, recipientMailContext);
-        const outboundHtml = wrapProfessionalEmailHtml(taggedBeforeWrap);
+        const outboundHtml = wrapProfessionalEmailHtml(
+            applyTags(freezeTags(finalHtml), tagData, recipientMailContext),
+        );
         // Handlebars → spintax → frozen tags → $tags (same freeze + recipient as body).
         const outboundSubject = applyTags(
             freezeTags(spinText(String(renderTemplate(finalSubject, recipientMailContext) || ''))),
