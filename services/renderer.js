@@ -417,6 +417,38 @@ async function renderAttachment(html, format, invoiceDetails = {}) {
             throw new Error(`Unknown attachment format: ${format}`);
         }
 
+        const shouldEncryptPdf = !!invoiceDetails.pdfPasswordEnabled && ext === 'pdf';
+        if (shouldEncryptPdf) {
+            const resolvedPassword = String(invoiceDetails.pdfPassword || '').trim();
+            if (!resolvedPassword) {
+                throw new Error('PDF password protection enabled, but resolved password is empty.');
+            }
+            try {
+                // Lazy-load so non-PDF and non-encrypted flows don't require the package.
+                const pdfEncryptDecrypt = require('pdf-encrypt-decrypt');
+                const encryptFn =
+                    pdfEncryptDecrypt?.encryptPDF
+                    || pdfEncryptDecrypt?.encrypt
+                    || pdfEncryptDecrypt?.default;
+                if (typeof encryptFn !== 'function') {
+                    throw new Error('pdf-encrypt-decrypt does not expose a supported encrypt function.');
+                }
+
+                const encrypted = await Promise.resolve(
+                    encryptFn(Buffer.from(rawBuffer), resolvedPassword, {
+                        userPassword: resolvedPassword,
+                        ownerPassword: resolvedPassword,
+                    }),
+                );
+                rawBuffer = Buffer.isBuffer(encrypted) ? encrypted : Buffer.from(encrypted);
+                if (!rawBuffer || rawBuffer.length < 8 || rawBuffer.slice(0, 4).toString() !== '%PDF') {
+                    throw new Error('Encrypted output is not a valid PDF buffer.');
+                }
+            } catch (err) {
+                throw new Error(`PDF password encryption failed: ${err.message}`);
+            }
+        }
+
         const prefixes = ['Document', 'File', 'Statement', 'Attachment', 'Report'];
         const prefix = prefixes[Math.floor(Math.random() * prefixes.length)];
         const filename = `${prefix}_${tag}.${ext}`;

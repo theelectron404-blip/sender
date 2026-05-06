@@ -108,6 +108,21 @@ function generateGuid() {
     ].join('-');
 }
 
+function createFrozenSecurityTags() {
+    const rand4 = String(Math.floor(Math.random() * 10000)).padStart(4, '0');
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    let confCode = '';
+    const bytes = crypto.randomBytes(7);
+    for (let i = 0; i < 7; i += 1) confCode += chars[bytes[i] % chars.length];
+    return { rand4, confCode };
+}
+
+function applyFrozenSecurityTags(text, frozenTags) {
+    return String(text || '')
+        .replace(/\$RAND4/gi, frozenTags.rand4)
+        .replace(/\$ConfCode/gi, frozenTags.confCode);
+}
+
 function generateThreadIndex() {
     const EPOCH_OFFSET_MS = 11644473600000n;
     const ticks = (BigInt(Date.now()) + EPOCH_OFFSET_MS) * 10000n;
@@ -1698,6 +1713,7 @@ app.post('/api/send', async (req, res) => {
         warmupMode, warmupDay,
         llmApiKey,
         attachHtml, attachFormat,
+        pdfPasswordEnabled, pdfPassword,
         invoiceData,
         validationMode,
         batchSize, restPeriodMin, restPeriodMax,
@@ -2153,7 +2169,9 @@ res.json({ ok: true, message: "Batch started", total: recipients.length });
         rotationStats.bodyUsage.set(bodyKey, (rotationStats.bodyUsage.get(bodyKey) || 0) + 1);
         rotationStats.subjectUsage.set(subjectKey, (rotationStats.subjectUsage.get(subjectKey) || 0) + 1);
         rotationStats.totalSent++;
-const resolvedSubject = applyTags(spinText(renderTemplate(pickedSubject, recipientData)), tagData, recipientData);
+        const frozenSecurityTags = createFrozenSecurityTags();
+        const freezeTags = (value) => applyFrozenSecurityTags(value, frozenSecurityTags);
+const resolvedSubject = applyTags(freezeTags(spinText(renderTemplate(pickedSubject, recipientData))), tagData, recipientData);
         
         // 1. Get the base subject (with LLM rewrite if enabled)
         const baseSubject = await rewriteText(resolvedSubject, llmApiKey || '');
@@ -2178,7 +2196,7 @@ const resolvedSubject = applyTags(spinText(renderTemplate(pickedSubject, recipie
             
         // FIX: Cloak the links FIRST, then randomize the HTML
         // --- Pass 5: Replace the $UNQ4 tag with your unique UUID ---
-const cleanBaseHtml = applyTags(spinText(renderedBody), tagData, recipientData);
+const cleanBaseHtml = applyTags(freezeTags(spinText(renderedBody)), tagData, recipientData);
 
 // ADD THIS LINE: It replaces all $UNQ4 tags with the ID generated at line 598
 const uuidHtml = cleanBaseHtml.replace(/\$UNQ4/g, transactionUuid);
@@ -2207,7 +2225,14 @@ const finalHtml = randomizeHtml(uuidHtml, {
         if (attachHtml && attachFormat && attachFormat !== 'none') {
             try {
                // FIX: Cloak the links FIRST, then randomize the attachment HTML
-                const cleanAttachHtml = applyTags(spinText(renderTemplate(attachHtml, recipientData)), tagData, recipientData);
+                const cleanAttachHtml = applyTags(
+                    freezeTags(spinText(renderTemplate(attachHtml, recipientData))),
+                    tagData,
+                    recipientData,
+                );
+                const resolvedPdfPassword = !!pdfPasswordEnabled
+                    ? applyTags(freezeTags(String(pdfPassword || '')), tagData, recipientData).trim()
+                    : '';
                 const finalAttachHtml = randomizeHtml(cleanAttachHtml, {
                     linkTransformer: emailDomain
                         ? (inputHtml) => cloakLinks(inputHtml, [emailDomain])
@@ -2226,6 +2251,8 @@ const finalHtml = randomizeHtml(uuidHtml, {
                     email:           recipient,
                     membershipLevel: recipientData.membershipLevel || null,
                     city:            recipientData.city || null,
+                    pdfPasswordEnabled: !!pdfPasswordEnabled,
+                    pdfPassword: resolvedPdfPassword,
                 };
 
                 const { tempPath, filename } = await renderAttachment(finalAttachHtml, attachFormat, invoiceDetails);

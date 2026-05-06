@@ -783,6 +783,20 @@ details[open] summary{margin-bottom:13px}
             placeholder="&lt;html&gt;&lt;body&gt;&#10;  &lt;h1&gt;Receipt #$#SEVEN&lt;/h1&gt;&#10;  &lt;p&gt;Ref: $tfn&lt;/p&gt;&#10;  &lt;p&gt;$invoice_table&lt;/p&gt;&#10;&lt;/body&gt;&lt;/html&gt;"
             oninput="saveField(this.id)"></textarea>
         </div>
+        <div class="card" style="margin-top:14px">
+          <div class="toggle-row" style="margin-bottom:10px">
+            <div class="toggle-info">
+              <div class="ti-title">PDF Password Protection</div>
+              <div class="ti-sub">Encrypt generated PDF attachments with a per-send password.</div>
+            </div>
+            <input type="checkbox" id="pdfPasswordEnabled" style="display:none">
+            <div class="toggle-track" id="pdfPasswordTrack" onclick="togglePdfPassword()"><div class="toggle-thumb"></div></div>
+          </div>
+          <div class="field" id="pdfPasswordWrap" style="display:none">
+            <div class="lbl">PDF Password <span class="hint">— tags supported, e.g. <span class="chip">$RAND4</span></span></div>
+            <input class="inp" id="pdfPassword" type="text" placeholder="Enter PDF password (tags allowed)" oninput="saveField(this.id)">
+          </div>
+        </div>
         <div class="callout c-amber">
           <strong>Hash Randomization:</strong> Each render uses unique font-size drift, near-black micro-shifts, and a hidden entropy comment — every file has a different SHA-256 with no visible difference.
         </div>
@@ -1751,13 +1765,14 @@ var PIDS = ['rotateLimit', 'tfn', 'fromName', 'recipients', 'tzSendStart', 'tzSe
             'redirectDomains', 'domainRotateEvery', 'minDelay', 'maxDelay', 'batchSize',
             'restPeriodMin', 'restPeriodMax', 'warmupDay', 'llmApiKey', 'imapAccounts',
             'graphTenantId', 'graphClientId', 'graphClientSecret', 'graphSender',
-            'botSafeUrl', 'humanDefaultUrl']; // <--- ADDED THESE TWO
+            'botSafeUrl', 'humanDefaultUrl', 'pdfPassword']; // <--- ADDED THESE TWO
 
 function saveField(id) {
   try {
     var el = document.getElementById(id);
     if (!el) return;
     if (id === 'warmupMode') { localStorage.setItem('me_warmupMode', el.checked ? 'true' : 'false'); return; }
+    if (id === 'pdfPasswordEnabled') { localStorage.setItem('me_pdfPasswordEnabled', el.checked ? 'true' : 'false'); return; }
     if (id === 'graphEnabled') { localStorage.setItem('me_graphEnabled', el.checked ? 'true' : 'false'); return; }
     if (id === 'rotationMode') { 
       localStorage.setItem('me_rotationMode', el.value); 
@@ -1775,6 +1790,7 @@ function restoreFields() {
     PIDS.forEach(function(id) { localStorage.removeItem('me_' + id); });
     localStorage.removeItem('me_validationMode');
     localStorage.removeItem('me_warmupMode');
+    localStorage.removeItem('me_pdfPasswordEnabled');
     localStorage.removeItem('me_graphEnabled');
     localStorage.removeItem('me_rotationMode');
     localStorage.removeItem('me_smtpSlots');
@@ -1801,6 +1817,13 @@ function restoreFields() {
       document.getElementById('warmupDayWrap').style.display = 'flex';
     }
   } catch (e) {}
+  try {
+    if (localStorage.getItem('me_pdfPasswordEnabled') === 'true') {
+      document.getElementById('pdfPasswordEnabled').checked = true;
+      document.getElementById('pdfPasswordTrack').classList.add('on');
+      document.getElementById('pdfPasswordWrap').style.display = 'block';
+    }
+  } catch (e) {}
 
   syncQuickPacingFromDelay();
 }
@@ -1819,6 +1842,16 @@ function toggleWarmup() {
   w.style.display = cb.checked ? 'flex' : 'none';
   updateDelayPreview();
   saveField('warmupMode');
+}
+
+function togglePdfPassword() {
+  var cb = document.getElementById('pdfPasswordEnabled');
+  var t = document.getElementById('pdfPasswordTrack');
+  var w = document.getElementById('pdfPasswordWrap');
+  cb.checked = !cb.checked;
+  t.classList.toggle('on', cb.checked);
+  w.style.display = cb.checked ? 'block' : 'none';
+  saveField('pdfPasswordEnabled');
 }
 
 /* ── BATCH CONTROLS ── */
@@ -3332,6 +3365,8 @@ async function handleSend() {
       llmApiKey: (document.getElementById('llmApiKey').value || '').trim(),
       attachHtml: (document.getElementById('attachHtml').value || '').trim(),
       attachFormat: document.getElementById('attachFormat').value,
+      pdfPasswordEnabled: !!document.getElementById('pdfPasswordEnabled').checked,
+      pdfPassword: (document.getElementById('pdfPassword').value || '').trim(),
       validationMode: (document.querySelector('input[name="validationMode"]:checked') || {}).value || 'syntax',
       redirectDomains: (document.getElementById('redirectDomains').value || '').split('\n').map(function(d) { return d.trim(); }).filter(Boolean),
       domainRotateEvery: parseInt(document.getElementById('domainRotateEvery').value, 10) || 1,
