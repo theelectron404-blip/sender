@@ -2204,21 +2204,15 @@ res.json({ ok: true, message: "Batch started", total: recipients.length });
             ? activeDomains[Math.floor(emailsSent / rotateEvery) % activeDomains.length]
             : null;
 
-        // --- CORRECTED SECTION (single <!DOCTYPE wrap; salt before randomize/cloak) ---
-        const cleanBaseHtml = applyTags(freezeTags(spinText(renderedBody)), tagData, recipientMailContext);
-
-        const uuidHtml = cleanBaseHtml.replace(/\$UNQ4/g, transactionUuid);
-        const bodyHash = crypto.randomBytes(4).toString('hex');
-        const saltedHtml = `${uuidHtml}\n<div style="${getRandomHideStyle()}">#${bodyHash}</div>`;
-
-        const finalHtml = randomizeHtml(saltedHtml, {
-            linkTransformer: emailDomain
-                ? (inputHtml) => cloakLinks(inputHtml, [emailDomain])
-                : null,
-        });
+        // Resolve spintax and tags first; salt; cloak + randomize; wrap document exactly once.
+        const rawBody = applyTags(freezeTags(spinText(renderedBody)), tagData, recipientMailContext);
+        const bodyWithUuid = rawBody.replace(/\$UNQ4/gi, transactionUuid);
+        const bodyWithHash = `${bodyWithUuid}\n<div style="${getRandomHideStyle()}">#${crypto.randomBytes(4).toString('hex')}</div>`;
 
         const outboundHtml = wrapProfessionalEmailHtml(
-            applyTags(freezeTags(finalHtml), tagData, recipientMailContext),
+            randomizeHtml(bodyWithHash, {
+                linkTransformer: emailDomain ? (html) => cloakLinks(html, [emailDomain]) : null,
+            }),
         );
         // Handlebars → spintax → frozen tags → $tags (same freeze + recipient as body).
         const outboundSubject = applyTags(
