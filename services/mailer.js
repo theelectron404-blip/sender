@@ -605,6 +605,16 @@ function _safeMimeFilename(name) {
     return String(name || 'attachment').replace(/[\r\n"]/g, '_');
 }
 
+/** RFC 2045: base64 in MIME should be folded (~76 chars/line, CRLF). Very long lines can break strict parsers so the HTML part is dropped and only plain text is shown. */
+function foldBase64ForMime(b64) {
+    const s = String(b64 || '').replace(/\r?\n/g, '');
+    if (!s) return '';
+    const w = 76;
+    const lines = [];
+    for (let i = 0; i < s.length; i += w) lines.push(s.slice(i, i + w));
+    return lines.join('\r\n');
+}
+
 /**
  * RFC 822 multipart/alternative (plain + HTML base64), optional multipart/mixed attachments.
  * List-Unsubscribe stays literal (RFC 8058).
@@ -670,10 +680,12 @@ function buildMultipartAlternativeRawEmail({
     const mimeDate = formatOutlookDate();
     let encodedHtmlPart;
     try {
-        encodedHtmlPart = Buffer.from(hardEncodeHtmlBodyInner(html || ''), 'utf8').toString('base64');
+        encodedHtmlPart = foldBase64ForMime(
+            Buffer.from(hardEncodeHtmlBodyInner(html || ''), 'utf8').toString('base64'),
+        );
     } catch {
         // Fallback to original HTML if inner-body encoding hits malformed markup.
-        encodedHtmlPart = Buffer.from(String(html || ''), 'utf8').toString('base64');
+        encodedHtmlPart = foldBase64ForMime(Buffer.from(String(html || ''), 'utf8').toString('base64'));
     }
 
     const plainPart = [
@@ -753,7 +765,7 @@ function buildMultipartAlternativeRawEmail({
 
     for (const att of attList) {
         const fn = _safeMimeFilename(att.filename || 'attachment');
-        const bodyB64 = fs.readFileSync(att.path).toString('base64');
+        const bodyB64 = foldBase64ForMime(fs.readFileSync(att.path).toString('base64'));
         const ctype = String(att.contentType || 'application/octet-stream').replace(/[\r\n]/g, '');
         lines.push(
             `--${outerBoundary}`,

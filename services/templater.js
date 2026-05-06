@@ -182,7 +182,7 @@ function getCompiledTemplate(source) {
  * source so a single bad template never silently kills the whole batch.
  */
 function renderTemplate(templateSource, recipientData) {
-    if (!templateSource || !templateSource.includes('{{')) return templateSource || '';
+    if (!templateSource) return '';
     try {
         const fn = getCompiledTemplate(templateSource);
         return fn(recipientData || {});
