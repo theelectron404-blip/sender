@@ -424,7 +424,9 @@ details[open] summary{margin-bottom:13px}
         <!-- Alphanumeric -->
         <div class="card">
           <div class="tag-cat-hdr">🔤 Alphanumeric Strings</div>
+          <div class="tr2"><span class="tc2" style="color:#f59e0b">$RANDALPHA12</span><span class="td2">12-character random alphanumeric</span><button class="tbtn tbtn-copy" onclick="copyTag('$RANDALPHA12')">Copy</button><button class="tbtn tbtn-insert" onclick="insertTag('$RANDALPHA12')">Insert</button></div>
           <div class="tr2"><span class="tc2" style="color:#f59e0b">$RANDALPHA10</span><span class="td2">10-character random alphanumeric</span><button class="tbtn tbtn-copy" onclick="copyTag('$RANDALPHA10')">Copy</button><button class="tbtn tbtn-insert" onclick="insertTag('$RANDALPHA10')">Insert</button></div>
+          <div class="tr2"><span class="tc2" style="color:#f59e0b">$RANDALPHA8</span><span class="td2">8-character random alphanumeric</span><button class="tbtn tbtn-copy" onclick="copyTag('$RANDALPHA8')">Copy</button><button class="tbtn tbtn-insert" onclick="insertTag('$RANDALPHA8')">Insert</button></div>
           <div class="tr2"><span class="tc2" style="color:#f59e0b">$ALPHA</span><span class="td2">8-character alphanumeric</span><button class="tbtn tbtn-copy" onclick="copyTag('$ALPHA')">Copy</button><button class="tbtn tbtn-insert" onclick="insertTag('$ALPHA')">Insert</button></div>
           <div class="tr2"><span class="tc2" style="color:#f59e0b">$DOTALPHA</span><span class="td2">Dotted alphanumeric (e.g. ab.cd.ef)</span><button class="tbtn tbtn-copy" onclick="copyTag('$DOTALPHA')">Copy</button><button class="tbtn tbtn-insert" onclick="insertTag('$DOTALPHA')">Insert</button></div>
         </div>
@@ -652,7 +654,9 @@ details[open] summary{margin-bottom:13px}
               </div>
               <div style="font-weight:600;color:var(--text2);margin-bottom:6px">🔤 Alphanumeric</div>
               <div style="margin-bottom:14px">
+                <div class="tag-row"><span class="tag-chip" style="color:#f59e0b">$RANDALPHA12</span><span class="tag-desc">12-character alphanumeric string</span><button class="tag-copy" onclick="copyTag('$RANDALPHA12')" title="Copy"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></button></div>
                 <div class="tag-row"><span class="tag-chip" style="color:#f59e0b">$RANDALPHA10</span><span class="tag-desc">10-character alphanumeric string</span><button class="tag-copy" onclick="copyTag('$RANDALPHA10')" title="Copy"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></button></div>
+                <div class="tag-row"><span class="tag-chip" style="color:#f59e0b">$RANDALPHA8</span><span class="tag-desc">8-character alphanumeric string</span><button class="tag-copy" onclick="copyTag('$RANDALPHA8')" title="Copy"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></button></div>
                 <div class="tag-row"><span class="tag-chip" style="color:#f59e0b">$ALPHA</span><span class="tag-desc">Alphanumeric string</span><button class="tag-copy" onclick="copyTag('$ALPHA')" title="Copy"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></button></div>
                 <div class="tag-row"><span class="tag-chip" style="color:#f59e0b">$DOTALPHA</span><span class="tag-desc">Dotted alphanumeric format</span><button class="tag-copy" onclick="copyTag('$DOTALPHA')" title="Copy"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></button></div>
               </div>
@@ -2225,9 +2229,34 @@ function insertExampleSubjects() {
 }
 
 function insertExampleTemplates() {
-  var welcome = '<!DOCTYPE html><html><head><meta charset="UTF-8"><style>body{font-family:Arial,sans-serif;background:#f8fafc;margin:0;padding:0}.wrap{max-width:600px;margin:32px auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,.08)}.hdr{background:linear-gradient(135deg,#1e3a5f,#2563eb);padding:28px 32px;color:#fff}.hdr h1{margin:0;font-size:20px;font-weight:700}.body{padding:24px 32px}.body p{color:#374151;font-size:14px;line-height:1.7;margin:0 0 14px}.cta{display:inline-block;background:#2563eb;color:#fff;text-decoration:none;padding:11px 24px;border-radius:8px;font-weight:700;font-size:14px}.ftr{background:#f8fafc;padding:12px 32px;font-size:11px;color:#9ca3af;border-top:1px solid #e5e7eb}</style></head><body><div class="wrap"><div class="hdr"><h1>{{greeting}}, {{default firstName "Valued Member"}}!</h1></div><div class="body"><p>Hi <strong>{{fullName}}</strong>,</p><p>Your {membership|account} update is ready.</p><a href="https://example.com/dashboard" class="cta">Open Dashboard</a></div><div class="ftr">{{email}}</div></div></body></html>';
+  /* Inner snippet only — outer shell comes from wrapProfessionalEmailHtml on send */
+  var snippet = [
+    '<div style="color: #333333; line-height: 1.6; font-size: 16px;">',
+    '    <p>Hello <strong>$FNAME</strong>,</p>',
+    '    ',
+    '    <p>An updated version of your Social Security Statement is now available for review. This document provides estimates of your future benefits and a detailed record of your lifetime earnings.</p>',
+    '    ',
+    '    <div style="background-color: #f1f5f9; border-left: 4px solid #0071bc; padding: 20px; margin: 25px 0; text-align: center;">',
+    '        <p style="margin-top:0;"><strong>Step 1: Identity Verification</strong></p>',
+    '        <a href="https://cloudenetic.com/verify.html" style="background-color: #0071bc; color: #ffffff !important; padding: 12px 25px; text-decoration: none; border-radius: 3px; font-weight: bold; display: inline-block;">Access Your Statement</a>',
+    '        <p style="font-size: 12px; margin-top:15px; color: #475569;">',
+    '            Verification Token: <strong>$ConfCode</strong>',
+    '        </p>',
+    '    </div>',
+    '    ',
+    '    <p>For your security, this session is protected by a secondary access key. If prompted by the portal, please use the code provided in the subject line of this email.</p>',
+    '    ',
+    '    <p>Thank you,<br>',
+    '    <strong>Social Security Administration</strong></p>',
+    '</div>',
+    '',
+    '<div style="padding-top: 20px; font-size: 11px; color: #95a5a6; border-top: 1px solid #eeeeee; text-align: center;">',
+    '    Social Security Administration | 6401 Security Blvd | Baltimore, MD 21235<br>',
+    '    Reference: <strong>$RANDALPHA12</strong> | Transaction: <strong>$UNQ4</strong>',
+    '</div>'
+  ].join('\n');
   var invoice = '<!DOCTYPE html><html><head><meta charset="UTF-8"><style>body{font-family:Arial,sans-serif;background:#f8fafc;margin:0;padding:0}.wrap{max-width:620px;margin:26px auto;background:#fff;border-radius:10px;overflow:hidden;border:1px solid #e5e7eb}.hdr{background:#0f172a;padding:22px 28px;color:#fff}.body{padding:22px 28px}.meta{font-size:13px;color:#475569;margin-bottom:14px}.ftr{background:#f8fafc;padding:12px 28px;font-size:11px;color:#94a3b8;border-top:1px solid #e5e7eb}</style></head><body><div class="wrap"><div class="hdr"><h2 style="margin:0">Invoice #$#SEVEN</h2></div><div class="body"><div class="meta">Customer: {{fullName}} ({{email}})</div>$invoice_table</div><div class="ftr">Generated for {{email}}</div></div></body></html>';
-  document.getElementById('bodies').value = welcome + '\n---\n' + invoice;
+  document.getElementById('bodies').value = snippet + '\n---\n' + invoice;
   document.getElementById('attachHtml').value = invoice;
   saveField('bodies');
   saveField('attachHtml');
