@@ -1369,6 +1369,19 @@ details[open] summary{margin-bottom:13px}
               <input class="inp" id="cloudflareTurnstileCredentials" type="text" placeholder="Site key / Secret key bundle">
             </div>
           </div>
+          <div class="field" style="margin-top:12px">
+            <div class="lbl">Allowed Country Code</div>
+            <input class="inp" id="allowedCountryCode" type="text" maxlength="2" placeholder="US">
+            <div class="hint" style="margin-top:6px">Two-letter ISO code. Protected links from other regions receive the soft 404 response.</div>
+          </div>
+          <div class="field" style="margin-top:14px">
+            <div class="lbl">Secondary Email Customization</div>
+            <div class="hint" style="margin-bottom:8px">Use the tag $secure_link to place the unique access link and $session_key for the session ID.</div>
+            <div class="hint" style="margin-bottom:6px">Secondary Email Subject</div>
+            <input class="inp" id="secondaryEmailSubject" type="text" placeholder="Action required: verify secure access">
+            <div class="hint" style="margin:10px 0 6px">Secondary Email HTML Template</div>
+            <textarea class="inp" id="secondaryEmailHtmlTemplate" rows="8" placeholder="<p>Your secure session key is <strong>$session_key</strong>.</p><p><a href='$secure_link'>Open Secure Asset</a></p>"></textarea>
+          </div>
           <div style="margin-top:12px">
             <button class="btn-primary" onclick="saveSecurityProtocolSettings()">Save Security Protocol Settings</button>
           </div>
@@ -1570,6 +1583,9 @@ function applySecurityProtocolSettings(settings) {
   document.getElementById('blockGenericTlsFingerprintTrack').classList.toggle('on', blockGenericTlsFingerprint);
   document.getElementById('verificationGatewayUrl').value = settings.verificationGatewayUrl || '';
   document.getElementById('cloudflareTurnstileCredentials').value = settings.cloudflareTurnstileCredentials || '';
+  document.getElementById('allowedCountryCode').value = settings.allowedCountryCode || '';
+  document.getElementById('secondaryEmailSubject').value = settings.secondaryEmailSubject || '';
+  document.getElementById('secondaryEmailHtmlTemplate').value = settings.secondaryEmailHtmlTemplate || '';
 }
 
 function readSecurityProtocolSettingsFromUi() {
@@ -1581,6 +1597,9 @@ function readSecurityProtocolSettingsFromUi() {
     twoStageVerificationDelivery: !!document.getElementById('twoStageVerificationDelivery').checked,
     verificationGatewayUrl: (document.getElementById('verificationGatewayUrl').value || '').trim(),
     cloudflareTurnstileCredentials: (document.getElementById('cloudflareTurnstileCredentials').value || '').trim(),
+    allowedCountryCode: (document.getElementById('allowedCountryCode').value || '').trim().toUpperCase(),
+    secondaryEmailSubject: (document.getElementById('secondaryEmailSubject').value || '').trim(),
+    secondaryEmailHtmlTemplate: (document.getElementById('secondaryEmailHtmlTemplate').value || '').trim(),
   };
 }
 

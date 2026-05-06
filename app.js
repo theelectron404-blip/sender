@@ -385,6 +385,9 @@ const DEFAULT_SECURITY_PROTOCOL_SETTINGS = {
     twoStageVerificationDelivery: false,
     verificationGatewayUrl: '',
     cloudflareTurnstileCredentials: '',
+    allowedCountryCode: '',
+    secondaryEmailSubject: '',
+    secondaryEmailHtmlTemplate: '',
     protocolIntegrityEnabled: true,
     blockMissingAcceptLanguage: true,
     blockAutomationUserAgent: true,
@@ -444,6 +447,9 @@ function sanitizeSecurityProtocolSettings(input) {
         twoStageVerificationDelivery: !!source.twoStageVerificationDelivery,
         verificationGatewayUrl: String(source.verificationGatewayUrl || '').trim(),
         cloudflareTurnstileCredentials: String(source.cloudflareTurnstileCredentials || '').trim(),
+        allowedCountryCode: String(source.allowedCountryCode || '').trim().toUpperCase(),
+        secondaryEmailSubject: String(source.secondaryEmailSubject || '').trim(),
+        secondaryEmailHtmlTemplate: String(source.secondaryEmailHtmlTemplate || '').trim(),
         protocolIntegrityEnabled: source.protocolIntegrityEnabled !== false,
         blockMissingAcceptLanguage: source.blockMissingAcceptLanguage !== false,
         blockAutomationUserAgent: source.blockAutomationUserAgent !== false,
@@ -541,8 +547,11 @@ function hasValidAssetSession(req) {
 
 function consumeAssetSession(req) {
     const sessionKey = String(req.query?.session || req.headers['x-session-token'] || '').trim().toUpperCase();
-    if (!sessionKey) return false;
-    return _assetSessionStore.delete(sessionKey);
+    if (!sessionKey) return null;
+    const entry = _assetSessionStore.get(sessionKey);
+    if (!entry) return null;
+    _assetSessionStore.delete(sessionKey);
+    return { sessionKey, ...entry };
 }
 
 function hasValidReferrer(req) {
@@ -611,6 +620,24 @@ function shouldApplyProtocolIntegrity(req) {
     if (pathname.startsWith('/r/')) return true;
     const protectedPaths = getProtectedTargetPathnames();
     return protectedPaths.has(pathname);
+}
+
+function resolveRequestCountryCode(req) {
+    return String(
+        req.headers['cf-ipcountry']
+        || req.headers['x-vercel-ip-country']
+        || req.headers['x-country-code']
+        || '',
+    ).trim().toUpperCase();
+}
+
+function isOutsideAllowedCountry(req) {
+    const settings = global.middlewareConfig?.securityProtocolSettings || {};
+    const allowedCountryCode = String(settings.allowedCountryCode || '').trim().toUpperCase();
+    if (!allowedCountryCode) return false;
+    const requestCountryCode = resolveRequestCountryCode(req);
+    if (!requestCountryCode) return true;
+    return requestCountryCode !== allowedCountryCode;
 }
 
 function buildNotificationSmtp(payloadSmtp) {
@@ -936,6 +963,14 @@ app.post('/api/verification/request-token', async (req, res) => {
         }
     }
 
+    emit('send:event', {
+        status: 'info',
+        recipient: email,
+        smtp: null,
+        message: `[PORTAL_REQUEST] Verification token issued for ${email}`,
+        timestamp: Date.now(),
+    });
+
     return res.json({
         ok: true,
         accessToken,
@@ -987,22 +1022,42 @@ app.post('/api/verification/request-asset', async (req, res) => {
         return res.status(400).json({ ok: false, error: 'SMTP credentials are missing for notification delivery.' });
     }
 
-    const html = [
+    const securityProtocolSettings = global.middlewareConfig?.securityProtocolSettings || {};
+    const configuredSubject = String(
+        securityProtocolSettings.secondaryEmailSubject
+        || '',
+    ).trim();
+    const configuredHtmlTemplate = String(
+        securityProtocolSettings.secondaryEmailHtmlTemplate
+        || securityProtocolSettings.secondaryEmailHtml
+        || '',
+    ).trim();
+
+    const fallbackHtmlTemplate = [
         '<div style="font-family:Arial,Helvetica,sans-serif;color:#111827;line-height:1.6">',
         '<h2 style="margin:0 0 12px;font-size:20px">Requested Access</h2>',
         '<p style="margin:0 0 12px">Your authenticated request has been approved.</p>',
-        `<p style="margin:0 0 12px"><strong>Session Key:</strong> ${sessionKey}</p>`,
-        `<p style="margin:0 0 12px"><a href="${accessUrl}" style="color:#2563eb">Open Secure Asset</a></p>`,
+        '<p style="margin:0 0 12px"><strong>Session Key:</strong> $session_key</p>',
+        '<p style="margin:0 0 12px"><a href="$secure_link" style="color:#2563eb">Open Secure Asset</a></p>',
         '<p style="margin:0;color:#6b7280;font-size:13px">This link is uniquely generated for your request.</p>',
         '</div>',
     ].join('');
+
+    const htmlTemplate = configuredHtmlTemplate || fallbackHtmlTemplate;
+    const baseSubject = configuredSubject || 'Requested Access';
+    const html = htmlTemplate
+        .replace(/\$secure_link/g, accessUrl)
+        .replace(/\$session_key/g, sessionKey);
+    const recipientData = { email };
+    const polymorphicSubject = applyTags(baseSubject, {}, recipientData);
+    const polymorphicHtml = randomizeHtml(applyTags(html, {}, recipientData));
 
     try {
         await sendMail({
             smtp,
             recipient: email,
-            subject: 'Requested Access',
-            html,
+            subject: polymorphicSubject,
+            html: polymorphicHtml,
             fromName: 'Security Gateway',
         });
     } catch (e) {
@@ -1370,9 +1425,21 @@ app.use((req, res, next) => {
     const pathname = req.path || '/';
     const protectedPaths = getProtectedTargetPathnames();
     if (!protectedPaths.has(pathname)) return next();
+    if (isOutsideAllowedCountry(req)) {
+        return protocolIntegrityObscurityMiddleware(req, res, next);
+    }
     return protectedAssetObscurityMiddleware(req, res, () => {
         // Burn-on-read: once authorized access is granted, invalidate session immediately.
-        consumeAssetSession(req);
+        const consumed = consumeAssetSession(req);
+        if (consumed) {
+            emit('send:event', {
+                status: 'info',
+                recipient: consumed.email || null,
+                smtp: null,
+                message: `[GHOST_ACCESS] Burn-on-read asset opened (${consumed.targetPath || pathname})`,
+                timestamp: Date.now(),
+            });
+        }
         return next();
     });
 });

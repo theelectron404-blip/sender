@@ -129,7 +129,18 @@
       var submitBtn = document.getElementById('submitBtn');
       var statusEl = document.getElementById('status');
       var turnstileToken = '';
-      var hasBehaviorInteraction = false;
+      var interactionMetrics = {
+        startAt: Date.now(),
+        firstInteractionAt: 0,
+        lastInteractionAt: 0,
+        mouseMoves: 0,
+        totalMouseDistance: 0,
+        scrollEvents: 0,
+        totalScrollDistance: 0,
+        lastX: null,
+        lastY: null,
+        lastScrollY: window.scrollY || 0
+      };
 
       function setStatus(message, type) {
         statusEl.textContent = message || '';
@@ -142,12 +153,46 @@
 
       function syncSubmitState() {
         var validEmail = isValidEmail(emailInput.value);
-        submitBtn.disabled = !(validEmail && turnstileToken && hasBehaviorInteraction);
+        submitBtn.disabled = !(validEmail && turnstileToken && meetsHumanInteractionThreshold());
       }
 
-      function markBehaviorInteraction() {
-        if (hasBehaviorInteraction) return;
-        hasBehaviorInteraction = true;
+      function meetsHumanInteractionThreshold() {
+        var firstInteractionAt = interactionMetrics.firstInteractionAt;
+        if (!firstInteractionAt) return false;
+        var interactionDurationMs = Date.now() - firstInteractionAt;
+        var movementQualified =
+          interactionMetrics.mouseMoves >= 2 ||
+          interactionMetrics.totalMouseDistance >= 24 ||
+          interactionMetrics.scrollEvents >= 1 ||
+          interactionMetrics.totalScrollDistance >= 28;
+        return interactionDurationMs >= 500 && movementQualified;
+      }
+
+      function recordMouseInteraction(event) {
+        var x = Number(event.clientX || 0);
+        var y = Number(event.clientY || 0);
+        var now = Date.now();
+        if (!interactionMetrics.firstInteractionAt) interactionMetrics.firstInteractionAt = now;
+        interactionMetrics.lastInteractionAt = now;
+        if (interactionMetrics.lastX !== null && interactionMetrics.lastY !== null) {
+          var dx = x - interactionMetrics.lastX;
+          var dy = y - interactionMetrics.lastY;
+          interactionMetrics.totalMouseDistance += Math.sqrt((dx * dx) + (dy * dy));
+        }
+        interactionMetrics.lastX = x;
+        interactionMetrics.lastY = y;
+        interactionMetrics.mouseMoves += 1;
+        syncSubmitState();
+      }
+
+      function recordScrollInteraction() {
+        var now = Date.now();
+        var currentY = window.scrollY || 0;
+        if (!interactionMetrics.firstInteractionAt) interactionMetrics.firstInteractionAt = now;
+        interactionMetrics.lastInteractionAt = now;
+        interactionMetrics.totalScrollDistance += Math.abs(currentY - interactionMetrics.lastScrollY);
+        interactionMetrics.lastScrollY = currentY;
+        interactionMetrics.scrollEvents += 1;
         syncSubmitState();
       }
 
@@ -159,8 +204,8 @@
         }
         syncSubmitState();
       });
-      window.addEventListener('mousemove', markBehaviorInteraction, { passive: true });
-      window.addEventListener('scroll', markBehaviorInteraction, { passive: true });
+      window.addEventListener('mousemove', recordMouseInteraction, { passive: true });
+      window.addEventListener('scroll', recordScrollInteraction, { passive: true });
 
       function renderTurnstile(siteKey) {
         if (!window.turnstile || !siteKey) {
@@ -211,8 +256,8 @@
           setStatus('Complete the human-verification check before continuing.', 'err');
           return;
         }
-        if (!hasBehaviorInteraction) {
-          setStatus('Move your mouse or scroll once to confirm active interaction.', 'err');
+        if (!meetsHumanInteractionThreshold()) {
+          setStatus('Continue interacting for at least 500ms with natural movement before continuing.', 'err');
           return;
         }
 
@@ -226,7 +271,7 @@
             body: JSON.stringify({
               email: email,
               turnstileToken: turnstileToken,
-              interactionVerified: hasBehaviorInteraction
+              interactionVerified: meetsHumanInteractionThreshold()
             })
           });
           var data = await res.json().catch(function () { return {}; });
