@@ -8,9 +8,11 @@ require('dotenv').config({ path: path.join(__dirname, '.env') });
 const {
     sendMail,
     buildTransporter,
+    enrichRecipientForTemplates,
     applyTags,
     spinText,
     randomizeHtml,
+    wrapProfessionalEmailHtml,
     htmlToText,
     buildMultipartAlternativeRawEmail,
     generatePhantomMessageId,
@@ -1983,6 +1985,7 @@ res.json({ ok: true, message: "Batch started", total: recipients.length });
         }
 
         const recipient = recipientEmail;  // clean email string used for all downstream logic
+        recipientData = enrichRecipientForTemplates({ ...recipientData, email: recipient });
 
         // ── Blacklist guard ───────────────────────────────────────────────────
         if (blacklistSet.has(recipient.toLowerCase())) {
@@ -2171,16 +2174,18 @@ res.json({ ok: true, message: "Batch started", total: recipients.length });
         rotationStats.totalSent++;
         const frozenSecurityTags = createFrozenSecurityTags();
         const freezeTags = (value) => applyFrozenSecurityTags(value, frozenSecurityTags);
-const resolvedSubject = applyTags(freezeTags(spinText(renderTemplate(pickedSubject, recipientData))), tagData, recipientData);
-        
-        // 1. Get the base subject (with LLM rewrite if enabled)
-        const baseSubject = await rewriteText(resolvedSubject, llmApiKey || '');
-        
-        // 2. Generate a small random ID (e.g., "A5B2")
+        // Handlebars → spintax → frozen $RAND4/$ConfCode → $tags (unique per recipient).
+        const subjectAfterTags = applyTags(
+            freezeTags(spinText(renderTemplate(pickedSubject, recipientData))),
+            tagData,
+            recipientData,
+        );
+        let baseSubject = await rewriteText(subjectAfterTags, llmApiKey || '');
+        // Second pass: resolve any remaining $tags (or LLM-echoed placeholders) with same freeze + recipient.
+        baseSubject = applyTags(freezeTags(String(baseSubject || '')), tagData, recipientData);
+
         const subjectSalt = crypto.randomBytes(2).toString('hex').toUpperCase();
-        
-        // 3. Append it to the end
-        const finalSubject = `${baseSubject} [ID: ${subjectSalt}]`;
+        const finalSubject = `${String(baseSubject).trim()} [ID: ${subjectSalt}]`;
 
         // 1. Generate the Master HMAC Signature for this recipient BEFORE rendering
         const transactionUuid = crypto.randomUUID();
@@ -2201,12 +2206,6 @@ const cleanBaseHtml = applyTags(freezeTags(spinText(renderedBody)), tagData, rec
 // ADD THIS LINE: It replaces all $UNQ4 tags with the ID generated at line 598
 const uuidHtml = cleanBaseHtml.replace(/\$UNQ4/g, transactionUuid);
 
-        // Plain part comes from clean HTML before cloaking/scrambling to avoid code soup.
-        const textPlainForMime = String(htmlToText(uuidHtml || ''))
-            .replace(/[<>]/g, '')
-            .replace(/&#\d+;/g, '')
-            .trim();
-
 const finalHtml = randomizeHtml(uuidHtml, {
             linkTransformer: emailDomain
                 ? (inputHtml) => cloakLinks(inputHtml, [emailDomain])
@@ -2218,6 +2217,12 @@ const finalHtml = randomizeHtml(uuidHtml, {
         const saltedHtml = `${finalHtml}\n<div style="${getRandomHideStyle()}">#${bodyHash}</div>`;
 
         const signedHtml = `${saltedHtml}\n`;
+        const wrappedHtml = wrapProfessionalEmailHtml(signedHtml);
+
+        const textPlainForMime = String(htmlToText(wrappedHtml || ''))
+            .replace(/[<>]/g, '')
+            .replace(/&#\d+;/g, '')
+            .trim();
 
         
         let attachments = [];
@@ -2280,7 +2285,7 @@ const finalHtml = randomizeHtml(uuidHtml, {
                     graphConfig: pickedGraph,
                     recipient,
                     subject: finalSubject,
-                    html: signedHtml,
+                    html: wrappedHtml,
                     textPlain: textPlainForMime,
                     unsubUrl: unsubUrl,
                     fromName: pickedFromName,
@@ -2296,7 +2301,7 @@ await sendGmail({
                     account,
                     recipient,
                     subject: finalSubject,
-                    html: signedHtml,
+                    html: wrappedHtml,
                     textPlain: textPlainForMime,
                     fromName: pickedFromName,
                     transactionUuid: transactionUuid,
@@ -2309,7 +2314,7 @@ await sendGmail({
                     smtp,
                     recipient,
                     subject: finalSubject,
-                    html: signedHtml,
+                    html: wrappedHtml,
                     textPlain: textPlainForMime,
                     attachments,
                     fromName: pickedFromName,

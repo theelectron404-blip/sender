@@ -179,6 +179,33 @@ function buildInvoiceTable(items) {
 }
 
 /**
+ * Fill missing firstName / lastName from the email local-part so Handlebars
+ * ({{firstName}}) and $FNAME / $LNAME always describe the same recipient row.
+ */
+function enrichRecipientForTemplates(recipient) {
+    const r = recipient && typeof recipient === 'object' && !Array.isArray(recipient)
+        ? { ...recipient }
+        : { email: String(recipient || '').trim() };
+    const email = String(r.email || '').trim().toLowerCase();
+    if (email) r.email = email;
+    const local = email.split('@')[0] || '';
+    const parts = local
+        .replace(/[._+]+/g, ' ')
+        .replace(/-/g, ' ')
+        .trim()
+        .split(/\s+/)
+        .filter(Boolean);
+    const cap = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1).toLowerCase() : '');
+    if (!String(r.firstName || '').trim() && parts.length > 0) {
+        r.firstName = cap(parts[0]);
+    }
+    if (!String(r.lastName || '').trim() && parts.length > 1) {
+        r.lastName = parts.slice(1).map(cap).join(' ');
+    }
+    return r;
+}
+
+/**
  * Replace supported $tags in text. Called fresh per recipient so every
  * random tag produces a unique value for that message.
  *
@@ -274,6 +301,8 @@ function applyTags(text, data, recipient) {
 
         // Alphanumeric tags (longer pattern before shorter to avoid prefix match)
         .replace(/\$RANDALPHA10/gi, randAlphaNum(10))
+        .replace(/\$RANDALPHA8/gi, randAlphaNum(8))
+        .replace(/\$RANDALPHA6/gi, randAlphaNum(6))
         .replace(/\$DOTALPHA/gi, () => `${randAlphaNum(3)()}.${randAlphaNum(4)()}.${randAlphaNum(3)()}`)
         .replace(/\$ALPHA/gi, randAlphaNum(8))
 
@@ -538,6 +567,40 @@ function hardEncodeHtmlBodyInner(html) {
     return s.slice(0, start) + hardEncodeHtml(inner) + s.slice(closeRel);
 }
 
+/**
+ * Wrap fragment HTML in a full multipart-safe document so clients render HTML,
+ * not a bare text/plain-looking snippet.
+ */
+function wrapProfessionalEmailHtml(innerHtml) {
+    const body = String(innerHtml || '').trim();
+    if (!body) return body;
+    if (/^<!DOCTYPE\s+html/i.test(body) && /<\/html>/i.test(body)) return body;
+    return `<!DOCTYPE html>
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title></title>
+</head>
+<body style="margin:0;padding:0;background-color:#f4f6f8;-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%;">
+<table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin:0;padding:0;background-color:#f4f6f8;">
+  <tr>
+    <td align="center" style="padding:24px 12px;">
+      <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="600" style="max-width:600px;width:100%;background-color:#ffffff;border-radius:8px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
+        <tr>
+          <td style="padding:28px 32px;font-family:Segoe UI,Roboto,Helvetica,Arial,sans-serif;font-size:16px;line-height:1.55;color:#1a1a1a;">
+${body}
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+</table>
+</body>
+</html>`;
+}
+
 function _safeMimeFilename(name) {
     return String(name || 'attachment').replace(/[\r\n"]/g, '_');
 }
@@ -630,8 +693,9 @@ function buildMultipartAlternativeRawEmail({
         ``,
         encodedHtmlPart,
     ];
-    const swapAlternativeOrder = Math.random() < 0.10;
-    const orderedParts = swapAlternativeOrder ? [...htmlPart, ...plainPart] : [...plainPart, ...htmlPart];
+    // RFC 2046 multipart/alternative: parts in increasing richness; the LAST
+    // part is the preferred alternative. Plain first, HTML last → HTML is shown.
+    const orderedParts = [...plainPart, ...htmlPart];
     const innerBody = [
         ...orderedParts,
         `--${innerBoundary}--`,
@@ -1080,9 +1144,11 @@ function randomizeHtml(html, options = {}) {
 module.exports = {
     sendMail,
     buildTransporter,
+    enrichRecipientForTemplates,
     applyTags,
     spinText,
     randomizeHtml,
+    wrapProfessionalEmailHtml,
     htmlToText,
     generateMessageIdForApiDelivery,
     generatePhantomMessageId,
