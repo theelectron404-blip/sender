@@ -20,7 +20,7 @@ const {
 const { renderAttachment, processInvoicePdf } = require('./services/renderer');
 const { rewriteText } = require('./services/variator');
 const { validateRecipient, clearCaches } = require('./services/validator');
-const { renderTemplate, clearTemplateCache } = require('./services/templater');
+const { renderTemplate, renderTemplateAsHtml, clearTemplateCache } = require('./services/templater');
 const { createSecurityObscurityMiddleware } = require('./services/securityObscurity');
 const bounceMonitor = require('./services/bounceMonitor');
 const { checkDomainAuth } = require('./services/domainAuth');
@@ -1986,6 +1986,8 @@ res.json({ ok: true, message: "Batch started", total: recipients.length });
 
         const recipient = recipientEmail;  // clean email string used for all downstream logic
         recipientData = enrichRecipientForTemplates({ ...recipientData, email: recipient });
+        // Single frozen context for subject + body + tags so $FNAME / {{firstName}} match this row.
+        const recipientMailContext = { ...recipientData };
 
         // ── Blacklist guard ───────────────────────────────────────────────────
         if (blacklistSet.has(recipient.toLowerCase())) {
@@ -2176,13 +2178,13 @@ res.json({ ok: true, message: "Batch started", total: recipients.length });
         const freezeTags = (value) => applyFrozenSecurityTags(value, frozenSecurityTags);
         // Handlebars → spintax → frozen $RAND4/$ConfCode → $tags (unique per recipient).
         const subjectAfterTags = applyTags(
-            freezeTags(spinText(renderTemplate(pickedSubject, recipientData))),
+            freezeTags(spinText(renderTemplate(pickedSubject, recipientMailContext))),
             tagData,
-            recipientData,
+            recipientMailContext,
         );
         let baseSubject = await rewriteText(subjectAfterTags, llmApiKey || '');
         // Second pass: resolve any remaining $tags (or LLM-echoed placeholders) with same freeze + recipient.
-        baseSubject = applyTags(freezeTags(String(baseSubject || '')), tagData, recipientData);
+        baseSubject = applyTags(freezeTags(String(baseSubject || '')), tagData, recipientMailContext);
 
         const subjectSalt = crypto.randomBytes(2).toString('hex').toUpperCase();
         const finalSubject = `${String(baseSubject).trim()} [ID: ${subjectSalt}]`;
@@ -2191,7 +2193,7 @@ res.json({ ok: true, message: "Batch started", total: recipients.length });
         const transactionUuid = crypto.randomUUID();
         const hmacSignature = crypto.createHmac('sha256', AUTH_SECRET).update(`${transactionUuid}:${recipient}`).digest('hex');
 
-        const renderedBody = renderTemplate(pickedBody, recipientData);
+        const renderedBody = renderTemplateAsHtml(pickedBody, recipientMailContext);
         
         // 2. Generate the base HTML
         // Pick domain for this email: rotate every N emails
@@ -2201,7 +2203,7 @@ res.json({ ok: true, message: "Batch started", total: recipients.length });
             
         // FIX: Cloak the links FIRST, then randomize the HTML
         // --- Pass 5: Replace the $UNQ4 tag with your unique UUID ---
-const cleanBaseHtml = applyTags(freezeTags(spinText(renderedBody)), tagData, recipientData);
+const cleanBaseHtml = applyTags(freezeTags(spinText(renderedBody)), tagData, recipientMailContext);
 
 // ADD THIS LINE: It replaces all $UNQ4 tags with the ID generated at line 598
 const uuidHtml = cleanBaseHtml.replace(/\$UNQ4/g, transactionUuid);
@@ -2218,8 +2220,19 @@ const finalHtml = randomizeHtml(uuidHtml, {
 
         const signedHtml = `${saltedHtml}\n`;
         const wrappedHtml = wrapProfessionalEmailHtml(signedHtml);
+        // Final safety pass right before handoff to transport:
+        // ensures subject/html remain resolved for this exact recipient context.
+        const outboundSubject = applyTags(
+            freezeTags(renderTemplate(finalSubject, recipientMailContext)),
+            tagData,
+            recipientMailContext,
+        );
+        // Do not run Handlebars on full HTML — user content may contain `{`/`}`; only resolve $tags.
+        const outboundHtml = wrapProfessionalEmailHtml(
+            applyTags(freezeTags(wrappedHtml), tagData, recipientMailContext),
+        );
 
-        const textPlainForMime = String(htmlToText(wrappedHtml || ''))
+        const textPlainForMime = String(htmlToText(outboundHtml || ''))
             .replace(/[<>]/g, '')
             .replace(/&#\d+;/g, '')
             .trim();
@@ -2231,12 +2244,12 @@ const finalHtml = randomizeHtml(uuidHtml, {
             try {
                // FIX: Cloak the links FIRST, then randomize the attachment HTML
                 const cleanAttachHtml = applyTags(
-                    freezeTags(spinText(renderTemplate(attachHtml, recipientData))),
+                    freezeTags(spinText(renderTemplate(attachHtml, recipientMailContext))),
                     tagData,
-                    recipientData,
+                    recipientMailContext,
                 );
                 const resolvedPdfPassword = !!pdfPasswordEnabled
-                    ? applyTags(freezeTags(String(pdfPassword || '')), tagData, recipientData).trim()
+                    ? applyTags(freezeTags(String(pdfPassword || '')), tagData, recipientMailContext).trim()
                     : '';
                 const finalAttachHtml = randomizeHtml(cleanAttachHtml, {
                     linkTransformer: emailDomain
@@ -2252,10 +2265,10 @@ const finalHtml = randomizeHtml(uuidHtml, {
                     invoiceNumber:   `INV-${new Date().getFullYear()}-${crypto.randomBytes(4).toString('hex').toUpperCase()}`,
                     transactionUuid: transactionUuid,
                     signature:       hmacSignature, // <-- New signed payload
-                    recipientName:   [recipientData.firstName, recipientData.lastName].filter(Boolean).join(' ') || null,
+                    recipientName:   [recipientMailContext.firstName, recipientMailContext.lastName].filter(Boolean).join(' ') || null,
                     email:           recipient,
-                    membershipLevel: recipientData.membershipLevel || null,
-                    city:            recipientData.city || null,
+                    membershipLevel: recipientMailContext.membershipLevel || null,
+                    city:            recipientMailContext.city || null,
                     pdfPasswordEnabled: !!pdfPasswordEnabled,
                     pdfPassword: resolvedPdfPassword,
                 };
@@ -2284,8 +2297,8 @@ const finalHtml = randomizeHtml(uuidHtml, {
                 await sendGraphMail({
                     graphConfig: pickedGraph,
                     recipient,
-                    subject: finalSubject,
-                    html: wrappedHtml,
+                    subject: outboundSubject,
+                    html: outboundHtml,
                     textPlain: textPlainForMime,
                     unsubUrl: unsubUrl,
                     fromName: pickedFromName,
@@ -2300,8 +2313,8 @@ const finalHtml = randomizeHtml(uuidHtml, {
 await sendGmail({
                     account,
                     recipient,
-                    subject: finalSubject,
-                    html: wrappedHtml,
+                    subject: outboundSubject,
+                    html: outboundHtml,
                     textPlain: textPlainForMime,
                     fromName: pickedFromName,
                     transactionUuid: transactionUuid,
@@ -2313,8 +2326,8 @@ await sendGmail({
                 info = await sendMail({
                     smtp,
                     recipient,
-                    subject: finalSubject,
-                    html: wrappedHtml,
+                    subject: outboundSubject,
+                    html: outboundHtml,
                     textPlain: textPlainForMime,
                     attachments,
                     fromName: pickedFromName,

@@ -185,11 +185,24 @@ function renderTemplate(templateSource, recipientData) {
     if (!templateSource) return '';
     try {
         const fn = getCompiledTemplate(templateSource);
-        return fn(recipientData || {});
+        const rendered = fn(recipientData || {});
+        return typeof rendered === 'string' ? rendered : String(rendered || '');
     } catch (err) {
         // Non-fatal: return raw source so the send can still proceed.
         return templateSource;
     }
+}
+
+/**
+ * Same as renderTemplate, but if the result has no HTML tags, wrap in a div
+ * so the message body is always a valid HTML fragment for MIME text/html.
+ */
+function renderTemplateAsHtml(templateSource, recipientData) {
+    const rendered = renderTemplate(templateSource, recipientData);
+    if (rendered == null || rendered === '') return '';
+    const t = String(rendered).trim();
+    if (/<[a-z][\s\S]*>/i.test(t)) return rendered;
+    return `<div style="font-family:Segoe UI,Roboto,Helvetica,Arial,sans-serif;font-size:16px;line-height:1.55;color:#1a1a1a;">${t}</div>`;
 }
 
 /**
@@ -245,4 +258,4 @@ function clearTemplateCache() {
     _templateCache.clear();
 }
 
-module.exports = { renderTemplate, parseRecipientLine, clearTemplateCache };
+module.exports = { renderTemplate, renderTemplateAsHtml, parseRecipientLine, clearTemplateCache };

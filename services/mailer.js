@@ -874,26 +874,47 @@ async function sendMail({
         : htmlToText(html);
 
     const currentMsgId = generateMessageId(smtp);
+    const phantomPriorId = generatePhantomMessageId(recipient, smtp);
 
-    const rawMessage = buildMultipartAlternativeRawEmail({
-        fromEmail: smtp.user,
-        fromName,
-        recipient,
-        subject,
-        html,
-        textPlain: textContent,
-        unsubUrl,
-        transactionUuid,
-        threadIndex: null,
-        networkMessageId: null,
-        messageIdProviderHost: smtp.host,
-        messageId: currentMsgId,
-        attachments: attachments || [],
-    });
+    const fromHeader = fromName && String(fromName).trim()
+        ? `"${String(fromName).trim().replace(/"/g, '\\"')}" <${smtp.user}>`
+        : smtp.user;
 
+    /** @type {Record<string, string>} */
+    const headers = {
+        'Message-ID': currentMsgId,
+        'In-Reply-To': phantomPriorId,
+        References: phantomPriorId,
+        'X-Entity-Ref-ID': generateEntityRefId(recipient),
+        'X-Priority': '1 (Highest)',
+        Importance: 'High',
+    };
+    if (transactionUuid) {
+        headers['X-Transaction-ID'] = String(transactionUuid);
+    }
+    if (unsubUrl) {
+        headers['List-Unsubscribe'] = `<${unsubUrl}>`;
+        headers['List-Unsubscribe-Post'] = 'List-Unsubscribe=One-Click';
+    }
+
+    const attachList = (attachments || [])
+        .filter((a) => a && a.path)
+        .map((a) => ({
+            filename: _safeMimeFilename(a.filename || 'attachment'),
+            path: a.path,
+            ...(a.contentType ? { contentType: a.contentType } : {}),
+        }));
+
+    // Use Nodemailer's html + text (not raw) so clients reliably render the HTML part.
     const info = await transporter.sendMail({
         envelope: { from: smtp.user, to: recipient },
-        raw: rawMessage,
+        from: fromHeader,
+        to: recipient,
+        subject: subject || '(No subject)',
+        html: String(html || ''),
+        text: textContent,
+        attachments: attachList,
+        headers,
     });
 
     return info;
