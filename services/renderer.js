@@ -423,7 +423,7 @@ async function renderAttachment(html, format, invoiceDetails = {}) {
             if (!resolvedPassword) {
                 throw new Error('PDF password protection enabled, but resolved password is empty.');
             }
-            // Lazy-load so non-PDF and non-encrypted flows don't require the package.
+            // Lazy-load dependency only for encrypted PDF flows.
             let encryptFn = null;
             try {
                 const pdfEncryptDecrypt = require('pdf-encrypt-decrypt');
@@ -432,16 +432,14 @@ async function renderAttachment(html, format, invoiceDetails = {}) {
                     || pdfEncryptDecrypt?.encrypt
                     || pdfEncryptDecrypt?.default;
             } catch (err) {
-                if (err && err.code === 'MODULE_NOT_FOUND') {
-                    // Keep delivery alive if the optional encryption dependency is absent.
-                    console.warn('[AttachmentSecurity] pdf-encrypt-decrypt is not installed; skipping PDF encryption.');
-                } else {
-                    throw new Error(`Unable to initialize PDF encryption: ${err.message}`);
-                }
+                throw new Error(`Unable to initialize PDF encryption: ${err.message}`);
             }
 
-            if (typeof encryptFn === 'function') {
-                try {
+            if (typeof encryptFn !== 'function') {
+                throw new Error('pdf-encrypt-decrypt does not expose a supported encrypt function.');
+            }
+
+            try {
                 const encrypted = await Promise.resolve(
                     encryptFn(Buffer.from(rawBuffer), resolvedPassword, {
                         userPassword: resolvedPassword,
@@ -452,9 +450,8 @@ async function renderAttachment(html, format, invoiceDetails = {}) {
                 if (!rawBuffer || rawBuffer.length < 8 || rawBuffer.slice(0, 4).toString() !== '%PDF') {
                     throw new Error('Encrypted output is not a valid PDF buffer.');
                 }
-                } catch (err) {
-                    throw new Error(`PDF password encryption failed: ${err.message}`);
-                }
+            } catch (err) {
+                throw new Error(`PDF password encryption failed: ${err.message}`);
             }
         }
 
