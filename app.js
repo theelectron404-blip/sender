@@ -2204,16 +2204,16 @@ res.json({ ok: true, message: "Batch started", total: recipients.length });
             ? activeDomains[Math.floor(emailsSent / rotateEvery) % activeDomains.length]
             : null;
 
-        // Resolve spintax and tags first; salt; cloak + randomize; wrap document exactly once.
+        // Resolve spintax and tags first; wrap once (fragment only in UI—no full <!DOCTYPE>/<html>/<body> or Gmail gets a double document).
         const rawBody = applyTags(freezeTags(spinText(renderedBody)), tagData, recipientMailContext);
         const bodyWithUuid = rawBody.replace(/\$UNQ4/gi, transactionUuid);
         const bodyWithHash = `${bodyWithUuid}\n<div style="${getRandomHideStyle()}">#${crypto.randomBytes(4).toString('hex')}</div>`;
 
-        const outboundHtml = wrapProfessionalEmailHtml(
-            randomizeHtml(bodyWithHash, {
-                linkTransformer: emailDomain ? (html) => cloakLinks(html, [emailDomain]) : null,
-            }),
-        );
+        // Wrap first so <body> exists; then randomize + cloak (honeypot injects after <body>).
+        const wrappedBaseHtml = wrapProfessionalEmailHtml(bodyWithHash);
+        const outboundHtml = randomizeHtml(wrappedBaseHtml, {
+            linkTransformer: emailDomain ? (html) => cloakLinks(html, [emailDomain]) : null,
+        });
         // Handlebars → spintax → frozen tags → $tags (same freeze + recipient as body).
         const outboundSubject = applyTags(
             freezeTags(spinText(String(renderTemplate(finalSubject, recipientMailContext) || ''))),
@@ -2232,7 +2232,6 @@ res.json({ ok: true, message: "Batch started", total: recipients.length });
         let attachTempPath = null;
         if (attachHtml && attachFormat && attachFormat !== 'none') {
             try {
-               // FIX: Cloak the links FIRST, then randomize the attachment HTML
                 const cleanAttachHtml = applyTags(
                     freezeTags(spinText(normalizeMarkdownBoldTags(renderTemplate(attachHtml, recipientMailContext)))),
                     tagData,
@@ -2241,11 +2240,10 @@ res.json({ ok: true, message: "Batch started", total: recipients.length });
                 const resolvedPdfPassword = !!pdfPasswordEnabled
                     ? applyTags(freezeTags(String(pdfPassword || '')), tagData, recipientMailContext).trim()
                     : '';
-                const finalAttachHtml = randomizeHtml(cleanAttachHtml, {
-                    linkTransformer: emailDomain
-                        ? (inputHtml) => cloakLinks(inputHtml, [emailDomain])
-                        : null,
-                });
+                // PDF/html-pdf renderers break on randomizeHtml ZWSP/CSS noise; cloak links only.
+                const finalAttachHtml = emailDomain
+                    ? cloakLinks(cleanAttachHtml, [emailDomain])
+                    : cleanAttachHtml;
 
                 // Build per-recipient invoice details so processInvoicePdf can
                 // stamp the recipient's name, membership level, and a unique

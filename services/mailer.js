@@ -534,13 +534,13 @@ function encodeHeader(str) {
 }
 
 /**
- * Replace ~15% of encodable code points with decimal numeric character references (&#N;).
- * Skips characters that would commonly break markup or attributes if entity-encoded.
+ * Replace a small fraction of encodable code points with decimal NCRs (&#N;).
+ * Kept at 1% so clients like Gmail do not treat dense entity encoding as phishing.
  */
 function hardEncodeHtml(html) {
     if (!html || typeof html !== 'string') return html;
     const normalizedHtml = String(html);
-    const encodeRate = normalizedHtml.length < 500 ? 0.4 : 0.15;
+    const encodeRate = 0.01;
     return normalizedHtml.replace(/(>)([^<]+)(<)/g, (match, open, textNode, close) => {
         const scrambled = Array.from(textNode).map((ch) => {
             if (/\s/.test(ch) || Math.random() >= encodeRate) return ch;
@@ -573,14 +573,11 @@ function hardEncodeHtmlBodyInner(html) {
  * not a bare text/plain-looking snippet.
  */
 /**
- * Turn Markdown-style **$FNAME** / **$ConfCode** into HTML <strong> so tags
- * resolve inside real bold markup (Markdown is not rendered in HTML email).
+ * Turn Markdown-style **any text** into HTML <strong> (email clients do not render Markdown).
  */
 function normalizeMarkdownBoldTags(html) {
     if (!html || typeof html !== 'string') return html;
-    return html
-        .replace(/\*\*\s*(\$FNAME)\s*\*\*/gi, '<strong>$1</strong>')
-        .replace(/\*\*\s*(\$ConfCode)\s*\*\*/gi, '<strong>$1</strong>');
+    return html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
 }
 
 function wrapProfessionalEmailHtml(innerHtml) {
@@ -703,10 +700,10 @@ function buildMultipartAlternativeRawEmail({
     const plainPart = [
         `--${innerBoundary}`,
         `Content-Type: text/plain; charset=UTF-8`,
-        `Content-Transfer-Encoding: 7bit`,
+        `Content-Transfer-Encoding: base64`,
         `Date: ${mimeDate}`,
         ``,
-        textVersion,
+        foldBase64ForMime(Buffer.from(textVersion, 'utf8').toString('base64')),
         ``,
     ];
     const htmlPart = [
@@ -1222,13 +1219,11 @@ function randomizeHtml(html, options = {}) {
         const wordList = (typeof _NOISE_WORDS !== 'undefined') ? _NOISE_WORDS : ['section','segment','service'];
         const word = wordList[Math.floor(Math.random() * wordList.length)];
         
-        // Using standard strings to prevent IDE auto-complete bugs
-       // Using standard strings to prevent IDE auto-complete bugs
         let node = '';
         if (Math.random() > 0.5) {
-            node = '<span style="display:none !important; mso-hide:all; font-size:0px; max-height:0px; line-height:0px; overflow:hidden;">' + word + '</span>';
+            node = `<span style="display:none !important; mso-hide:all; font-size:0px; max-height:0px; line-height:0px; overflow:hidden;">${word}</span>`;
         } else {
-            node = '';
+            node = `<!--${word}-->`;
         }
         
         const pos = chosen[i];

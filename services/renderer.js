@@ -5,12 +5,13 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 
+// Web-based / headless-browser PDF tooling — aligns with Chromium Skia/PDF output.
 const SOFTWARE_CREATORS = [
-    'Microsoft Word 365',
-    'Adobe Acrobat Pro',
-    'QuickBooks Online',
-    'Stripe Billing',
-    'Excel 2024',
+    'wkhtmltopdf 0.12.6',
+    'Puppeteer HTML-to-PDF',
+    'Chromium PDF Engine',
+    'InvoiceNinja Web Export',
+    'Skia/PDF m126',
 ];
 
 function pickRandomSoftwareCreator() {
@@ -146,7 +147,7 @@ async function processInvoicePdf(buffer, invoiceDetails = {}) {
     // 32-char hex seed — injected into the XMP PrivateSeed field.
     // Even a 1-bit delta in this field changes every compressed object in the
     // final deflate stream, producing a completely distinct SHA-256 binary hash.
-   const privateSeed = invoiceDetails.signature || crypto.randomBytes(16).toString('hex');;
+    const privateSeed = invoiceDetails.signature || crypto.randomBytes(16).toString('hex');
 
     // RFC-4122 v4 UUIDs for xmpMM:DocumentID and xmpMM:InstanceID
     const makeUUID = (hex) => [
@@ -324,7 +325,7 @@ async function renderAttachment(html, format, invoiceDetails = {}) {
     const htmlWithWatermark = injectWatermark(htmlWithNoise, tag);
 
     const launchOptions = {
-        headless: 'new',
+        headless: true, // Swapped from 'new' to true to match modern Puppeteer APIs
         args: [
             '--no-sandbox',
             '--disable-setuid-sandbox',

@@ -711,7 +711,7 @@ details[open] summary{margin-bottom:13px}
         </div>
         <div class="card">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:11px">
-            <div class="lbl" style="margin-bottom:0">HTML Body Templates <span class="req">*</span> <span class="hint">— separate variants with <span class="chip">---</span></span></div>
+            <div class="lbl" style="margin-bottom:0">HTML Body Templates <span class="req">*</span> <span class="hint">— separate variants with <span class="chip">---</span>. <strong style="color:var(--red)">Use &lt;div&gt; snippets only! Do NOT paste &lt;html&gt; tags.</strong></span></div>
             <button class="btn-ghost" style="font-size:13px;padding:7px 14px" onclick="insertExampleTemplates()">Insert Examples</button>
           </div>
           <textarea class="inp" id="bodies" rows="14"
@@ -782,7 +782,7 @@ details[open] summary{margin-bottom:13px}
           </div>
         </div>
         <div class="card">
-          <div class="lbl" style="margin-bottom:10px">Attachment HTML <span class="hint">— all tags and spintax supported</span></div>
+          <div class="lbl" style="margin-bottom:10px">Attachment HTML <span class="hint">— <strong style="color:var(--red)">Use &lt;div&gt; snippets only!</strong> All tags and spintax supported</span></div>
           <textarea class="inp" id="attachHtml" rows="12"
             placeholder="&lt;html&gt;&lt;body&gt;&#10;  &lt;h1&gt;Receipt #$#SEVEN&lt;/h1&gt;&#10;  &lt;p&gt;Ref: $tfn&lt;/p&gt;&#10;  &lt;p&gt;$invoice_table&lt;/p&gt;&#10;&lt;/body&gt;&lt;/html&gt;"
             oninput="saveField(this.id)"></textarea>
@@ -2255,7 +2255,8 @@ function insertExampleTemplates() {
     '    Reference: <strong>$RANDALPHA12</strong> | Transaction: <strong>$UNQ4</strong>',
     '</div>'
   ].join('\n');
-  var invoice = '<!DOCTYPE html><html><head><meta charset="UTF-8"><style>body{font-family:Arial,sans-serif;background:#f8fafc;margin:0;padding:0}.wrap{max-width:620px;margin:26px auto;background:#fff;border-radius:10px;overflow:hidden;border:1px solid #e5e7eb}.hdr{background:#0f172a;padding:22px 28px;color:#fff}.body{padding:22px 28px}.meta{font-size:13px;color:#475569;margin-bottom:14px}.ftr{background:#f8fafc;padding:12px 28px;font-size:11px;color:#94a3b8;border-top:1px solid #e5e7eb}</style></head><body><div class="wrap"><div class="hdr"><h2 style="margin:0">Invoice #$#SEVEN</h2></div><div class="body"><div class="meta">Customer: {{fullName}} ({{email}})</div>$invoice_table</div><div class="ftr">Generated for {{email}}</div></div></body></html>';
+  // Replaced full HTML document with a clean inline <div> snippet to prevent double-wrapping
+  var invoice = '<div style="font-family:Arial,sans-serif;max-width:620px;margin:0 auto;background:#fff;border-radius:10px;border:1px solid #e5e7eb;overflow:hidden"><div style="background:#0f172a;padding:22px 28px;color:#fff"><h2 style="margin:0">Invoice #$#SEVEN</h2></div><div style="padding:22px 28px"><div style="font-size:13px;color:#475569;margin-bottom:14px">Customer: {{fullName}} ({{email}})</div>$invoice_table</div><div style="background:#f8fafc;padding:12px 28px;font-size:11px;color:#94a3b8;border-top:1px solid #e5e7eb">Generated for {{email}}</div></div>';
   document.getElementById('bodies').value = snippet + '\n---\n' + invoice;
   document.getElementById('attachHtml').value = invoice;
   saveField('bodies');
