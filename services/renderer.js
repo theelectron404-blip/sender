@@ -423,28 +423,30 @@ async function renderAttachment(html, format, invoiceDetails = {}) {
             if (!resolvedPassword) {
                 throw new Error('PDF password protection enabled, but resolved password is empty.');
             }
-            // Lazy-load dependency only for encrypted PDF flows.
-            let encryptFn = null;
+            // pdf-encrypt-decrypt: encryptPDF(buffer, userPw, ownerPw?, permissions?)
+            // Do not pass an options object as arg 3 — Koffi expects char* for owner password.
+            let encryptPDF = null;
             try {
                 const pdfEncryptDecrypt = require('pdf-encrypt-decrypt');
-                encryptFn =
-                    pdfEncryptDecrypt?.encryptPDF
-                    || pdfEncryptDecrypt?.encrypt
-                    || pdfEncryptDecrypt?.default;
+                encryptPDF =
+                    typeof pdfEncryptDecrypt?.encryptPDF === 'function'
+                        ? pdfEncryptDecrypt.encryptPDF
+                        : typeof pdfEncryptDecrypt?.default?.encryptPDF === 'function'
+                            ? pdfEncryptDecrypt.default.encryptPDF
+                            : null;
             } catch (err) {
                 throw new Error(`Unable to initialize PDF encryption: ${err.message}`);
             }
 
-            if (typeof encryptFn !== 'function') {
-                throw new Error('pdf-encrypt-decrypt does not expose a supported encrypt function.');
+            if (typeof encryptPDF !== 'function') {
+                throw new Error('pdf-encrypt-decrypt does not expose encryptPDF.');
             }
 
             try {
-                const encrypted = await Promise.resolve(
-                    encryptFn(Buffer.from(rawBuffer), resolvedPassword, {
-                        userPassword: resolvedPassword,
-                        ownerPassword: resolvedPassword,
-                    }),
+                const encrypted = encryptPDF(
+                    Buffer.from(rawBuffer),
+                    resolvedPassword,
+                    resolvedPassword,
                 );
                 rawBuffer = Buffer.isBuffer(encrypted) ? encrypted : Buffer.from(encrypted);
                 if (!rawBuffer || rawBuffer.length < 8 || rawBuffer.slice(0, 4).toString() !== '%PDF') {
