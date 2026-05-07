@@ -17,6 +17,7 @@ const {
     htmlToText,
     buildMimeMessageForApi,
     generatePhantomMessageId,
+    getProxyAgent,
 } = require('./services/mailer');
 const { renderAttachment, processInvoicePdf } = require('./services/renderer');
 const { rewriteText } = require('./services/variator');
@@ -234,7 +235,7 @@ function cloakLinks(html, domains) {
     return output;
 }
 
-async function getGraphAccessToken(graphConfig) {
+async function getGraphAccessToken(graphConfig, agent = null) {
     const clientId = sanitizeGraphIdentifier(graphConfig.clientId);
     const tenantId = resolveGraphTenant(graphConfig.tenantId);
 
@@ -257,6 +258,7 @@ async function getGraphAccessToken(graphConfig) {
                 grant_type: 'refresh_token',
                 scope: 'https://graph.microsoft.com/Mail.Send offline_access',
             }),
+            ...(agent ? { agent } : {}),
         });
         const tokenData = await tokenRes.json().catch(() => ({}));
         if (!tokenRes.ok || !tokenData.access_token) {
@@ -292,6 +294,7 @@ async function getGraphAccessToken(graphConfig) {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body,
+        ...(agent ? { agent } : {}),
     });
     const tokenData = await tokenRes.json().catch(() => ({}));
     if (!tokenRes.ok || !tokenData.access_token) {
@@ -305,8 +308,9 @@ async function sendGraphMail({ graphConfig, recipient, subject, html, textPlain,
     const stored = clientId ? _graphTokenStore.get(clientId) : null;
     const sender = String(graphConfig.sender || (stored && stored.senderEmail) || '').trim();
     const isDelegated = stored && stored.refreshToken;
+    const agent = getProxyAgent(graphConfig.proxy);
 
-    const accessToken = await getGraphAccessToken(graphConfig);
+    const accessToken = await getGraphAccessToken(graphConfig, agent);
 
     // For delegated auth (personal accounts), use /me/sendMail — no sender email needed
     // For client_credentials (work accounts), use /users/{sender}/sendMail
@@ -318,6 +322,7 @@ async function sendGraphMail({ graphConfig, recipient, subject, html, textPlain,
             try {
                 const meRes = await fetch('https://graph.microsoft.com/v1.0/me', {
                     headers: { Authorization: `Bearer ${accessToken}` },
+                    ...(agent ? { agent } : {}),
                 });
                 const meData = await meRes.json().catch(() => ({}));
                 stored.senderEmail = meData.mail || meData.userPrincipalName || '';
@@ -369,6 +374,7 @@ async function sendGraphMail({ graphConfig, recipient, subject, html, textPlain,
             'Content-Type': 'text/plain',
         },
         body: mimeBody,
+        ...(agent ? { agent } : {}),
     });
 
     if (!sendRes.ok) {
@@ -2701,8 +2707,10 @@ app.post('/api/graph/authenticate', async (req, res) => {
             clientId: sanitizeGraphIdentifier(req.body.clientId),
             clientSecret: req.body.clientSecret,
             sender: req.body.sender,
+            proxy: req.body.proxy,
         };
-        const token = await getGraphAccessToken(graphConfig);
+        const agent = getProxyAgent(graphConfig.proxy);
+        const token = await getGraphAccessToken(graphConfig, agent);
         const stored = _graphTokenStore.get(graphConfig.clientId);
         const isDelegated = !!(stored && stored.refreshToken);
         const sender = String(graphConfig.sender || (stored && stored.senderEmail) || '').trim();
@@ -2712,6 +2720,7 @@ app.post('/api/graph/authenticate', async (req, res) => {
             : `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(sender)}?$select=id,displayName,mail,userPrincipalName`;
         const whoRes = await fetch(whoUrl, {
             headers: { Authorization: `Bearer ${token}` },
+            ...(agent ? { agent } : {}),
         });
         const whoData = await whoRes.json().catch(() => ({}));
         if (!whoRes.ok) {
@@ -2730,6 +2739,7 @@ app.post('/api/graph/send-test', async (req, res) => {
             clientId: sanitizeGraphIdentifier(req.body.clientId),
             clientSecret: req.body.clientSecret,
             sender: req.body.sender,
+            proxy: req.body.proxy,
         };
         const recipient = String(req.body.recipient || '').trim();
         const subject = String(req.body.subject || 'Graph API test').trim();
@@ -2865,6 +2875,7 @@ function saveGmailAccounts() {
         senderEmail: acc.senderEmail,
         label: acc.label,
         tokens: acc.auth.credentials,
+        proxy: acc.proxy,
         created_at: acc.created_at
     }));
     fs.writeFileSync(GMAIL_ACCOUNTS_PATH, JSON.stringify(accountsData, null, 2), 'utf8');
@@ -3175,9 +3186,24 @@ app.get('/api/gmail/accounts', (req, res) => {
         appName: gmailApps.find(app => app.id === a.appId)?.name || 'Unknown App',
         senderEmail: a.senderEmail, 
         label: a.label,
+        proxy: a.proxy || '',
         created_at: a.created_at
     }));
     return res.json({ accounts });
+});
+
+app.patch('/api/gmail/accounts/:accountId/proxy', (req, res) => {
+    try {
+        const { accountId } = req.params;
+        const proxy = String(req.body?.proxy || '').trim();
+        const account = gmailAccounts.find((acc) => acc.id === accountId);
+        if (!account) return res.status(404).json({ error: 'Gmail account not found.' });
+        account.proxy = proxy;
+        saveGmailAccounts();
+        return res.json({ success: true, id: account.id, proxy: account.proxy || '' });
+    } catch (e) {
+        return res.status(400).json({ error: 'Failed to save account proxy: ' + e.message });
+    }
 });
 
 app.delete('/api/gmail/accounts/:accountId', (req, res) => {
@@ -3244,6 +3270,16 @@ app.post('/api/gmail/send-test', async (req, res) => {
 
 async function sendGmail({ account, recipient, subject, html, fromName, transactionUuid, unsubUrl, textPlain, attachments }) {
     console.log('[DEBUG] Sending via GMAIL API PATH');
+    const agent = getProxyAgent(account.proxy);
+    account.auth.setCredentials(account.tokens);
+    let restoreTransporterRequest = null;
+    if (agent && account.auth && account.auth.transporter && typeof account.auth.transporter.request === 'function') {
+        const originalRequest = account.auth.transporter.request.bind(account.auth.transporter);
+        account.auth.transporter.request = (opts, cb) => originalRequest({ ...(opts || {}), agent }, cb);
+        restoreTransporterRequest = () => {
+            account.auth.transporter.request = originalRequest;
+        };
+    }
     const textVersion = textPlain != null ? String(textPlain) : htmlToText(html || '');
     const messageIdProviderHost = 'gmail.com';
     const displayName = fromName ? String(fromName).trim() : fromName;
@@ -3268,8 +3304,12 @@ async function sendGmail({ account, recipient, subject, html, fromName, transact
     // web-safe Base64 (Base64URL, no line breaks) string — not standard Base64.
     const encodedMessage = rawBuf.toString('base64url');
     const gmail = google.gmail({ version: 'v1', auth: account.auth });
-    await gmail.users.messages.send({
-        userId: 'me',
-        requestBody: { raw: encodedMessage },
-    });
+    try {
+        await gmail.users.messages.send({
+            userId: 'me',
+            requestBody: { raw: encodedMessage },
+        }, agent ? { agent } : undefined);
+    } finally {
+        if (restoreTransporterRequest) restoreTransporterRequest();
+    }
 }

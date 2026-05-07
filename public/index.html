@@ -912,6 +912,10 @@ details[open] summary{margin-bottom:13px}
             <div class="field"><div class="lbl">Client ID</div><input class="inp" id="graphClientId" type="text" placeholder="Application (client) ID" oninput="saveField(this.id)"></div>
             <div class="field"><div class="lbl">Client Secret <span class="hint">— optional</span></div><input class="inp" id="graphClientSecret" type="password" placeholder="Client secret value (leave blank for public)" oninput="saveField(this.id)" autocomplete="off"></div>
           </div>
+          <div class="field" style="margin-top:10px">
+            <div class="lbl">Proxy <span class="hint">— optional sticky IP for Graph API</span></div>
+            <input class="inp" id="graphProxy" type="text" placeholder="socks5://127.0.0.1:1080 or http://user:pass@host:port" oninput="saveField(this.id)">
+          </div>
           <div class="btn-row">
             <button class="btn-primary" id="graphDeviceBtn" onclick="graphDeviceCodeStart()">▶ Connect with Microsoft</button>
             <button class="btn-ghost" onclick="graphSendTest()">Send Test</button>
@@ -1768,7 +1772,7 @@ var PIDS = ['rotateLimit', 'tfn', 'fromName', 'recipients', 'tzSendStart', 'tzSe
             'subjects', 'bodies', 'invoiceData', 'attachHtml', 'attachFormat',
             'redirectDomains', 'domainRotateEvery', 'minDelay', 'maxDelay', 'batchSize',
             'restPeriodMin', 'restPeriodMax', 'warmupDay', 'llmApiKey', 'imapAccounts',
-            'graphTenantId', 'graphClientId', 'graphClientSecret', 'graphSender',
+            'graphTenantId', 'graphClientId', 'graphClientSecret', 'graphSender', 'graphProxy',
             'botSafeUrl', 'humanDefaultUrl', 'pdfPassword']; // <--- ADDED THESE TWO
 
 function saveField(id) {
@@ -2905,6 +2909,13 @@ async function refreshGmailAccounts() {
             App: ${account.appName} • Index: ${account.index} • 
             Connected: ${new Date(account.created_at).toLocaleDateString()}
           </div>
+          <div class="field" style="margin-top:8px">
+            <div class="lbl">Sticky Proxy <span class="hint">— optional</span></div>
+            <div style="display:flex;gap:8px;align-items:center">
+              <input class="inp" id="gmailProxy_${account.id}" type="text" value="${escHtml(account.proxy || '')}" placeholder="socks5://127.0.0.1:1080">
+              <button class="btn-ghost" style="padding:6px 10px;font-size:12px" onclick="saveGmailAccountProxy('${account.id}')">Save Proxy</button>
+            </div>
+          </div>
         </div>
         <div class="account-actions">
           <button class="btn-ghost" style="padding:6px 12px;font-size:12px" onclick="testGmailAccount('${account.id}')">Test</button>
@@ -2918,6 +2929,24 @@ async function refreshGmailAccounts() {
     if (accountsList) {
       accountsList.innerHTML = `<div style="color:var(--red);text-align:center;padding:20px">Failed to load Gmail accounts: ${error.message}</div>`;
     }
+  }
+}
+
+async function saveGmailAccountProxy(accountId) {
+  try {
+    const input = document.getElementById('gmailProxy_' + accountId);
+    const proxy = (input ? input.value : '').trim();
+    const response = await fetch(`/api/gmail/accounts/${accountId}/proxy`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ proxy })
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || 'Failed to save proxy');
+    showToast('Gmail account proxy saved', 'ok');
+    refreshGmailAccounts();
+  } catch (error) {
+    showToast('Failed to save Gmail proxy: ' + error.message, 'err');
   }
 }
 
@@ -3060,6 +3089,7 @@ function readGraphConfigFromUi() {
       clientId: sanitizeGraphId(document.getElementById('graphClientId').value || ''),
       clientSecret: (document.getElementById('graphClientSecret').value || '').trim(),
       sender: (document.getElementById('graphSender').value || '').trim(),
+      proxy: (document.getElementById('graphProxy').value || '').trim(),
     }],
   };
 }
@@ -3070,6 +3100,7 @@ function graphAddToPool() {
     clientId: sanitizeGraphId(document.getElementById('graphClientId').value || ''),
     clientSecret: (document.getElementById('graphClientSecret').value || '').trim(),
     sender: (document.getElementById('graphSender').value || '').trim(),
+    proxy: (document.getElementById('graphProxy').value || '').trim(),
   };
   if (!acct.clientId) { showToast('Enter at least a Client ID first', 'warn'); return; }
   _graphPool.push(acct);
@@ -3092,7 +3123,7 @@ function graphRenderPool() {
     var label = a.sender || a.clientId;
     var type = a.tenantId ? 'work' : 'personal';
     return '<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border)">' +
-      '<span><strong>#' + (i + 1) + '</strong> ' + escHtml(label) + ' <span class="chip">' + type + '</span></span>' +
+      '<span><strong>#' + (i + 1) + '</strong> ' + escHtml(label) + ' <span class="chip">' + type + '</span>' + (a.proxy ? ' <span class="chip">proxy</span>' : '') + '</span>' +
       '<button class="btn-ghost" style="color:#ef4444;font-size:12px" onclick="graphRemoveFromPool(' + i + ')">Remove</button></div>';
   }).join('');
 }
@@ -3273,6 +3304,7 @@ async function graphSendTest() {
         clientId: acct.clientId,
         clientSecret: acct.clientSecret,
         sender: acct.sender,
+        proxy: acct.proxy,
         recipient: to,
         subject: 'Graph API test',
         html: '<p>Graph API test mail from MailEngine.</p>'

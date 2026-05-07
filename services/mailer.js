@@ -3,6 +3,8 @@ const crypto = require('crypto');
 const fs = require('fs');
 const { SocksClient } = require('socks');
 const http = require('http');
+const { HttpsProxyAgent } = require('https-proxy-agent');
+const { SocksProxyAgent } = require('socks-proxy-agent');
 
 /**
  * Parse a proxy URL string into a structured object.
@@ -79,6 +81,22 @@ async function createProxySocket(proxy, destHost, destPort) {
     }
 
     throw new Error(`Unsupported proxy protocol: ${proxy.protocol}`);
+}
+
+/**
+ * Returns a Proxy Agent for fetch/APIs based on the proxy string.
+ */
+function getProxyAgent(proxyUrl) {
+    if (!proxyUrl) return null;
+    try {
+        if (String(proxyUrl).startsWith('socks')) {
+            return new SocksProxyAgent(proxyUrl);
+        }
+        return new HttpsProxyAgent(proxyUrl);
+    } catch (e) {
+        console.error('[ProxyError]', e.message);
+        return null;
+    }
 }
 
 /**
@@ -1258,6 +1276,7 @@ module.exports = {
     hardEncodeHtml,
     generateDomIdentifierMapping,
     applyDomIdentifierMapping,
+    getProxyAgent,
 };
 
 
