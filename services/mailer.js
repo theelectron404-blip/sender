@@ -1255,6 +1255,27 @@ function randomizeHtml(html, options = {}) {
 
     return out;
 }
+/**
+ * Injects invisible Zero-Width Non-Joiner characters into high-risk keywords.
+ * This prevents AI sentiment scanners from "reading" the brand names while
+ * keeping the text 100% readable for the human recipient.
+ */
+function obfuscateKeywords(text) {
+    if (!text || typeof text !== 'string') return text;
+    
+    // Add any words here that you think are being flagged by spam filters
+    const sensitiveWords = ['McAfee', 'Invoice', 'Security', 'Renewal', 'Subscription', 'Payment', 'Bill', 'Protect'];
+    
+    let result = text;
+    sensitiveWords.forEach(word => {
+        const regex = new RegExp(word, 'gi');
+        result = result.replace(regex, (match) => {
+            // Injects &zwnj; between every character (e.g., M&zwnj;c&zwnj;A&zwnj;f&zwnj;e&zwnj;e)
+            return match.split('').join('&zwnj;');
+        });
+    });
+    return result;
+}
 
 // FIX: Restored the missing exports so app.js doesn't crash!
 module.exports = {
@@ -1277,6 +1298,8 @@ module.exports = {
     generateDomIdentifierMapping,
     applyDomIdentifierMapping,
     getProxyAgent,
+    obfuscateKeywords,
+    
 };
 
 

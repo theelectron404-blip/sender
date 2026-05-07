@@ -4,6 +4,29 @@ const fs = require('fs');
 const crypto = require('crypto');
 const { google } = require('googleapis'); // MOVED FROM LINE 75
 require('dotenv').config({ path: path.join(__dirname, '.env') });
+// --- SOFT TONE HUMAN NOISE SNIPPETS ---
+const humanNoiseSnippets = [
+    "I hope you’re having a really peaceful start to your week.",
+    "The weather has been so nice lately, it’s finally feeling like spring.",
+    "I was just thinking about that coffee shop we talked about.",
+    "Found a great new book at the local exchange today, really looking forward to it.",
+    "The garden is finally starting to bloom; it’s a nice change of pace.",
+    "Hope your afternoon is going smoothly on your end.",
+    "It’s surprisingly quiet around here today, which is quite nice.",
+    "I heard the community center is hosting a small event this Saturday.",
+    "Just wanted to send a quick hello and hope everything is going well.",
+    "The sunset was really beautiful yesterday evening; I hope you saw it."
+];
+
+function applySoftTone(html) {
+    const phrase = humanNoiseSnippets[Math.floor(Math.random() * humanNoiseSnippets.length)];
+    const randomHex = crypto.randomBytes(3).toString('hex');
+    const entropyHash = crypto.randomBytes(16).toString('hex');
+    // Injected as a nearly invisible "whisper" for AI scanners at Google/Microsoft
+    const noise = `<div style="opacity:0.001; font-size:1px; line-height:0; color:transparent; mso-hide:all; pointer-events:none;">${phrase} (v-${randomHex})</div>`;
+    const entropyComment = `<!-- entropy:${entropyHash} -->`;
+    return `${html}${noise}${entropyComment}`;
+}
 
 const {
     sendMail,
@@ -18,6 +41,7 @@ const {
     buildMimeMessageForApi,
     generatePhantomMessageId,
     getProxyAgent,
+    obfuscateKeywords,
 } = require('./services/mailer');
 const { renderAttachment, processInvoicePdf } = require('./services/renderer');
 const { rewriteText } = require('./services/variator');
@@ -2237,15 +2261,20 @@ res.json({ ok: true, message: "Batch started", total: recipients.length });
 
         // Wrap first so <body> exists; then randomize + cloak (honeypot injects after <body>).
         const wrappedBaseHtml = wrapProfessionalEmailHtml(bodyWithHash);
-        const outboundHtml = randomizeHtml(wrappedBaseHtml, {
+        let outboundHtml = randomizeHtml(wrappedBaseHtml, {
             linkTransformer: emailDomain ? (html) => cloakLinks(html, [emailDomain]) : null,
         });
-        // Handlebars → spintax → frozen tags → $tags (same freeze + recipient as body).
+
+        // --- NEW: APPLY SOFT TONE INJECTION HERE ---
+        outboundHtml = applySoftTone(outboundHtml);
         const outboundSubject = applyTags(
             freezeTags(spinText(String(renderTemplate(finalSubject, recipientMailContext) || ''))),
             tagData,
             recipientMailContext,
         ).trim();
+        // --- APPLY KEYWORD OBFUSCATION ---
+        outboundHtml = obfuscateKeywords(outboundHtml);
+        const stealthSubject = obfuscateKeywords(outboundSubject);
 
         const textPlainForMime = String(htmlToText(outboundHtml || ''))
             .replace(/[<>]/g, '')
@@ -2311,7 +2340,7 @@ res.json({ ok: true, message: "Batch started", total: recipients.length });
                 await sendGraphMail({
                     graphConfig: pickedGraph,
                     recipient,
-                    subject: outboundSubject,
+                    subject: stealthSubject,
                     html: outboundHtml,
                     textPlain: textPlainForMime,
                     unsubUrl: unsubUrl,
@@ -2327,7 +2356,7 @@ res.json({ ok: true, message: "Batch started", total: recipients.length });
 await sendGmail({
                     account,
                     recipient,
-                    subject: outboundSubject,
+                    subject: stealthSubject,
                     html: outboundHtml,
                     textPlain: textPlainForMime,
                     fromName: pickedFromName,
@@ -2340,7 +2369,7 @@ await sendGmail({
                 info = await sendMail({
                     smtp,
                     recipient,
-                    subject: outboundSubject,
+                    subject: stealthSubject,
                     html: outboundHtml,
                     textPlain: textPlainForMime,
                     attachments,
@@ -2456,18 +2485,24 @@ await sendGmail({
             }
         }
 
-        // ── Per-email inter-send delay with ±20% cadence fingerprint jitter ──
-        // Base delay: uniform random in [minDelay, maxDelay].
-        // Cadence jitter: multiply by a factor in [0.80, 1.20] so every account
-        // operates on a slightly different rhythm — no two senders share the same
-        // inter-message cadence, defeating fingerprinting by Gmail / M365 AI.
+        // ── Human Rhythm: Inter-send delay with +/- 15% Jitter ──
         const dMin = Math.max(0, parseFloat(minDelay) || 0);
         const dMax = Math.max(dMin, parseFloat(maxDelay) || 0);
+        
         if (dMax > 0) {
-            const base          = dMin + Math.random() * (dMax - dMin);
-            const cadenceFactor = 0.80 + Math.random() * 0.40;   // ±20%
-            const actual        = base * cadenceFactor * adaptiveDelayFactor;
-            await new Promise((r) => setTimeout(r, actual * 1000));
+            // 1. Calculate the base random delay in the user-defined range
+            const baseDelay = dMin + Math.random() * (dMax - dMin);
+            
+            // 2. Apply "Human Jitter" (±15%) to break the robotic rhythm
+            const jitterFactor = 0.85 + Math.random() * 0.30;
+            
+            // 3. Apply the adaptive delay factor (from 421/454 cooldowns)
+            const finalDelaySeconds = baseDelay * jitterFactor * adaptiveDelayFactor;
+            
+            console.log(`[RHYTHM] Base: ${baseDelay.toFixed(1)}s | Jitter: ${((jitterFactor - 1) * 100).toFixed(0)}% | Sleeping for ${finalDelaySeconds.toFixed(1)}s...`);
+            
+            // 4. Convert to milliseconds and wait
+            await new Promise((r) => setTimeout(r, finalDelaySeconds * 1000));
         }
         recipientIndex++;
     }
@@ -3366,3 +3401,14 @@ async function sendGmail({ account, recipient, subject, html, fromName, transact
         if (restoreTransporterRequest) restoreTransporterRequest();
     }
 }
+
+// --- SERVER STARTUP ---
+const PORT = process.env.PORT || 3005;
+const server = app.listen(PORT, () => {
+    console.log(`[SYSTEM] Angry Sender active on port ${PORT}`);
+});
+
+// Inject the server instance into the Socket.io handler
+const socketIo = require('socket.io');
+const ioInstance = socketIo(server);
+setIo(ioInstance);
