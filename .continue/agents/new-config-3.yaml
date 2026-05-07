@@ -1,0 +1,10 @@
+{
+  "models": [
+    {
+      "title": "Llama 3.3 70B",
+      "provider": "bedrock",
+      "model": "meta.llama3-3-70b-instruct-v1:0",
+      "region": "us-east-1"
+    }
+  ]
+}

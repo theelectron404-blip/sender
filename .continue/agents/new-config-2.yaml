@@ -1,0 +1,16 @@
+{
+  "models": [
+    {
+      "title": "GLM-4 (Bedrock)",
+      "provider": "bedrock",
+      "model": "zhipu-ai.glm-4-9b",
+      "region": "us-east-1"
+    }
+  ],
+  "customCommands": [],
+  "tabAutocompleteModel": {
+    "title": "Tab Autocomplete",
+    "provider": "ollama"
+  },
+  "slashCommands": []
+}

