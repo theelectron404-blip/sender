@@ -1934,6 +1934,26 @@ res.json({ ok: true, message: "Batch started", total: recipients.length });
             emit('send:event', { status: 'warn', recipient: null, smtp: null, message: '[STOPPED] Batch stopped by user request.', timestamp: Date.now() });
             break;
         }
+        // ── Optional Proxy Health Check (pre-send safety) ────────────────────
+        if (gmailEnabled || graphEnabled) {
+            const currentProxy = gmailEnabled
+                ? gmailAccounts[recipientIndex % gmailAccounts.length]?.proxy
+                : graphAccounts[recipientIndex % graphAccounts.length]?.proxy;
+            if (currentProxy) {
+                try {
+                    const agent = getProxyAgent(currentProxy);
+                    if (!agent) throw new Error('Invalid proxy URL format');
+                    await fetch('https://api.ipify.org', {
+                        agent,
+                        signal: AbortSignal.timeout(3000),
+                    });
+                } catch (e) {
+                    const proxyError = `[BLOCK] Proxy check failed for active account proxy. Batch halted to protect your IP. (${e.message})`;
+                    emit('send:event', { status: 'failed', recipient: null, smtp: null, message: proxyError, timestamp: Date.now() });
+                    break;
+                }
+            }
+        }
         while (_batchMap.get(batchKey) === 'paused') {
             await new Promise((r) => setTimeout(r, 300));
         }
@@ -2967,6 +2987,33 @@ app.get('/api/gmail/apps', (req, res) => {
         accounts_count: gmailAccounts.filter(acc => acc.appId === app.id).length
     }));
     res.json({ apps });
+});
+
+// --- Manual Proxy Tester Endpoint ---
+app.post('/api/proxy/test', async (req, res) => {
+    const proxyUrl = String(req.body?.proxy || '').trim();
+    if (!proxyUrl) return res.status(400).json({ error: 'Proxy URL is required' });
+
+    try {
+        const agent = getProxyAgent(proxyUrl);
+        if (!agent) throw new Error('Invalid proxy format. Use http://user:pass@host:port');
+
+        const response = await fetch('https://api.ipify.org?format=json', {
+            agent,
+            signal: AbortSignal.timeout(8000),
+        });
+        const data = await response.json();
+        return res.json({
+            success: true,
+            ip: data.ip,
+            message: `Proxy Active! Connected via: ${data.ip}`,
+        });
+    } catch (err) {
+        return res.status(400).json({
+            success: false,
+            error: `Proxy Failed: ${err.message}`,
+        });
+    }
 });
 
 app.post('/api/gmail/apps', (req, res) => {

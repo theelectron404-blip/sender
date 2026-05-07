@@ -1031,6 +1031,10 @@ details[open] summary{margin-bottom:13px}
             <strong>Multi-App Support:</strong> Each account is linked to a specific Gmail API app. 
             You can have multiple accounts from different apps for better distribution and redundancy.
           </div>
+          <div class="btn-row" style="margin-bottom:10px">
+            <button class="btn-secondary" onclick="testAllProxies()" id="btnCheckAllProxies">Verify All Proxies</button>
+          </div>
+          <div id="proxyResults" style="font-size:13px;color:var(--text3);margin-bottom:8px"></div>
           
           <div id="gmailAccountsList" class="gmail-accounts-list">
             <div class="loading-accounts" style="color:var(--text3);font-style:italic;padding:12px 0">
@@ -2952,6 +2956,51 @@ async function saveGmailAccountProxy(accountId) {
     refreshGmailAccounts();
   } catch (error) {
     showToast('Failed to save Gmail proxy: ' + error.message, 'err');
+  }
+}
+
+async function testAllProxies() {
+  const resultsDiv = document.getElementById('proxyResults');
+  const btn = document.getElementById('btnCheckAllProxies');
+  if (!resultsDiv) return;
+  resultsDiv.innerHTML = 'Checking connectivity...';
+  if (btn) btn.disabled = true;
+
+  try {
+    const accountsResponse = await fetch('/api/gmail/accounts');
+    const accountsData = await accountsResponse.json();
+    if (!accountsResponse.ok) throw new Error(accountsData.error || 'Failed to load Gmail accounts');
+
+    const accounts = Array.isArray(accountsData.accounts) ? accountsData.accounts : [];
+    const rows = [];
+
+    for (const acc of accounts) {
+      if (!acc.proxy) continue;
+      try {
+        const res = await fetch('/api/proxy/test', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ proxy: acc.proxy })
+        });
+        const data = await res.json().catch(() => ({}));
+        const ok = !!data.success;
+        const color = ok ? '#10b981' : '#ef4444';
+        const icon = ok ? '✅' : '❌';
+        rows.push(`<p style="color:${color};margin:4px 0">${icon} ${escHtml(acc.senderEmail)}: ${escHtml(data.message || data.error || 'Unknown response')}</p>`);
+      } catch (err) {
+        rows.push(`<p style="color:#ef4444;margin:4px 0">❌ ${escHtml(acc.senderEmail)}: ${escHtml(err.message || 'Error reaching backend')}</p>`);
+      }
+    }
+
+    if (!rows.length) {
+      resultsDiv.innerHTML = '<p style="margin:4px 0;color:var(--text3)">No account proxies configured.</p>';
+    } else {
+      resultsDiv.innerHTML = rows.join('');
+    }
+  } catch (error) {
+    resultsDiv.innerHTML = `<p style="margin:4px 0;color:#ef4444">❌ ${escHtml(error.message || 'Failed to verify proxies')}</p>`;
+  } finally {
+    if (btn) btn.disabled = false;
   }
 }
 
