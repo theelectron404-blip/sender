@@ -2100,7 +2100,7 @@ res.json({ ok: true, message: "Batch started", total: recipients.length });
         const pickedFromName = resolvedFromNames.length > 0
             ? resolvedFromNames[Math.floor(Math.random() * resolvedFromNames.length)]
             : (fromName || '');
-        const tagData = { tfn: tfn || '', invoiceItems: parsedInvoiceItems };
+        let tagData = { tfn: tfn || '', invoiceItems: parsedInvoiceItems };
 
         // ── Per-recipient content pipeline ────────────────────────────────────
         // Pass 1 — Handlebars: resolve {{firstName}}, {{#if membershipLevel "Gold"}}, etc.
@@ -2256,6 +2256,7 @@ res.json({ ok: true, message: "Batch started", total: recipients.length });
         const emailDomain = activeDomains.length > 0
             ? activeDomains[Math.floor(emailsSent / rotateEvery) % activeDomains.length]
             : null;
+        tagData = { ...tagData, activeDomain: emailDomain || 'support.irs-portal.org' };
 
         // Resolve spintax and tags first; wrap once (fragment only in UI—no full <!DOCTYPE>/<html>/<body> or Gmail gets a double document).
         const rawBody = applyTags(freezeTags(spinText(renderedBody)), tagData, recipientMailContext);

