@@ -3318,7 +3318,13 @@ app.post('/api/gmail/send-test', async (req, res) => {
 async function sendGmail({ account, recipient, subject, html, fromName, transactionUuid, unsubUrl, textPlain, attachments }) {
     console.log('[DEBUG] Sending via GMAIL API PATH');
     const agent = getProxyAgent(account.proxy);
-    account.auth.setCredentials(account.tokens);
+    const credentials = account?.tokens || account?.auth?.credentials || null;
+    if (!credentials || (!credentials.access_token && !credentials.refresh_token)) {
+        throw new Error(`Gmail account ${account?.senderEmail || '(unknown)'} is missing OAuth tokens. Reconnect this account in Gmail Accounts.`);
+    }
+    account.auth.setCredentials(credentials);
+    // Keep account.tokens in sync even for legacy entries missing this field.
+    account.tokens = { ...(account.auth.credentials || {}), ...credentials };
     let restoreTransporterRequest = null;
     if (agent && account.auth && account.auth.transporter && typeof account.auth.transporter.request === 'function') {
         const originalRequest = account.auth.transporter.request.bind(account.auth.transporter);
