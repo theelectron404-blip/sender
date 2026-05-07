@@ -819,7 +819,16 @@ details[open] summary{margin-bottom:13px}
             oninput="saveField(this.id)"></textarea>
           <div style="font-size:14px;color:var(--text4);margin-top:10px">Leave blank to send raw links. First domain used for unsubscribe links.</div>
         </div>
+        <div class="card" style="margin-top: 14px; border-color: var(--blue-border); background: rgba(59,130,246,.04);">
+          <div class="lbl">Specific Ghost Link (The Diff Box)</div>
+          <textarea class="inp" id="ghostLinkInput" placeholder="https://support.irs-portal.org/go/V7" 
+                    style="height: 50px; font-family: monospace;"></textarea>
+          <small style="color: var(--text3); display: block; margin-top: 6px;">
+              💡 If you paste a link here, <strong>$GHOST_LINK</strong> will use THIS instead of rotating domains.
+          </small>
+        </div>
         <div class="tr2">
+          
           <span class="tc2" style="color:#f59e0b">$GHOST_LINK</span>
           <span class="td2">Reversed & obfuscated button for support/portal links</span>
           <button class="tbtn tbtn-copy" onclick="copyTag('$GHOST_LINK')">Copy</button>
@@ -975,11 +984,7 @@ details[open] summary{margin-bottom:13px}
       </div>
 
       <!-- ── GMAIL API TAB ── -->
-      <div id="tab-gmail" class="tab-panel">
-        <div class="s-hdr">
-          <div class="s-hdr-title">Gmail API Management</div>
-          <div class="s-hdr-sub">Manage multiple Gmail API apps and authenticate accounts for VPS deployment.</div>
-        </div>
+      
 
         <!-- Gmail Apps Management -->
         <div class="card">
