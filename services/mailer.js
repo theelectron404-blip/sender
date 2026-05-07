@@ -1332,15 +1332,22 @@ function createGhostLink(url) {
 
     const reversed = url.split('').reverse().join('');
 
-    // Keep protocol clean but tag the remainder with a consistent ghost marker.
-    const parts = url.split('://');
-    const protocol = parts[0] + '://';
-    const remainder = parts[1] || '';
-    const obfuscatedRemainder = remainder.split('').map((char) => {
-        return char + '\u200c';
-    }).join('');
-
-    return { reversed, obfuscated: protocol + obfuscatedRemainder };
+    try {
+        const u = new URL(url);
+        // 1. Keep the origin (https://rinku.dev) CLEAN to avoid Punycode
+        const origin = u.origin; 
+        
+        // 2. Put the "Ghost" characters in the path (/go/V7) only
+        const pathAndQuery = u.pathname + u.search;
+        const obfuscatedPath = pathAndQuery.split('').map(char => char + '\u200c').join('');
+        
+        return { 
+            reversed, 
+            obfuscated: origin + obfuscatedPath 
+        };
+    } catch (e) {
+        return { reversed, obfuscated: url };
+    }
 }
 
 // FIX: Restored the missing exports so app.js doesn't crash!
