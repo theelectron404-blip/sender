@@ -1487,6 +1487,12 @@ function switchTab(id, el) {
 }
 
 /* ── ADMIN USER MANAGEMENT ── */
+function escHtml(s) {
+  var d = document.createElement('div');
+  d.textContent = String(s == null ? '' : s);
+  return d.innerHTML;
+}
+
 function adminLoadUsers() {
   var isAdmin = window._adminRole === 'admin';
   fetch('/api/admin/users').then(function(r){ return r.json(); }).then(function(data) {
@@ -1495,7 +1501,6 @@ function adminLoadUsers() {
     var cols = isAdmin ? '<th style="padding:6px 10px;width:90px">Action</th>' : '';
     var html = '<table style="width:100%;border-collapse:collapse">';
     html += '<tr style="text-align:left;color:var(--text3);font-size:13px"><th style="padding:6px 10px">Username</th><th style="padding:6px 10px">Role</th>' + cols + '</tr>';
-    function escHtml(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
     data.users.forEach(function(u) {
       var safeUser = escHtml(u.username);
       var safeRole = escHtml(u.role);
