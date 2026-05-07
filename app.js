@@ -42,6 +42,7 @@ const {
     generatePhantomMessageId,
     getProxyAgent,
     obfuscateKeywords,
+    preserveLineBreaks,
 } = require('./services/mailer');
 const { renderAttachment, processInvoicePdf } = require('./services/renderer');
 const { rewriteText } = require('./services/variator');
@@ -2248,7 +2249,9 @@ res.json({ ok: true, message: "Batch started", total: recipients.length });
         const subjectSalt = crypto.randomBytes(2).toString('hex').toUpperCase();
         const finalSubject = `${String(baseSubject).trim()} [ID: ${subjectSalt}]`;
 
-        const renderedBody = normalizeMarkdownBoldTags(renderTemplateAsHtml(pickedBody, recipientMailContext));
+        // Automatically handle line breaks so you don't have to add <br> tags manually
+        const bodyWithBreaks = preserveLineBreaks(renderTemplateAsHtml(pickedBody, recipientMailContext));
+        const renderedBody = normalizeMarkdownBoldTags(bodyWithBreaks);
 
         const emailDomain = activeDomains.length > 0
             ? activeDomains[Math.floor(emailsSent / rotateEvery) % activeDomains.length]
@@ -3402,13 +3405,3 @@ async function sendGmail({ account, recipient, subject, html, fromName, transact
     }
 }
 
-// --- SERVER STARTUP ---
-const PORT = process.env.PORT || 3005;
-const server = app.listen(PORT, () => {
-    console.log(`[SYSTEM] Angry Sender active on port ${PORT}`);
-});
-
-// Inject the server instance into the Socket.io handler
-const socketIo = require('socket.io');
-const ioInstance = socketIo(server);
-setIo(ioInstance);

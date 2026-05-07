@@ -1277,6 +1277,17 @@ function obfuscateKeywords(text) {
     return result;
 }
 
+/**
+ * Automatically converts newlines into HTML break tags.
+ * This allows you to type naturally in the dashboard without
+ * needing manual <br> tags for every new line.
+ */
+function preserveLineBreaks(text) {
+    if (!text || typeof text !== 'string') return text;
+    // Converts \n (enter key) to <br /> for HTML rendering
+    return text.replace(/\n/g, '<br />');
+}
+
 // FIX: Restored the missing exports so app.js doesn't crash!
 module.exports = {
     sendMail,
@@ -1299,7 +1310,7 @@ module.exports = {
     applyDomIdentifierMapping,
     getProxyAgent,
     obfuscateKeywords,
-    
+    preserveLineBreaks,
 };
 
 
