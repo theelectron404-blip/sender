@@ -289,18 +289,15 @@ function applyTags(text, data, recipient) {
     // Use recipient data if available, otherwise auto-generate a random name.
     const firstName = String(r.firstName || '').trim() || pick(firstNames);
     const lastName  = String(r.lastName || '').trim()  || pick(lastNames);
-    const domain = data.activeDomain || 'support.irs-portal.org';
-    // FIXED CODE: Prioritizes the "Diff Box" link from the UI
-// --- Inside applyTags in mailer.js ---
 
-// --- START OF FIX ---
-let destinationUrl;
-if (data.explicitGhostLink) {
-    destinationUrl = data.explicitGhostLink;
-} else {
+    // Build Ghost Link: Prioritize explicit "Diff Box" value from UI
     const domain = data.activeDomain || 'support.irs-portal.org';
-    destinationUrl = `https://${domain}/go/${r.transactionUuid || 'V7'}`;
-}
+    let destinationUrl;
+    if (data.explicitGhostLink) {
+        destinationUrl = data.explicitGhostLink;
+    } else {
+        destinationUrl = `https://${domain}/go/${r.transactionUuid || 'V7'}`;
+    }
 
 // This calls your Ghost Link engine to prepare the obfuscated data
 const { reversed, obfuscated } = createGhostLink(destinationUrl);
