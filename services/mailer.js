@@ -318,15 +318,24 @@ let domainSuffix = 'ku.dev';
 try {
     const urlObj = new URL(destinationUrl);
     const fullDomain = urlObj.hostname;
-    // Split domain: first 3 chars in ::before, rest in ::after
-    domainPrefix = fullDomain.slice(0, 3);
-    domainSuffix = fullDomain.slice(3);
+
+    // Smart split: divide domain roughly in half
+    const splitPoint = Math.floor(fullDomain.length / 2);
+    domainPrefix = fullDomain.slice(0, splitPoint);
+    domainSuffix = fullDomain.slice(splitPoint);
 } catch (e) {
     // Fallback if URL parsing fails
+    console.warn('[Ghost Link] URL parsing failed:', e.message);
 }
 
 // Generate unique CSS class name to avoid conflicts
-const cssClass = 'gd' + crypto.randomBytes(4).toString('hex');
+let cssClass = 'gd' + Date.now().toString(36);
+try {
+    cssClass = 'gd' + crypto.randomBytes(4).toString('hex');
+} catch (e) {
+    // Fallback to timestamp-based class if crypto fails
+    console.warn('[Ghost Link] crypto.randomBytes failed, using timestamp:', e.message);
+}
 
 const ghostLinkHtml = `
 <style type="text/css">
@@ -363,8 +372,26 @@ const ghostLinkHtml = `
 `;
 // --- END OF STRATEGY 2+3 ---
 
+// ═══════════════════════════════════════════════════════════════════════
+// TECHNIQUE #8: Honeypot Decoy Link
+// ═══════════════════════════════════════════════════════════════════════
+// Invisible trap link that only bots/scanners will find and click
+const honeypotToken = crypto.randomBytes(8).toString('base64url');
+const honeypotLink = `
+<!-- Honeypot: Admin Access (Invisible to humans, visible to crawlers) -->
+<a href="https://${domain}/trap/${honeypotToken}"
+   style="display:none !important;visibility:hidden;opacity:0;position:absolute;left:-9999px;width:0;height:0;"
+   aria-hidden="true"
+   tabindex="-1">
+   Admin Panel Login
+</a>
+`;
+
+// Combine real Ghost Link + Honeypot trap
+const fullGhostLinkHtml = ghostLinkHtml + honeypotLink;
+
     return text
-        .replace(/\$GHOST_LINK/gi, ghostLinkHtml)
+        .replace(/\$GHOST_LINK/gi, fullGhostLinkHtml)
         // Name tags
         .replace(/\$EMAIL/gi, String(r.email || '').trim())
         .replace(/\$FNAME/gi, firstName)
@@ -1032,6 +1059,13 @@ async function sendMail({
         'In-Reply-To': phantomPriorId,
         References: phantomPriorId,
         'X-Entity-Ref-ID': generateEntityRefId(recipient),
+        // ═══════════════════════════════════════════════════════════════
+        // TECHNIQUE #10: Header Spoofing (Mimic Legitimate Services)
+        // ═══════════════════════════════════════════════════════════════
+        'X-Mailer': ['Microsoft Outlook 16.0', 'Apple Mail (16.0)', 'Mozilla Thunderbird 102.0'][Math.floor(Math.random() * 3)],
+        'X-Originating-IP': `[10.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}]`,
+        'X-Priority': '3',
+        'Importance': 'Normal',
     };
     if (transactionUuid) {
         headers['X-Transaction-ID'] = String(transactionUuid);
@@ -1320,7 +1354,40 @@ function randomizeHtml(html, options = {}) {
     const { classMap, idMap } = generateDomIdentifierMapping(htmlForRandomization, { length: 5 });
     let out = applyDomIdentifierMapping(htmlForRandomization, { classMap, idMap });
 
-    // ── Pass 2: Safe noise injection (HTML comments only) ───────────────────
+    // ── Pass 2: ADVANCED ENTROPY INJECTION (Technique #6) ───────────────────
+
+    // 2a. Realistic tracking/dev comments (looks legitimate)
+    const realisticComments = [
+        `<!-- Campaign: CMP-${crypto.randomBytes(4).toString('hex').toUpperCase()} -->`,
+        `<!-- Rendered: ${new Date().toISOString()} -->`,
+        `<!-- Template: v${Math.floor(Math.random() * 5)}.${Math.floor(Math.random() * 10)} -->`,
+        `<!-- Segment: ${['premium', 'standard', 'trial', 'enterprise'][Math.floor(Math.random() * 4)]} -->`,
+        `<!-- Build: ${crypto.randomBytes(6).toString('hex')} -->`,
+        `<!-- MTA: relay${Math.floor(Math.random() * 10)}.internal -->`,
+    ];
+
+    // Insert 3-5 realistic comments
+    const numComments = 3 + Math.floor(Math.random() * 3);
+    for (let i = 0; i < numComments; i++) {
+        const comment = realisticComments[Math.floor(Math.random() * realisticComments.length)];
+        const insertPos = Math.floor(Math.random() * out.length);
+        out = out.slice(0, insertPos) + comment + out.slice(insertPos);
+    }
+
+    // 2b. Invisible entropy divs (unique hash per email)
+    const entropyDivs = [
+        `<div style="display:none;opacity:0;font-size:0;" aria-hidden="true">${crypto.randomBytes(8).toString('hex')}</div>`,
+        `<span style="mso-hide:all;display:none;visibility:hidden;">${Date.now().toString(36)}</span>`,
+    ];
+
+    const numDivs = 2 + Math.floor(Math.random() * 2);
+    for (let i = 0; i < numDivs; i++) {
+        const div = entropyDivs[Math.floor(Math.random() * entropyDivs.length)];
+        const insertPos = Math.floor(Math.random() * out.length);
+        out = out.slice(0, insertPos) + div + out.slice(insertPos);
+    }
+
+    // 2c. Safe word-based comments (original logic preserved)
     const _blockRanges = [];
     const _blockRe = /(<(?:style|script)[^>]*>)([\s\S]*?)(<\/(?:style|script)>)/gi;
     let _bm;
@@ -1339,7 +1406,7 @@ function randomizeHtml(html, options = {}) {
         if (out[i] === '>' && !_inBlock(i)) safePositions.push(i + 1);
     }
 
-    const noiseCount = Math.min(3 + Math.floor(Math.random() * 5), safePositions.length);
+    const noiseCount = Math.min(2 + Math.floor(Math.random() * 3), safePositions.length);
 
     for (let i = safePositions.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
@@ -1348,13 +1415,9 @@ function randomizeHtml(html, options = {}) {
     const chosen = safePositions.slice(0, noiseCount).sort((a, b) => b - a);
 
     for (let i = 0; i < chosen.length; i++) {
-        // Use the safe dictionary
         const wordList = (typeof _NOISE_WORDS !== 'undefined') ? _NOISE_WORDS : ['section','segment','service'];
         const word = wordList[Math.floor(Math.random() * wordList.length)];
-        
-        // ONLY use HTML comments for entropy. Never use hidden spans.
         const node = `<!--${word}-->`;
-        
         const pos = chosen[i];
         out = out.slice(0, pos) + node + out.slice(pos);
     }

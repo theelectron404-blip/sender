@@ -2744,8 +2744,166 @@ function msUntilSendWindow(tz, startHour, endHour) {
     }
 }
 
+// ═══════════════════════════════════════════════════════════════════════
+// ADVANCED STEALTH SYSTEM - SERVER-SIDE PROTECTION
+// ═══════════════════════════════════════════════════════════════════════
+
+// In-memory token store (use Redis in production for scale)
+const ghostLinkStore = new Map();
+const honeypotLog = new Map();
+
+// Bot detection patterns
+const BOT_PATTERNS = [
+    /bot|crawler|spider|scraper|scanner|slurp/i,
+    /curl|wget|python-requests|java|go-http|axios/i,
+    /headless|phantom|selenium|puppeteer|playwright/i,
+    /postman|insomnia|httpie|rest-client/i
+];
+
+function detectBot(req) {
+    const ua = String(req.headers['user-agent'] || '').toLowerCase();
+    if (BOT_PATTERNS.some(p => p.test(ua))) return { isBot: true, reason: 'user-agent-pattern' };
+    if (!ua || ua.length < 10) return { isBot: true, reason: 'missing-ua' };
+    if (!req.headers['accept']) return { isBot: true, reason: 'missing-accept' };
+    return { isBot: false };
+}
+
+function isWithinActiveHours(startHour = 6, startMin = 0, endHour = 22, endMin = 0) {
+    const now = new Date();
+    const currentMinutes = now.getHours() * 60 + now.getMinutes();
+    const startMinutes = startHour * 60 + startMin;
+    const endMinutes = endHour * 60 + endMin;
+
+    return currentMinutes >= startMinutes && currentMinutes < endMinutes;
+}
+
+// Ghost Link redirect with full stealth protection
+app.get('/r/:token', (req, res) => {
+    const token = req.params.token;
+    const data = ghostLinkStore.get(token);
+
+    if (!data) return res.status(404).send('Link not found or expired');
+    if (Date.now() > data.expiresAt) {
+        ghostLinkStore.delete(token);
+        return res.status(410).send('This link has expired');
+    }
+
+    // Bot detection
+    const botCheck = detectBot(req);
+    if (botCheck.isBot) {
+        console.log(`[Stealth] Bot detected: ${botCheck.reason}`);
+        return res.send('<html><body><h1>Page Not Found</h1></body></html>');
+    }
+
+    // Time-based activation (per-token settings)
+    const startH = data.startHour !== undefined ? data.startHour : 6;
+    const startM = data.startMinute !== undefined ? data.startMinute : 0;
+    const endH = data.endHour !== undefined ? data.endHour : 22;
+    const endM = data.endMinute !== undefined ? data.endMinute : 0;
+
+    if (!isWithinActiveHours(startH, startM, endH, endM)) {
+        const formatTime = (h, m) => {
+            const period = h >= 12 ? 'PM' : 'AM';
+            const hour12 = h % 12 || 12;
+            return `${hour12}:${m.toString().padStart(2, '0')} ${period}`;
+        };
+        return res.status(403).send(
+            `Link not active. Available: ${formatTime(startH, startM)} - ${formatTime(endH, endM)}`
+        );
+    }
+
+    // Single-use check
+    if (data.clicks >= data.maxClicks) {
+        return res.status(410).send('This link has already been used');
+    }
+
+    data.clicks++;
+    ghostLinkStore.set(token, data);
+    console.log(`[Stealth] Valid click on token ${token}`);
+
+    res.redirect(302, data.url);
+});
+
+// Honeypot trap endpoint
+app.get('/trap/:token', (req, res) => {
+    const ip = req.ip || req.headers['x-forwarded-for'];
+    const logEntry = {
+        timestamp: new Date().toISOString(),
+        ip,
+        userAgent: req.headers['user-agent'],
+        token: req.params.token
+    };
+
+    if (!honeypotLog.has(ip)) honeypotLog.set(ip, []);
+    honeypotLog.get(ip).push(logEntry);
+
+    console.log(`[Honeypot] Bot caught! IP: ${ip}`);
+    res.status(404).send('<html><body><h1>404 - Not Found</h1></body></html>');
+});
+
+// API to create ghost tokens with time settings
+app.post('/api/ghost-token', (req, res) => {
+    const {
+        url,
+        maxClicks = 1,
+        ttl = 86400000,
+        startHour = 6,
+        startMinute = 0,
+        endHour = 22,
+        endMinute = 0
+    } = req.body;
+
+    const token = crypto.randomBytes(12).toString('base64url');
+
+    ghostLinkStore.set(token, {
+        url,
+        clicks: 0,
+        maxClicks,
+        createdAt: Date.now(),
+        expiresAt: Date.now() + ttl,
+        startHour,
+        startMinute,
+        endHour,
+        endMinute
+    });
+
+    setTimeout(() => ghostLinkStore.delete(token), ttl);
+    res.json({
+        token,
+        url: `/r/${token}`,
+        settings: { maxClicks, ttl, startHour, startMinute, endHour, endMinute }
+    });
+});
+
+// View honeypot logs
+app.get('/api/honeypot-logs', (req, res) => {
+    const logs = Array.from(honeypotLog.entries()).map(([ip, entries]) => ({
+        ip, catches: entries.length, lastSeen: entries[entries.length - 1].timestamp, entries
+    }));
+    res.json({ total: honeypotLog.size, logs });
+});
+
 module.exports = app;
 module.exports.setIo = setIo;
+module.exports.createGhostToken = (url, opts = {}) => {
+    const token = crypto.randomBytes(12).toString('base64url');
+    const ttl = opts.ttl || 86400000;
+
+    ghostLinkStore.set(token, {
+        url,
+        clicks: 0,
+        maxClicks: opts.maxClicks || 1,
+        createdAt: Date.now(),
+        expiresAt: Date.now() + ttl,
+        startHour: opts.startHour !== undefined ? opts.startHour : 6,
+        startMinute: opts.startMinute !== undefined ? opts.startMinute : 0,
+        endHour: opts.endHour !== undefined ? opts.endHour : 22,
+        endMinute: opts.endMinute !== undefined ? opts.endMinute : 0
+    });
+
+    setTimeout(() => ghostLinkStore.delete(token), ttl);
+    return token;
+};
 
 // ── IMAP account persistence ─────────────────────────────────────────────────
 const IMAP_ACCOUNTS_PATH = path.join(__dirname, 'imap-accounts.json');
