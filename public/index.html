@@ -3540,11 +3540,17 @@ async function handleSend() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
     });
+
     if (!res.ok) {
       var data = await res.json();
       setBatchRunning(false);
       showToast(data.error || 'Server error', 'err');
       feedLine('failed', null, null, data.error || 'Server error');
+    } else {
+      // SUCCESS: Change button immediately (don't wait for socket events)
+      setBatchRunning(true);
+      setStatus('RUNNING', 'running');
+      showToast('✓ Batch launched successfully', 'ok');
     }
   } catch (e) {
     setBatchRunning(false);

