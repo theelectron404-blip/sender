@@ -1916,12 +1916,26 @@ async function batchStop() {
     setStatus('STOPPED', 'stopped');
     setBatchRunning(false);
     feedLine('warn', null, null, '[USER] Stop requested.');
+    clearTimeout(_batchWatchdog);
   } catch (e) {}
+}
+
+// Watchdog: Auto-reset UI if batch appears stalled (no events for 60s)
+function startBatchWatchdog() {
+  clearTimeout(_batchWatchdog);
+  _batchWatchdog = setTimeout(function() {
+    console.warn('[WATCHDOG] No batch events received for 60s - resetting UI');
+    setBatchRunning(false);
+    setStatus('TIMEOUT', 'error');
+    feedLine('warn', null, null, '[WATCHDOG] Batch appears stalled - UI reset. Check server logs.');
+    showToast('⚠ Batch connection lost - UI reset', 'warn');
+  }, 60000);  // 60 seconds
 }
 
 /* ── SOCKET.IO ── */
 var sessionLog = [];
 var _firstSend = false;
+var _batchWatchdog = null;  // Watchdog timer to detect stalled batches
 var socket = io();
 
 socket.on('connect', function() {
@@ -1944,8 +1958,12 @@ socket.on('batch:start', function(d) {
   document.getElementById('feed-log').innerHTML = '';
   document.getElementById('saveLogsBtn').disabled = true;
   feedLine('info', null, null, 'Batch started — ' + d.total + ' recipients queued.');
+
+  // Start watchdog: reset UI if no events for 60 seconds
+  startBatchWatchdog();
 });
 socket.on('send:event', function(d) {
+  startBatchWatchdog();  // Reset watchdog on each event
   feedLine(d.status, d.recipient, d.smtp, d.message, d.timestamp);
   if (['success', 'failed', 'invalid'].includes(d.status)) {
     sessionLog.push({ timestamp: new Date(d.timestamp).toISOString(), status: d.status.toUpperCase(), recipient: d.recipient || '', smtp: d.smtp || '', messageId: d.messageId || '', message: d.message || '' });
@@ -1961,6 +1979,7 @@ socket.on('send:event', function(d) {
   }
 });
 socket.on('batch:progress', function(d) {
+  startBatchWatchdog();  // Reset watchdog on progress update
   document.getElementById('statSuccess').textContent = d.success;
   document.getElementById('statFailed').textContent = d.failed;
   var done = d.success + d.failed, pct = d.total ? Math.round(done / d.total * 100) : 0;
@@ -1990,13 +2009,14 @@ socket.on('batch:progress', function(d) {
 });
 socket.on('batch:complete', function(d) {
   clearInterval(_pauseTimer);
+  clearTimeout(_batchWatchdog);  // Clear watchdog timer
   var ok = d.failed === 0;
   setStatus(ok ? 'COMPLETE' : 'ERRORS', ok ? 'success' : 'error');
   feedLine(ok ? 'success' : 'warn', null, null, 'Batch complete — ' + d.success + ' sent, ' + d.failed + ' failed.');
   setProgress(100);
   if (sessionLog.length) document.getElementById('saveLogsBtn').disabled = false;
   setBatchRunning(false);
-  
+
   // Show rotation summary if available
   var message = ok ? '✓ Batch complete — ' + d.success + ' delivered' : '⚠ Done — ' + d.success + ' sent, ' + d.failed + ' failed';
   if (d.rotation && d.rotation.rotationEfficiency) {
@@ -2006,7 +2026,7 @@ socket.on('batch:complete', function(d) {
     message += ' | Rotation: ' + bodySpread + '% body spread, ' + subjectSpread + '% subject spread';
   }
   showToast(message, ok ? 'ok' : 'err');
-  
+
   // Reset rotation stats button
   var btn = document.getElementById('rotation-stats-btn');
   if (btn) {
@@ -2015,6 +2035,7 @@ socket.on('batch:complete', function(d) {
   }
 });
 socket.on('batch:paused', function(d) {
+  startBatchWatchdog();  // Reset watchdog on pause event
   var r = d.reason === 'warmup' ? 'Warm-up cap' : d.reason === '421' ? '421 Rate Limit' : 'Batch rest';
   feedLine('warn', null, null, r + ' — pausing ' + Math.ceil(d.duration / 60000) + ' min.');
   startPauseCountdown(d.duration);

