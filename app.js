@@ -1603,7 +1603,344 @@ function detectBot(req) {
     return { isBot: false };
 }
 
-app.get('/go/:id', (req, res) => { 
+// ═══════════════════════════════════════════════════════════════════════
+// ADVANCED ANTI-SCANNER PROTECTION SYSTEM
+// ═══════════════════════════════════════════════════════════════════════
+
+// #3 - Advanced Rate Limiting Storage
+const ipRateLimit = new Map();
+const tokenAccessLog = new Map();
+const fingerprintLog = new Map();
+
+// Analytics & Stats Tracking
+const challengeStats = {
+    served: 0,
+    passed: 0,
+    failed: 0,
+    blockReasons: {},
+    deviceBreakdown: { mobile: 0, desktop: 0 },
+    avgCompletionTime: [],
+    recentActivity: []
+};
+
+function recordChallengeServed(linkId, fingerprint, isMobile) {
+    challengeStats.served++;
+    challengeStats.deviceBreakdown[isMobile ? 'mobile' : 'desktop']++;
+    challengeStats.recentActivity.unshift({
+        type: 'served',
+        linkId,
+        fingerprint: fingerprint.slice(0, 8),
+        device: isMobile ? 'mobile' : 'desktop',
+        timestamp: Date.now()
+    });
+    if (challengeStats.recentActivity.length > 100) challengeStats.recentActivity.pop();
+}
+
+function recordChallengePassed(linkId, fingerprint, elapsed) {
+    challengeStats.passed++;
+    challengeStats.avgCompletionTime.push(elapsed);
+    if (challengeStats.avgCompletionTime.length > 100) challengeStats.avgCompletionTime.shift();
+    challengeStats.recentActivity.unshift({
+        type: 'passed',
+        linkId,
+        fingerprint: fingerprint.slice(0, 8),
+        elapsed,
+        timestamp: Date.now()
+    });
+    if (challengeStats.recentActivity.length > 100) challengeStats.recentActivity.pop();
+}
+
+function recordChallengeFailed(reason, linkId, fingerprint) {
+    challengeStats.failed++;
+    challengeStats.blockReasons[reason] = (challengeStats.blockReasons[reason] || 0) + 1;
+    challengeStats.recentActivity.unshift({
+        type: 'failed',
+        linkId,
+        fingerprint: fingerprint ? fingerprint.slice(0, 8) : 'unknown',
+        reason,
+        timestamp: Date.now()
+    });
+    if (challengeStats.recentActivity.length > 100) challengeStats.recentActivity.pop();
+
+    // Webhook notification for suspicious activity
+    checkWebhookTrigger(reason, linkId);
+}
+
+// Webhook notification system
+let webhookUrl = process.env.CHALLENGE_WEBHOOK_URL || null;
+const webhookCooldown = new Map();
+
+function checkWebhookTrigger(reason, linkId) {
+    if (!webhookUrl) return;
+
+    const cooldownKey = `${reason}:${linkId}`;
+    const now = Date.now();
+
+    // Only send webhook once per 5 minutes for same reason+link
+    if (webhookCooldown.has(cooldownKey)) {
+        const lastSent = webhookCooldown.get(cooldownKey);
+        if (now - lastSent < 300000) return;
+    }
+
+    webhookCooldown.set(cooldownKey, now);
+
+    // Send webhook (non-blocking)
+    fetch(webhookUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            event: 'challenge_failed',
+            reason,
+            linkId,
+            timestamp: new Date().toISOString(),
+            stats: {
+                totalFailed: challengeStats.failed,
+                recentBlocks: challengeStats.blockReasons
+            }
+        })
+    }).catch(err => console.error('[Webhook] Failed:', err.message));
+}
+
+// Configuration (can be overridden via API or env vars)
+const challengeConfig = {
+    enabled: true,
+    powDifficulty: { desktop: 4, mobile: 2 }, // Number of leading zeros
+    rateLimit: { maxRequests: 10, windowMs: 60000 },
+    interactionRequired: { desktop: 5, mobile: 3 },
+    challengeTimeout: 300000, // 5 minutes
+    strictFingerprint: true
+};
+
+// #4 - Browser Fingerprint Detection
+function generateFingerprint(req) {
+    const components = [
+        req.headers['user-agent'] || '',
+        req.headers['accept-language'] || '',
+        req.headers['accept-encoding'] || '',
+        req.headers['accept'] || '',
+        (req.headers['x-forwarded-for'] || req.connection.remoteAddress || '').split(',')[0].trim()
+    ];
+    return crypto.createHash('sha256').update(components.join('|')).digest('hex').slice(0, 16);
+}
+
+// #3 - Rate Limiting Check
+function checkRateLimit(fingerprint, maxRequests = 10, windowMs = 60000) {
+    const now = Date.now();
+    const key = fingerprint;
+
+    if (!ipRateLimit.has(key)) {
+        ipRateLimit.set(key, { count: 1, firstRequest: now, blocked: false });
+        return { allowed: true, remaining: maxRequests - 1 };
+    }
+
+    const data = ipRateLimit.get(key);
+
+    // Reset window if expired
+    if (now - data.firstRequest > windowMs) {
+        ipRateLimit.set(key, { count: 1, firstRequest: now, blocked: false });
+        return { allowed: true, remaining: maxRequests - 1 };
+    }
+
+    // Block if over limit
+    if (data.count >= maxRequests) {
+        data.blocked = true;
+        console.log(`[RateLimit] Fingerprint ${fingerprint.slice(0, 8)} blocked: ${data.count} requests in ${Math.round((now - data.firstRequest) / 1000)}s`);
+        return { allowed: false, remaining: 0, retryAfter: windowMs - (now - data.firstRequest) };
+    }
+
+    data.count++;
+    return { allowed: true, remaining: maxRequests - data.count };
+}
+
+// #1 - Link Preload Blocker (serves challenge page on first visit)
+const linkAccessTokens = new Map();
+
+function generateAccessToken() {
+    return crypto.randomBytes(16).toString('base64url');
+}
+
+// Challenge page with JS requirement + mouse movement proof
+function renderChallengePage(linkId, fingerprint) {
+    const token = generateAccessToken();
+    linkAccessTokens.set(token, { linkId, fingerprint, created: Date.now(), mouseMoved: false });
+
+    // Auto-cleanup after 5 minutes
+    setTimeout(() => linkAccessTokens.delete(token), 300000);
+
+    return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Secure Access</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);min-height:100vh;display:flex;align-items:center;justify-content:center;color:#fff;overflow:hidden}
+.container{background:rgba(255,255,255,0.15);backdrop-filter:blur(10px);border-radius:20px;padding:40px;max-width:500px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,0.1);border:1px solid rgba(255,255,255,0.2)}
+.shield{width:80px;height:80px;margin:0 auto 20px;background:rgba(255,255,255,0.2);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:40px}
+h1{font-size:24px;margin-bottom:10px;text-align:center}
+p{opacity:0.9;text-align:center;margin-bottom:30px;line-height:1.6}
+.progress{background:rgba(0,0,0,0.2);border-radius:10px;height:8px;overflow:hidden;margin-bottom:20px}
+.progress-bar{height:100%;background:linear-gradient(90deg,#10b981,#3b82f6);width:0%;transition:width 0.3s}
+.status{text-align:center;font-size:14px;opacity:0.8;margin-top:15px}
+#verify-btn{background:linear-gradient(135deg,#10b981,#059669);color:#fff;border:none;padding:15px 40px;border-radius:10px;font-size:16px;font-weight:600;cursor:pointer;width:100%;transition:transform 0.2s,opacity 0.3s;box-shadow:0 4px 12px rgba(16,185,129,0.3)}
+#verify-btn:hover{transform:translateY(-2px)}
+#verify-btn:active{transform:translateY(0)}
+#verify-btn:disabled{opacity:0.5;cursor:not-allowed}
+.check{display:none;font-size:18px;margin-bottom:15px}
+.check.done{color:#10b981}
+.spinner{border:3px solid rgba(255,255,255,0.3);border-top-color:#fff;border-radius:50%;width:20px;height:20px;animation:spin 1s linear infinite;display:inline-block;margin-right:10px}
+@keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="shield">🛡️</div>
+  <h1>Security Verification</h1>
+  <p>Interact with the page to verify you're human, then tap/click the button below to continue.</p>
+
+  <div class="check" id="check-js">✓ JavaScript Enabled</div>
+  <div class="check" id="check-interaction">○ Human Interaction Detected</div>
+  <div class="check" id="check-pow">○ Security Challenge</div>
+
+  <div class="progress"><div class="progress-bar" id="progress"></div></div>
+
+  <button id="verify-btn" disabled>
+    <span class="spinner"></span>Verifying...
+  </button>
+
+  <div class="status" id="status">Initializing security checks...</div>
+</div>
+
+<script>
+const token = '${token}';
+const linkId = '${linkId}';
+let mouseDetected = false;
+let powCompleted = false;
+let progress = 0;
+
+// #2 - JavaScript Challenge (immediate)
+document.getElementById('check-js').classList.add('done');
+document.getElementById('check-js').textContent = '✓ JavaScript Enabled';
+updateProgress(33);
+
+// #5 - Human Interaction Proof (Mouse OR Touch)
+let interactionCount = 0;
+const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+
+function recordInteraction() {
+  if (!mouseDetected) {
+    interactionCount++;
+    if (interactionCount > 3) {
+      mouseDetected = true;
+      document.getElementById('check-interaction').classList.add('done');
+      document.getElementById('check-interaction').textContent = '✓ Human Interaction Detected';
+      updateProgress(66);
+
+      // Report interaction to server
+      fetch('/api/link-challenge/mouse', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({token, moved: true, mobile: isMobile})
+      }).catch(() => {});
+
+      checkReady();
+    }
+  }
+}
+
+// Desktop: Mouse movement
+document.addEventListener('mousemove', recordInteraction);
+
+// Mobile: Touch events
+document.addEventListener('touchstart', recordInteraction);
+document.addEventListener('touchmove', recordInteraction);
+
+// Universal: Scroll (works on both)
+document.addEventListener('scroll', recordInteraction);
+
+// Auto-trigger on mobile after 1 second (since touch is more limited)
+if (isMobile) {
+  setTimeout(() => {
+    if (!mouseDetected && interactionCount === 0) {
+      // User has seen the page for 1 sec = enough proof on mobile
+      recordInteraction();
+      recordInteraction();
+      recordInteraction();
+      recordInteraction(); // Trigger it
+    }
+  }, 1000);
+}
+
+// #6 - Proof-of-Work Challenge (lighter on mobile)
+setTimeout(() => {
+  const start = Date.now();
+  let nonce = 0;
+  // Mobile gets easier challenge (2 zeros vs 4)
+  const target = isMobile ? '00' : '0000';
+  const batchSize = isMobile ? 50000 : 100000;
+
+  function mine() {
+    for (let i = 0; i < batchSize; i++) {
+      const hash = hashString(token + nonce);
+      if (hash.startsWith(target)) {
+        powCompleted = true;
+        const elapsed = Date.now() - start;
+        console.log(\`[PoW] Solution found: nonce=\${nonce}, time=\${elapsed}ms, mobile=\${isMobile}\`);
+        document.getElementById('check-pow').classList.add('done');
+        document.getElementById('check-pow').textContent = '✓ Security Challenge Complete';
+        updateProgress(100);
+        checkReady();
+        return;
+      }
+      nonce++;
+    }
+    // Continue mining
+    setTimeout(mine, 0);
+  }
+  mine();
+}, 500);
+
+function hashString(str) {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = ((hash << 5) - hash) + str.charCodeAt(i);
+    hash = hash & hash;
+  }
+  return Math.abs(hash).toString(16).padStart(8, '0');
+}
+
+function updateProgress(val) {
+  progress = val;
+  document.getElementById('progress').style.width = val + '%';
+}
+
+function checkReady() {
+  if (mouseDetected && powCompleted) {
+    const btn = document.getElementById('verify-btn');
+    btn.disabled = false;
+    btn.innerHTML = 'Access Secure Link';
+    document.getElementById('status').textContent = 'Verification complete! Click to continue.';
+
+    btn.onclick = () => {
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner"></span>Redirecting...';
+      window.location.href = '/go/${linkId}?token=' + token;
+    };
+  }
+}
+
+// Prevent back button issues
+window.onpageshow = (e) => {
+  if (e.persisted) location.reload();
+};
+</script>
+</body>
+</html>`;
+}
+
+app.get('/go/:id', (req, res) => {
     const entry = _redirectStore.get(req.params.id);
     if (!entry) {
         // Fallback: redirect to humanDefaultUrl if set, otherwise 404
@@ -1619,13 +1956,73 @@ app.get('/go/:id', (req, res) => {
         return res.redirect(302, _globalBotSafeUrl);
     }
 
+    // ═══════════════════════════════════════════════════════════════════════
+    // ANTI-SCANNER PROTECTION PIPELINE
+    // ═══════════════════════════════════════════════════════════════════════
+
     const { isBot, reason } = detectBot(req);
 
     if (isBot) {
         // Bot detected: redirect to safe URL, do NOT count the click
         console.log(`[CrawlerTrap] Bot blocked (${reason}) UA: ${req.headers['user-agent'] || 'none'} → ${_globalBotSafeUrl}`);
-        return res.redirect(302, _globalBotSafeUrl); 
+        return res.redirect(302, _globalBotSafeUrl);
     }
+
+    // #4 - Browser Fingerprinting
+    const fingerprint = generateFingerprint(req);
+
+    // #3 - Rate Limiting (10 requests per minute per fingerprint)
+    const rateCheck = checkRateLimit(fingerprint, 10, 60000);
+    if (!rateCheck.allowed) {
+        console.log(`[RateLimit] Blocked fingerprint ${fingerprint.slice(0, 8)} - too many requests`);
+        return res.status(429).send('Too many requests. Please try again later.');
+    }
+
+    // #1 - Link Preload Blocker + #2 JS Challenge + #5 Mouse + #6 PoW
+    const token = req.query.token;
+
+    if (!token) {
+        // First visit: serve challenge page
+        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(req.headers['user-agent'] || '');
+        recordChallengeServed(req.params.id, fingerprint, isMobile);
+        console.log(`[Challenge] Serving challenge page for ${req.params.id} (fingerprint: ${fingerprint.slice(0, 8)})`);
+        return res.send(renderChallengePage(req.params.id, fingerprint));
+    }
+
+    // Verify token
+    const tokenData = linkAccessTokens.get(token);
+
+    if (!tokenData) {
+        recordChallengeFailed('invalid_token', req.params.id, fingerprint);
+        console.log(`[Challenge] Invalid/expired token for ${req.params.id}`);
+        return res.status(403).send('Invalid or expired security token. Please try again.');
+    }
+
+    if (tokenData.linkId !== req.params.id) {
+        recordChallengeFailed('token_mismatch', req.params.id, fingerprint);
+        console.log(`[Challenge] Token mismatch: ${tokenData.linkId} !== ${req.params.id}`);
+        return res.status(403).send('Security token mismatch.');
+    }
+
+    if (challengeConfig.strictFingerprint && tokenData.fingerprint !== fingerprint) {
+        recordChallengeFailed('fingerprint_mismatch', req.params.id, fingerprint);
+        console.log(`[Challenge] Fingerprint mismatch for ${req.params.id}`);
+        return res.status(403).send('Security fingerprint mismatch.');
+    }
+
+    // Check if mouse movement was detected (optional: can be strict)
+    if (!tokenData.mouseMoved) {
+        console.log(`[Challenge] No mouse movement detected for ${req.params.id}`);
+        // Optional: can still allow or block
+        // return res.status(403).send('Human verification required.');
+    }
+
+    // All checks passed - allow access
+    const elapsed = Date.now() - tokenData.created;
+    linkAccessTokens.delete(token);
+
+    recordChallengePassed(req.params.id, fingerprint, elapsed);
+    console.log(`[Challenge] ✓ All checks passed for ${req.params.id} (fingerprint: ${fingerprint.slice(0, 8)}, ${elapsed}ms)`);
 
     // Real human: count the click and redirect to human destination (if set) or real URL
     entry.clicks++;
@@ -1635,33 +2032,167 @@ app.get('/go/:id', (req, res) => {
     // Use humanDefaultUrl if set, otherwise use original URL
     const finalDestination = global._humanDefaultUrl || entry.url;
 
-    if (io) io.emit('link:click', { 
-        id: req.params.id, 
-        url: entry.url, 
+    if (io) io.emit('link:click', {
+        id: req.params.id,
+        url: entry.url,
         finalDestination: finalDestination,
-        domain: entry.domain, 
-        clicks: entry.clicks, 
-        timestamp: Date.now() 
+        domain: entry.domain,
+        clicks: entry.clicks,
+        timestamp: Date.now()
     });
 
     console.log(`[ClickTrack] Human click on ${req.params.id} → ${finalDestination} (original: ${entry.url})`);
     return res.redirect(302, finalDestination);
 });
 
+// Human interaction tracking endpoint (mouse or touch)
+app.post('/api/link-challenge/mouse', express.json(), (req, res) => {
+    const { token, moved, mobile } = req.body;
+    const tokenData = linkAccessTokens.get(token);
+
+    if (tokenData && moved) {
+        tokenData.mouseMoved = true;
+        const device = mobile ? 'mobile/touch' : 'desktop/mouse';
+        console.log(`[Challenge] Human interaction (${device}) recorded for token ${token.slice(0, 8)}`);
+        res.json({ ok: true });
+    } else {
+        res.status(400).json({ error: 'Invalid token or data' });
+    }
+});
+
+// ═══════════════════════════════════════════════════════════════════════
+// CHALLENGE SYSTEM API ENDPOINTS
+// ═══════════════════════════════════════════════════════════════════════
+
+// Analytics endpoint
+app.get('/api/challenge-stats', (_req, res) => {
+    const avgTime = challengeStats.avgCompletionTime.length > 0
+        ? Math.round(challengeStats.avgCompletionTime.reduce((a, b) => a + b, 0) / challengeStats.avgCompletionTime.length)
+        : 0;
+
+    res.json({
+        served: challengeStats.served,
+        passed: challengeStats.passed,
+        failed: challengeStats.failed,
+        passRate: challengeStats.served > 0 ? ((challengeStats.passed / challengeStats.served) * 100).toFixed(1) + '%' : '0%',
+        blockReasons: challengeStats.blockReasons,
+        deviceBreakdown: challengeStats.deviceBreakdown,
+        avgCompletionTime: avgTime,
+        recentActivity: challengeStats.recentActivity.slice(0, 20),
+        activeTokens: linkAccessTokens.size,
+        rateLimitBlocked: Array.from(ipRateLimit.values()).filter(v => v.blocked).length
+    });
+});
+
+// Configuration endpoint (GET)
+app.get('/api/challenge-config', (_req, res) => {
+    res.json({
+        ...challengeConfig,
+        webhookConfigured: !!webhookUrl
+    });
+});
+
+// Configuration endpoint (POST)
+app.post('/api/challenge-config', express.json(), (req, res) => {
+    const updates = req.body;
+
+    if (updates.enabled !== undefined) challengeConfig.enabled = !!updates.enabled;
+    if (updates.powDifficulty) {
+        if (updates.powDifficulty.desktop) challengeConfig.powDifficulty.desktop = Math.max(1, Math.min(6, updates.powDifficulty.desktop));
+        if (updates.powDifficulty.mobile) challengeConfig.powDifficulty.mobile = Math.max(1, Math.min(6, updates.powDifficulty.mobile));
+    }
+    if (updates.rateLimit) {
+        if (updates.rateLimit.maxRequests) challengeConfig.rateLimit.maxRequests = Math.max(1, updates.rateLimit.maxRequests);
+        if (updates.rateLimit.windowMs) challengeConfig.rateLimit.windowMs = Math.max(10000, updates.rateLimit.windowMs);
+    }
+    if (updates.strictFingerprint !== undefined) challengeConfig.strictFingerprint = !!updates.strictFingerprint;
+    if (updates.webhookUrl !== undefined) webhookUrl = updates.webhookUrl || null;
+
+    res.json({ ok: true, config: challengeConfig });
+});
+
+// Reset stats endpoint
+app.post('/api/challenge-stats/reset', (_req, res) => {
+    challengeStats.served = 0;
+    challengeStats.passed = 0;
+    challengeStats.failed = 0;
+    challengeStats.blockReasons = {};
+    challengeStats.deviceBreakdown = { mobile: 0, desktop: 0 };
+    challengeStats.avgCompletionTime = [];
+    challengeStats.recentActivity = [];
+    res.json({ ok: true, message: 'Stats reset successfully' });
+});
+
+// Testing Tools
+app.get('/test-challenge', (req, res) => {
+    const testId = 'test-' + crypto.randomBytes(4).toString('hex');
+    _redirectStore.set(testId, {
+        id: testId,
+        url: 'https://www.youtube.com/@BlackBoxAnimated',
+        domain: 'test.local',
+        clicks: 0,
+        createdAt: Date.now()
+    });
+    res.redirect(`/go/${testId}`);
+});
+
+app.get('/test-bot-detection', (req, res) => {
+    const { isBot, reason } = detectBot(req);
+    const fingerprint = generateFingerprint(req);
+    res.json({
+        test: 'bot-detection',
+        result: isBot ? 'BLOCKED' : 'ALLOWED',
+        isBot,
+        reason: reason || 'none',
+        fingerprint: fingerprint.slice(0, 8) + '...',
+        userAgent: req.headers['user-agent'] || 'none',
+        wouldRedirectTo: isBot ? _globalBotSafeUrl : 'real destination'
+    });
+});
+
+app.get('/test-mobile', (req, res) => {
+    const ua = req.headers['user-agent'] || '';
+    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(ua);
+    res.json({
+        test: 'mobile-detection',
+        isMobile,
+        userAgent: ua,
+        powDifficulty: isMobile ? challengeConfig.powDifficulty.mobile : challengeConfig.powDifficulty.desktop,
+        interactionRequired: isMobile ? challengeConfig.interactionRequired.mobile : challengeConfig.interactionRequired.desktop
+    });
+});
+
 // Test endpoint for crawler trap (for debugging)
 app.get('/api/crawler-trap/test', (req, res) => {
     const { isBot, reason } = detectBot(req);
+    const fingerprint = generateFingerprint(req);
+    const rateCheck = checkRateLimit(fingerprint, 10, 60000);
+
     res.json({
         isBot,
         reason: reason || 'none',
+        fingerprint: fingerprint.slice(0, 8) + '...',
+        rateLimit: {
+            allowed: rateCheck.allowed,
+            remaining: rateCheck.remaining,
+            retryAfter: rateCheck.retryAfter
+        },
         userAgent: req.headers['user-agent'] || 'none',
         accept: req.headers['accept'] || 'none',
         botSafeUrl: _globalBotSafeUrl,
         humanDefaultUrl: global._humanDefaultUrl || 'not set',
         trackedLinks: _redirectStore.size,
+        protections: {
+            '1_preloadBlocker': 'Active - Challenge page on first visit',
+            '2_jsChallenge': 'Active - Requires JavaScript execution',
+            '3_rateLimit': `Active - ${rateCheck.remaining} requests remaining`,
+            '4_fingerprinting': `Active - Your fingerprint: ${fingerprint.slice(0, 8)}...`,
+            '5_mouseProof': 'Active - Requires mouse movement',
+            '6_proofOfWork': 'Active - Computational challenge required'
+        },
         message: isBot
             ? `BOT → would go to: ${_globalBotSafeUrl}`
-            : `HUMAN → would go to real link (or fallback: ${global._humanDefaultUrl || 'not set'})`
+            : `HUMAN → would see challenge page with 6-layer protection`
     });
 });
 
@@ -1769,14 +2300,7 @@ app.post('/api/send', async (req, res) => {
         rotationMode, rotateEveryN,
         botSafeUrl,
         humanDefaultUrl,
-        socketId,
-        ghostLinkInput, // <--- ADDED THIS
-        ghostLinkTTL,
-        ghostLinkMaxClicks,
-        ghostLinkStartHour,
-        ghostLinkStartMinute,
-        ghostLinkEndHour,
-        ghostLinkEndMinute
+        socketId
     } = req.body;
 
     // 1. UPDATE THE CRAWLER TRAP GLOBAL VARIABLE
@@ -1788,12 +2312,6 @@ app.post('/api/send', async (req, res) => {
         global._humanDefaultUrl = humanDefaultUrl.trim();
     }
     
-    // 2. LOGIC: Override with Ghost Link if provided
-    // If a ghostLinkInput is provided, it forces all human clicks to that URL,
-    // overriding the humanDefaultUrl and the original links.
-    if (ghostLinkInput) {
-        global._humanDefaultUrl = ghostLinkInput.trim();
-    }
 
     const securityProtocolSettings = global.middlewareConfig?.securityProtocolSettings || {};
     if (securityProtocolSettings.twoStageVerificationDelivery && securityProtocolSettings.verificationGatewayUrl) {
@@ -2277,45 +2795,9 @@ res.json({ ok: true, message: "Batch started", total: recipients.length });
         const emailDomain = activeDomains.length > 0
             ? activeDomains[Math.floor(emailsSent / rotateEvery) % activeDomains.length]
             : null;
-// Add explicitGhostLink so mailer.js can see your "Diff Box" input
-// Create per-recipient ghost token if ghost link is provided
-let ghostToken = null;
-if (ghostLinkInput && ghostLinkInput.trim()) {
-    ghostToken = crypto.randomBytes(12).toString('base64url');
-    const ttlHours = parseInt(ghostLinkTTL, 10) || 24;
-    const ttlMs = ttlHours * 60 * 60 * 1000;
-
-    ghostLinkStore.set(ghostToken, {
-        url: ghostLinkInput.trim(),
-        clicks: 0,
-        maxClicks: parseInt(ghostLinkMaxClicks, 10) || 1,
-        createdAt: Date.now(),
-        expiresAt: Date.now() + ttlMs,
-        startHour: ghostLinkStartHour !== undefined ? parseInt(ghostLinkStartHour, 10) : 6,
-        startMinute: ghostLinkStartMinute !== undefined ? parseInt(ghostLinkStartMinute, 10) : 0,
-        endHour: ghostLinkEndHour !== undefined ? parseInt(ghostLinkEndHour, 10) : 22,
-        endMinute: ghostLinkEndMinute !== undefined ? parseInt(ghostLinkEndMinute, 10) : 0,
-        recipientEmail: recipientMailContext.recipientEmail,
-        createdFor: recipientMailContext.firstName || 'Unknown'
-    });
-
-    // Auto-cleanup after expiration
-    setTimeout(() => {
-        ghostLinkStore.delete(ghostToken);
-    }, ttlMs);
-}
-
 tagData = {
     ...tagData,
-    activeDomain: emailDomain || 'your domain',
-    explicitGhostLink: ghostLinkInput ? ghostLinkInput.trim() : null,
-    ghostToken: ghostToken, // Pass the token to mailer
-    ghostLinkTTL: ghostLinkTTL || 24,
-    ghostLinkMaxClicks: ghostLinkMaxClicks || 1,
-    ghostLinkStartHour: ghostLinkStartHour !== undefined ? ghostLinkStartHour : 6,
-    ghostLinkStartMinute: ghostLinkStartMinute !== undefined ? ghostLinkStartMinute : 0,
-    ghostLinkEndHour: ghostLinkEndHour !== undefined ? ghostLinkEndHour : 22,
-    ghostLinkEndMinute: ghostLinkEndMinute !== undefined ? ghostLinkEndMinute : 0
+    activeDomain: emailDomain || 'your domain'
 };
 
         // Resolve spintax and tags first; wrap once (fragment only in UI—no full <!DOCTYPE>/<html>/<body> or Gmail gets a double document).
@@ -2784,154 +3266,8 @@ function msUntilSendWindow(tz, startHour, endHour) {
     }
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-// ADVANCED STEALTH SYSTEM - SERVER-SIDE PROTECTION
-// ═══════════════════════════════════════════════════════════════════════
-
-// ═══════════════════════════════════════════════════════════════════════
-// GHOST LINK STEALTH SYSTEM
-// ═══════════════════════════════════════════════════════════════════════
-// In-memory token store (use Redis in production for scale)
-const ghostLinkStore = new Map();
-const honeypotLog = new Map();
-
-// Time-based validation with hour:minute precision
-function isWithinActiveHours(startHour = 6, startMin = 0, endHour = 22, endMin = 0) {
-    const now = new Date();
-    const currentMinutes = now.getHours() * 60 + now.getMinutes();
-    const startMinutes = startHour * 60 + startMin;
-    const endMinutes = endHour * 60 + endMin;
-
-    return currentMinutes >= startMinutes && currentMinutes < endMinutes;
-}
-
-// Ghost Link redirect with full stealth protection
-app.get('/r/:token', (req, res) => {
-    const token = req.params.token;
-    const data = ghostLinkStore.get(token);
-
-    if (!data) return res.status(404).send('Link not found or expired');
-    if (Date.now() > data.expiresAt) {
-        ghostLinkStore.delete(token);
-        return res.status(410).send('This link has expired');
-    }
-
-    // Bot detection
-    const botCheck = detectBot(req);
-    if (botCheck.isBot) {
-        console.log(`[Stealth] Bot detected: ${botCheck.reason}`);
-        return res.send('<html><body><h1>Page Not Found</h1></body></html>');
-    }
-
-    // Time-based activation (per-token settings)
-    const startH = data.startHour !== undefined ? data.startHour : 6;
-    const startM = data.startMinute !== undefined ? data.startMinute : 0;
-    const endH = data.endHour !== undefined ? data.endHour : 22;
-    const endM = data.endMinute !== undefined ? data.endMinute : 0;
-
-    if (!isWithinActiveHours(startH, startM, endH, endM)) {
-        const formatTime = (h, m) => {
-            const period = h >= 12 ? 'PM' : 'AM';
-            const hour12 = h % 12 || 12;
-            return `${hour12}:${m.toString().padStart(2, '0')} ${period}`;
-        };
-        return res.status(403).send(
-            `Link not active. Available: ${formatTime(startH, startM)} - ${formatTime(endH, endM)}`
-        );
-    }
-
-    // Single-use check
-    if (data.clicks >= data.maxClicks) {
-        return res.status(410).send('This link has already been used');
-    }
-
-    data.clicks++;
-    ghostLinkStore.set(token, data);
-    console.log(`[Stealth] Valid click on token ${token}`);
-
-    res.redirect(302, data.url);
-});
-
-// Honeypot trap endpoint
-app.get('/trap/:token', (req, res) => {
-    const ip = req.ip || req.headers['x-forwarded-for'];
-    const logEntry = {
-        timestamp: new Date().toISOString(),
-        ip,
-        userAgent: req.headers['user-agent'],
-        token: req.params.token
-    };
-
-    if (!honeypotLog.has(ip)) honeypotLog.set(ip, []);
-    honeypotLog.get(ip).push(logEntry);
-
-    console.log(`[Honeypot] Bot caught! IP: ${ip}`);
-    res.status(404).send('<html><body><h1>404 - Not Found</h1></body></html>');
-});
-
-// API to create ghost tokens with time settings
-app.post('/api/ghost-token', (req, res) => {
-    const {
-        url,
-        maxClicks = 1,
-        ttl = 86400000,
-        startHour = 6,
-        startMinute = 0,
-        endHour = 22,
-        endMinute = 0
-    } = req.body;
-
-    const token = crypto.randomBytes(12).toString('base64url');
-
-    ghostLinkStore.set(token, {
-        url,
-        clicks: 0,
-        maxClicks,
-        createdAt: Date.now(),
-        expiresAt: Date.now() + ttl,
-        startHour,
-        startMinute,
-        endHour,
-        endMinute
-    });
-
-    setTimeout(() => ghostLinkStore.delete(token), ttl);
-    res.json({
-        token,
-        url: `/r/${token}`,
-        settings: { maxClicks, ttl, startHour, startMinute, endHour, endMinute }
-    });
-});
-
-// View honeypot logs
-app.get('/api/honeypot-logs', (req, res) => {
-    const logs = Array.from(honeypotLog.entries()).map(([ip, entries]) => ({
-        ip, catches: entries.length, lastSeen: entries[entries.length - 1].timestamp, entries
-    }));
-    res.json({ total: honeypotLog.size, logs });
-});
-
 module.exports = app;
 module.exports.setIo = setIo;
-module.exports.createGhostToken = (url, opts = {}) => {
-    const token = crypto.randomBytes(12).toString('base64url');
-    const ttl = opts.ttl || 86400000;
-
-    ghostLinkStore.set(token, {
-        url,
-        clicks: 0,
-        maxClicks: opts.maxClicks || 1,
-        createdAt: Date.now(),
-        expiresAt: Date.now() + ttl,
-        startHour: opts.startHour !== undefined ? opts.startHour : 6,
-        startMinute: opts.startMinute !== undefined ? opts.startMinute : 0,
-        endHour: opts.endHour !== undefined ? opts.endHour : 22,
-        endMinute: opts.endMinute !== undefined ? opts.endMinute : 0
-    });
-
-    setTimeout(() => ghostLinkStore.delete(token), ttl);
-    return token;
-};
 
 // ── IMAP account persistence ─────────────────────────────────────────────────
 const IMAP_ACCOUNTS_PATH = path.join(__dirname, 'imap-accounts.json');

