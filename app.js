@@ -2060,6 +2060,54 @@ app.post('/api/link-challenge/mouse', express.json(), (req, res) => {
     }
 });
 
+// Create protected link endpoint
+app.post('/api/create-protected-link', express.json(), (req, res) => {
+    const { url } = req.body;
+
+    if (!url || typeof url !== 'string') {
+        return res.status(400).json({ error: 'URL is required' });
+    }
+
+    // Validate URL format
+    try {
+        new URL(url);
+    } catch (e) {
+        return res.status(400).json({ error: 'Invalid URL format' });
+    }
+
+    // Generate unique ID
+    const linkId = crypto.randomUUID();
+
+    // Get redirect domain (use first domain or localhost)
+    const redirectDomains = (process.env.REDIRECT_DOMAINS || '').split('\n').filter(Boolean);
+    const domain = redirectDomains[0] || `localhost:${process.env.PORT || 3000}`;
+    const protocol = domain.includes('localhost') ? 'http' : 'https';
+
+    // Store the link
+    _redirectStore.set(linkId, {
+        id: linkId,
+        url: url,
+        domain: domain,
+        clicks: 0,
+        createdAt: Date.now(),
+        manual: true // Flag to indicate manually created
+    });
+
+    _saveClickLog();
+
+    const protectedUrl = `${protocol}://${domain}/go/${linkId}`;
+
+    console.log(`[ProtectedLink] Created: ${linkId} → ${url}`);
+
+    res.json({
+        ok: true,
+        linkId: linkId,
+        protectedUrl: protectedUrl,
+        destination: url,
+        createdAt: Date.now()
+    });
+});
+
 // ═══════════════════════════════════════════════════════════════════════
 // CHALLENGE SYSTEM API ENDPOINTS
 // ═══════════════════════════════════════════════════════════════════════

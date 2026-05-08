@@ -846,6 +846,53 @@ details[open] summary{margin-bottom:13px}
             placeholder="1" oninput="saveField(this.id)" />
           <div style="font-size:13px;color:var(--text4);margin-top:8px">e.g. set to <strong>5</strong> → domain1 used for emails 1–5, domain2 for emails 6–10, etc.</div>
         </div>
+
+        <!-- Protected Link Creator -->
+        <div class="card" style="margin-top:14px;border:2px solid var(--blue-border);background:rgba(59,130,246,.04)">
+          <div class="lbl" style="margin-bottom:12px">
+            🛡️ Create Protected Link
+            <span class="hint">— Manual link creation with 6-layer protection</span>
+          </div>
+
+          <div class="field" style="margin-bottom:12px">
+            <div class="lbl">Destination URL</div>
+            <input class="inp" id="protected-link-url" type="url"
+                   placeholder="https://your-portal.com/secure/page"
+                   style="font-family:monospace">
+            <small style="color:var(--text3);display:block;margin-top:6px">
+              The real URL where users will go after passing the challenge
+            </small>
+          </div>
+
+          <button onclick="createProtectedLink()" class="btn-primary" id="create-protected-btn">
+            🔗 Create Protected Link
+          </button>
+
+          <div id="protected-link-result" style="display:none;margin-top:16px;padding:16px;background:var(--surface2);border:1px solid var(--border);border-radius:8px">
+            <div style="font-size:14px;font-weight:600;color:var(--text2);margin-bottom:8px">
+              ✓ Protected Link Created
+            </div>
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+              <input id="protected-link-output" readonly class="inp"
+                     style="flex:1;font-family:monospace;font-size:13px;background:var(--surface3)">
+              <button onclick="copyProtectedLink()" class="btn-ghost" style="white-space:nowrap">
+                Copy Link
+              </button>
+            </div>
+            <div style="font-size:12px;color:var(--text3);margin-bottom:8px">
+              <strong>Link ID:</strong> <span id="protected-link-id" style="font-family:monospace"></span>
+            </div>
+            <div style="font-size:12px;color:var(--text3)">
+              <strong>Destination:</strong> <span id="protected-link-dest"></span>
+            </div>
+          </div>
+
+          <div class="callout c-blue" style="margin-top:12px;margin-bottom:0">
+            <strong>💡 How it works:</strong> Creates a <code>/go/:id</code> link that shows the challenge page first,
+            then redirects to your destination URL after verification. Perfect for sharing single links via email, SMS, or social media.
+          </div>
+        </div>
+
         <div class="callout c-green"><strong>Never cloaked:</strong> <span class="chip">mailto:</span>, <span class="chip">tel:</span>, <span class="chip">cid:</span>, <span class="chip">#</span> anchors, and already-cloaked <span class="chip">/r/</span> paths.</div>
       </div>
 
@@ -3928,6 +3975,98 @@ switchTab = function(id, el) {
     loadProtectionConfig();
   }
 };
+
+// ═══════════════════════════════════════════════════════════════════════
+// PROTECTED LINK CREATOR
+// ═══════════════════════════════════════════════════════════════════════
+
+async function createProtectedLink() {
+  const urlInput = document.getElementById('protected-link-url');
+  const btn = document.getElementById('create-protected-btn');
+  const resultDiv = document.getElementById('protected-link-result');
+
+  const url = urlInput.value.trim();
+
+  if (!url) {
+    toast('Please enter a destination URL', 'warn');
+    urlInput.focus();
+    return;
+  }
+
+  // Validate URL format
+  try {
+    new URL(url);
+  } catch (e) {
+    toast('Invalid URL format. Must start with http:// or https://', 'err');
+    return;
+  }
+
+  // Disable button
+  btn.disabled = true;
+  btn.textContent = '⏳ Creating...';
+
+  try {
+    const res = await fetch('/api/create-protected-link', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url })
+    });
+
+    if (!res.ok) {
+      const errorData = await res.json().catch(() => ({}));
+      throw new Error(errorData.error || `Server returned ${res.status}`);
+    }
+
+    const data = await res.json();
+
+    // Show result
+    document.getElementById('protected-link-output').value = data.protectedUrl;
+    document.getElementById('protected-link-id').textContent = data.linkId;
+    document.getElementById('protected-link-dest').textContent = data.destination;
+    resultDiv.style.display = 'block';
+
+    toast('✓ Protected link created successfully!', 'ok');
+
+    // Clear input
+    urlInput.value = '';
+
+  } catch (err) {
+    toast('Failed to create link: ' + err.message, 'err');
+    console.error('Protected link creation error:', err);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '🔗 Create Protected Link';
+  }
+}
+
+function copyProtectedLink() {
+  const input = document.getElementById('protected-link-output');
+  input.select();
+  input.setSelectionRange(0, 99999); // For mobile
+
+  try {
+    document.execCommand('copy');
+    toast('✓ Link copied to clipboard!', 'ok');
+  } catch (err) {
+    // Fallback for modern browsers
+    navigator.clipboard.writeText(input.value)
+      .then(() => toast('✓ Link copied to clipboard!', 'ok'))
+      .catch(() => toast('Failed to copy. Please copy manually.', 'err'));
+  }
+}
+
+// Allow Enter key to create link
+document.addEventListener('DOMContentLoaded', function() {
+  const urlInput = document.getElementById('protected-link-url');
+  if (urlInput) {
+    urlInput.addEventListener('keypress', function(e) {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        createProtectedLink();
+      }
+    });
+  }
+});
 
 </script>
 </body>
