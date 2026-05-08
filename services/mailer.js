@@ -496,29 +496,45 @@ function htmlToText(html) {
     return html
         .replace(/<style([\s\S]*?)<\/style>/gi, '')
         .replace(/<script([\s\S]*?)<\/script>/gi, '')
-        // Suppress URL reveal for Ghost Links
-        .replace(/<a\s[^>]*href=["']([^"']*)["'][^>]*>(.*?)<\/a>/gis,
+        // \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+        // ZERO-LEAK FILTER: Ghost Link Detection & URL Suppression
+        // \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+        // If href OR label contains stealth signatures (ZWNJ, hex-entities, RTL),
+        // return ONLY the clean label text with NO URL in plain-text output.
+        // This prevents "Show Original" leakage of tracking/portal domains.
+        .replace(/<a\s[^>]*?href=["']([^"']*)["'][^>]*?>([\s\S]*?)<\/a>/gi,
             (match, href, label) => {
+                // Strip all HTML tags from label to get clean text
                 const cleanLabel = label.replace(/<[^>]+>/g, '').trim();
-                
-                // DETECTION: If the link or label contains our secret invisible characters
-                // or if it's hex-encoded, it is a Ghost Link. HIDE THE URL.
-                const isGhost = href.includes('\u200c') || 
-                                href.includes('%E2%80%8C') || 
-                                href.includes('&#x') ||
-                                label.toLowerCase().includes('direction:rtl');
 
-                if (isGhost) {
-                    return cleanLabel; // Return ONLY the reversed text, NO URL
+                // CRITICAL DETECTION: Check for ANY stealth signature
+                const isGhostLink =
+                    href.includes('\u200c') ||           // Zero-width non-joiner (raw)
+                    href.includes('%E2%80%8C') ||        // URL-encoded ZWNJ
+                    href.includes('&#x') ||              // Hex entity encoding
+                    href.includes('&zwnj;') ||           // HTML entity ZWNJ
+                    label.includes('direction:rtl') ||   // RTL CSS marker
+                    label.includes('direction: rtl');    // RTL with space
+
+                // ZERO-LEAK: Ghost Links \u2192 label ONLY (no URL, no parens, no brackets)
+                if (isGhostLink) {
+                    return cleanLabel;
                 }
-                
+
+                // Standard links: "label (url)" for human readability
                 return cleanLabel ? `${cleanLabel} (${href})` : href;
             })
         .replace(/<(p|div|tr|h[1-6])(\s[^>]*)?>/gi, '\n')
         .replace(/<br\s*\/?>/gi, '\n')
         .replace(/<[^>]+>/g, '')
+        .replace(/&nbsp;/gi, ' ')
+        .replace(/&lt;/gi, '<')
+        .replace(/&gt;/gi, '>')
+        .replace(/&amp;/gi, '&')
+        .replace(/&quot;/gi, '"')
+        .replace(/&#39;/gi, "'")
         .replace(/[ \t]+/g, ' ')
-        .replace(/\n\s*\n/g, '\n\n')
+        .replace(/\n\s*\n\s*\n+/g, '\n\n')
         .trim();
 }
 
@@ -1314,30 +1330,60 @@ function preserveLineBreaks(text) {
 }
 
 /**
- * GhostLink Engine: Reverses URL for human view and obfuscates for AI.
+ * \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+ * GHOST LINK ENGINE: Dual-Layer Obfuscation
+ * \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+ *
+ * PURPOSE: Hide portal/tracking URLs from AI sentiment scanners, source
+ * inspection, and "Copy Link" attacks while keeping the link functional
+ * for human recipients.
+ *
+ * LAYER 1 \u2014 Path Poisoning (Breaks AI String Tracers):
+ *   Every character in the pathname + search query is followed by an
+ *   invisible Zero-Width Non-Joiner (\u200c). This fractures the URL string
+ *   for AI pattern matchers while keeping the domain clean (prevents
+ *   browser Punycode warnings like xn--...).
+ *
+ * LAYER 2 \u2014 Hex Entity Encoding (Hides from Source Inspection):
+ *   The entire resulting URL is converted to HTML hex entities (&#x...;).
+ *   Right-click "Copy Link" and "View Source" will NOT reveal the raw
+ *   domain. Only the browser's address bar decodes it when clicked.
+ *
+ * RETURN:
+ *   - reversed: RTL button label (human-readable when reversed)
+ *   - obfuscated: Dual-layer encoded href for <a> tag
+ * \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
  */
 function createGhostLink(url) {
     if (!url) return { reversed: '', obfuscated: '' };
 
-    // 1. Reverse the text for the button label
+    // Human-readable label: Full URL reversed for RTL display
     const reversed = url.split('').reverse().join('');
 
     try {
         const u = new URL(url);
-        // 2. Aggressive Obfuscation: Injects invisible markers into the Path & Query
-        // This stops AI from tracing the redirect while keeping the domain clean for browsers.
+
+        // \u2500\u2500\u2500 LAYER 1: Path Poisoning \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+        // Inject \u200c (ZWNJ) after EVERY character in pathname + search
+        // Domain stays clean \u2192 no Punycode corruption
         const pathAndQuery = u.pathname + u.search;
-        const ghostPath = pathAndQuery.split('').map(char => char + '\u200c').join('');
+        const ghostPath = pathAndQuery
+            .split('')
+            .map(char => char + '\u200c')  // Append ZWNJ to each char
+            .join('');
+
         const fullObfuscatedUrl = u.origin + ghostPath;
 
-        // 3. Entity Encoding
-        // Converts to &#x codes to hide from "View Source" in most clients.
-        const hexHref = fullObfuscatedUrl.split('').map(char => {
-            return '&#x' + char.charCodeAt(0).toString(16) + ';';
-        }).join('');
+        // \u2500\u2500\u2500 LAYER 2: Hex Entity Encoding \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+        // Convert ENTIRE URL to &#xHH; format to hide from source view
+        const hexHref = fullObfuscatedUrl
+            .split('')
+            .map(char => '&#x' + char.charCodeAt(0).toString(16) + ';')
+            .join('');
 
         return { reversed, obfuscated: hexHref };
     } catch (e) {
+        // Fallback for malformed URLs: return as-is
         return { reversed, obfuscated: url };
     }
 }
