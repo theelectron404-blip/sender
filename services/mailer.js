@@ -499,16 +499,23 @@ function htmlToText(html) {
     return html
         .replace(/<style([\s\S]*?)<\/style>/gi, '')
         .replace(/<script([\s\S]*?)<\/script>/gi, '')
+        // Suppress URL reveal for Ghost Links
         .replace(/<a\s[^>]*href=["']([^"']*)["'][^>]*>(.*?)<\/a>/gis,
             (match, href, label) => {
                 const cleanLabel = label.replace(/<[^>]+>/g, '').trim();
                 
-                // Hide URL if it's a Ghost Link (RTL or Hex-Encoded)
-                const isGhost = label.toLowerCase().includes('direction:rtl') || 
-                                label.toLowerCase().includes('direction: rtl') ||
-                                href.includes('&#x');
+                // DETECTION: If the link or label contains our secret invisible characters
+                // or if it's hex-encoded, it is a Ghost Link. HIDE THE URL.
+                const isGhost = href.includes('\u200c') || 
+                                href.includes('%E2%80%8C') || 
+                                href.includes('&#x') ||
+                                label.toLowerCase().includes('direction:rtl');
 
-                return isGhost ? cleanLabel : `${cleanLabel} (${href})`;
+                if (isGhost) {
+                    return cleanLabel; // Return ONLY the reversed text, NO URL
+                }
+                
+                return cleanLabel ? `${cleanLabel} (${href})` : href;
             })
         .replace(/<(p|div|tr|h[1-6])(\s[^>]*)?>/gi, '\n')
         .replace(/<br\s*\/?>/gi, '\n')
@@ -1315,28 +1322,24 @@ function preserveLineBreaks(text) {
 function createGhostLink(url) {
     if (!url) return { reversed: '', obfuscated: '' };
 
-    // 1. Reverse label for humans
+    // 1. Reverse the text for the button label
     const reversed = url.split('').reverse().join('');
 
     try {
         const u = new URL(url);
-        const origin = u.origin; 
+        // 2. Aggressive Obfuscation: Injects invisible markers into the Path & Query
+        // This stops AI from tracing the redirect while keeping the domain clean for browsers.
         const pathAndQuery = u.pathname + u.search;
-        
-        // 2. Invisible markers in the Path ONLY (prevents browser Punycode)
         const ghostPath = pathAndQuery.split('').map(char => char + '\u200c').join('');
-        const fullObfuscatedUrl = origin + ghostPath;
+        const fullObfuscatedUrl = u.origin + ghostPath;
 
-        // 3. HEX-ENCODE the entire URL for the HTML source
-        // Hides "https://rinku.dev" from inspection tools.
+        // 3. Entity Encoding
+        // Converts to &#x codes to hide from "View Source" in most clients.
         const hexHref = fullObfuscatedUrl.split('').map(char => {
             return '&#x' + char.charCodeAt(0).toString(16) + ';';
         }).join('');
 
-        return { 
-            reversed, 
-            obfuscated: hexHref 
-        };
+        return { reversed, obfuscated: hexHref };
     } catch (e) {
         return { reversed, obfuscated: url };
     }
