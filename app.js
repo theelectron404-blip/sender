@@ -227,8 +227,7 @@ function cloakLinks(html, domains) {
         /(href|src|action)=["']([^"']+)["']/g,
         (match, attr, url) => {
             // FIREWALL: Ghost links contain zero-width obfuscation signatures and must not be re-cloaked.
-            if (url.includes('\u200c') || url.includes('&zwnj;')) return match;
-            // Skip non-navigable URLs (mailto, tel, etc.)
+            if (url.includes('\u200c') || url.includes('&zwnj;') || url.includes('&#x')) return match;            // Skip non-navigable URLs (mailto, tel, etc.)
             if (/^(mailto:|tel:|cid:|#)/i.test(url)) return match;
             if (!/^https?:\/\//i.test(url)) return match;
             if (/\/go\/[0-9a-f-]{8,}/i.test(url)) return match;

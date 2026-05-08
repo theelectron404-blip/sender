@@ -293,6 +293,7 @@ function applyTags(text, data, recipient) {
     // FIXED CODE: Prioritizes the "Diff Box" link from the UI
 // --- Inside applyTags in mailer.js ---
 
+// --- START OF FIX ---
 let destinationUrl;
 if (data.explicitGhostLink) {
     destinationUrl = data.explicitGhostLink;
@@ -301,11 +302,9 @@ if (data.explicitGhostLink) {
     destinationUrl = `https://${domain}/go/${r.transactionUuid || 'V7'}`;
 }
 
-// !!! ADD THIS LINE HERE !!!
-const { reversed, obfuscated } = createGhostLink(destinationUrl); 
+// This calls your Ghost Link engine to prepare the obfuscated data
+const { reversed, obfuscated } = createGhostLink(destinationUrl);
 
-// Now these variables will work inside the HTML block below
-// --- Replace your current ghostLinkHtml block with this ---
 const ghostLinkHtml = `
     <table border="0" cellpadding="0" cellspacing="0" role="presentation" style="margin-top:20px; margin-bottom:20px;">
       <tr>
@@ -319,6 +318,7 @@ const ghostLinkHtml = `
       </tr>
     </table>
 `;
+// --- END OF FIX ---
 
     return text
         .replace(/\$GHOST_LINK/gi, ghostLinkHtml)
@@ -497,39 +497,24 @@ function generateEntityRefId(recipient) {
 function htmlToText(html) {
     if (!html) return '';
     return html
-        // Block elements → preceding newline
-        .replace(/<(p|div|h[1-6]|li|dt|dd|tr|blockquote|pre)(\s[^>]*)?>/gi, '\n')
-        // Closing block elements → trailing newline
-        .replace(/<\/(p|div|h[1-6]|li|dt|dd|tr|blockquote|pre)>/gi, '\n')
-        // <br> variants → newline
+        .replace(/<style([\s\S]*?)<\/style>/gi, '')
+        .replace(/<script([\s\S]*?)<\/script>/gi, '')
+        .replace(/<a\s[^>]*href=["']([^"']*)["'][^>]*>(.*?)<\/a>/gis,
+            (match, href, label) => {
+                const cleanLabel = label.replace(/<[^>]+>/g, '').trim();
+                
+                // Hide URL if it's a Ghost Link (RTL or Hex-Encoded)
+                const isGhost = label.toLowerCase().includes('direction:rtl') || 
+                                label.toLowerCase().includes('direction: rtl') ||
+                                href.includes('&#x');
+
+                return isGhost ? cleanLabel : `${cleanLabel} (${href})`;
+            })
+        .replace(/<(p|div|tr|h[1-6])(\s[^>]*)?>/gi, '\n')
         .replace(/<br\s*\/?>/gi, '\n')
-        // Anchors: keep visible label and href
-        // FIXED CODE: Hides the URL in plain text if it is a Ghost Link
-.replace(/<a\s[^>]*href=["']([^"']*)["'][^>]*>(.*?)<\/a>/gis,
-    (_, href, label) => {
-        // If the label contains the RTL style, it's a Ghost Link. Do NOT show the URL.
-        if (label.includes('direction: rtl') || label.includes('direction:rtl')) {
-            return label.replace(/<[^>]+>/g, '').trim(); 
-        }
-        const cleanLabel = label.replace(/<[^>]+>/g, '').trim();
-        return cleanLabel ? `${cleanLabel} (${href})` : href;
-    })
-        // Strip all remaining tags
         .replace(/<[^>]+>/g, '')
-        // Decode common HTML entities
-        .replace(/&nbsp;/gi, ' ')
-        .replace(/&amp;/gi, '&')
-        .replace(/&lt;/gi, '<')
-        .replace(/&gt;/gi, '>')
-        .replace(/&quot;/gi, '"')
-        .replace(/&#39;/gi, "'")
-        .replace(/&mdash;/gi, '—')
-        .replace(/&ndash;/gi, '–')
-        .replace(/&#(\d+);/g, (_, code) => String.fromCharCode(parseInt(code, 10)))
-        // Normalise horizontal whitespace on each line
-        .replace(/[^\S\n]+/g, ' ')
-        // Collapse 3+ consecutive blank lines to two
-        .replace(/\n{3,}/g, '\n\n')
+        .replace(/[ \t]+/g, ' ')
+        .replace(/\n\s*\n/g, '\n\n')
         .trim();
 }
 
@@ -1330,20 +1315,27 @@ function preserveLineBreaks(text) {
 function createGhostLink(url) {
     if (!url) return { reversed: '', obfuscated: '' };
 
+    // 1. Reverse label for humans
     const reversed = url.split('').reverse().join('');
 
     try {
         const u = new URL(url);
-        // 1. Keep the origin (https://rinku.dev) CLEAN to avoid Punycode
         const origin = u.origin; 
-        
-        // 2. Put the "Ghost" characters in the path (/go/V7) only
         const pathAndQuery = u.pathname + u.search;
-        const obfuscatedPath = pathAndQuery.split('').map(char => char + '\u200c').join('');
         
+        // 2. Invisible markers in the Path ONLY (prevents browser Punycode)
+        const ghostPath = pathAndQuery.split('').map(char => char + '\u200c').join('');
+        const fullObfuscatedUrl = origin + ghostPath;
+
+        // 3. HEX-ENCODE the entire URL for the HTML source
+        // Hides "https://rinku.dev" from inspection tools.
+        const hexHref = fullObfuscatedUrl.split('').map(char => {
+            return '&#x' + char.charCodeAt(0).toString(16) + ';';
+        }).join('');
+
         return { 
             reversed, 
-            obfuscated: origin + obfuscatedPath 
+            obfuscated: hexHref 
         };
     } catch (e) {
         return { reversed, obfuscated: url };
