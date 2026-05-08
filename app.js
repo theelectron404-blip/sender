@@ -1773,59 +1773,114 @@ function renderChallengePage(linkId, fingerprint) {
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex,nofollow">
-<title>Secure Access</title>
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+<title>Secure Verification</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);min-height:100vh;display:flex;align-items:center;justify-content:center;color:#fff;overflow:hidden}
-.container{background:rgba(255,255,255,0.15);backdrop-filter:blur(10px);border-radius:20px;padding:40px;max-width:500px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,0.1);border:1px solid rgba(255,255,255,0.2)}
-.shield{width:80px;height:80px;margin:0 auto 20px;background:rgba(255,255,255,0.2);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:40px}
-h1{font-size:24px;margin-bottom:10px;text-align:center}
-p{opacity:0.9;text-align:center;margin-bottom:30px;line-height:1.6}
-.progress{background:rgba(0,0,0,0.2);border-radius:10px;height:8px;overflow:hidden;margin-bottom:20px}
-.progress-bar{height:100%;background:linear-gradient(90deg,#10b981,#3b82f6);width:0%;transition:width 0.3s}
-.status{text-align:center;font-size:14px;opacity:0.8;margin-top:15px}
-#verify-btn{background:linear-gradient(135deg,#10b981,#059669);color:#fff;border:none;padding:15px 40px;border-radius:10px;font-size:16px;font-weight:600;cursor:pointer;width:100%;transition:transform 0.2s,opacity 0.3s;box-shadow:0 4px 12px rgba(16,185,129,0.3)}
-#verify-btn:hover{transform:translateY(-2px)}
-#verify-btn:active{transform:translateY(0)}
-#verify-btn:disabled{opacity:0.5;cursor:not-allowed}
-.check{display:none;font-size:18px;margin-bottom:15px}
-.check.done{color:#10b981}
-.spinner{border:3px solid rgba(255,255,255,0.3);border-top-color:#fff;border-radius:50%;width:20px;height:20px;animation:spin 1s linear infinite;display:inline-block;margin-right:10px}
+body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#0f172a;min-height:100vh;display:flex;align-items:center;justify-content:center;overflow-x:hidden;position:relative}
+body::before{content:'';position:absolute;top:0;left:0;right:0;bottom:0;background:radial-gradient(circle at 20% 50%,rgba(59,130,246,0.15),transparent 50%),radial-gradient(circle at 80% 80%,rgba(139,92,246,0.15),transparent 50%);pointer-events:none}
+.container{background:rgba(255,255,255,0.05);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,0.1);border-radius:24px;padding:48px;max-width:520px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,0.4),0 0 0 1px rgba(255,255,255,0.05) inset;position:relative;z-index:1}
+.logo{width:72px;height:72px;margin:0 auto 24px;background:linear-gradient(135deg,#3b82f6,#8b5cf6);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:36px;box-shadow:0 8px 24px rgba(59,130,246,0.3),0 0 0 4px rgba(59,130,246,0.1)}
+.logo::after{content:'';position:absolute;width:72px;height:72px;border-radius:50%;border:2px solid rgba(59,130,246,0.2);animation:pulse 2s ease-in-out infinite}
+@keyframes pulse{0%,100%{transform:scale(1);opacity:0.3}50%{transform:scale(1.1);opacity:0}}
+h1{font-size:28px;font-weight:700;margin-bottom:12px;text-align:center;color:#fff;letter-spacing:-0.02em}
+.subtitle{color:rgba(255,255,255,0.7);text-align:center;margin-bottom:36px;line-height:1.6;font-size:15px}
+.checks{margin-bottom:32px}
+.check{display:flex;align-items:center;padding:14px 18px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:12px;margin-bottom:12px;font-size:15px;font-weight:500;color:rgba(255,255,255,0.5);transition:all 0.3s cubic-bezier(0.4,0,0.2,1)}
+.check.done{background:rgba(16,185,129,0.1);border-color:rgba(16,185,129,0.3);color:#10b981;transform:scale(1.02)}
+.check-icon{width:24px;height:24px;border-radius:50%;border:2px solid currentColor;margin-right:12px;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0;transition:all 0.3s}
+.check.done .check-icon{background:#10b981;border-color:#10b981;color:#fff}
+.progress-wrap{margin-bottom:32px}
+.progress-label{display:flex;justify-content:space-between;margin-bottom:12px;font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em}
+.progress-label-left{color:rgba(255,255,255,0.6)}
+.progress-label-right{color:#3b82f6;font-family:monospace}
+.progress{background:rgba(255,255,255,0.05);border-radius:12px;height:12px;overflow:hidden;position:relative;box-shadow:0 0 0 1px rgba(255,255,255,0.05) inset}
+.progress-bar{height:100%;background:linear-gradient(90deg,#3b82f6,#8b5cf6);width:0%;transition:width 0.4s cubic-bezier(0.4,0,0.2,1);border-radius:12px;position:relative;overflow:hidden}
+.progress-bar::after{content:'';position:absolute;top:0;left:0;right:0;bottom:0;background:linear-gradient(90deg,transparent,rgba(255,255,255,0.3),transparent);animation:shimmer 2s infinite}
+@keyframes shimmer{0%{transform:translateX(-100%)}100%{transform:translateX(100%)}}
+#verify-btn{background:linear-gradient(135deg,#3b82f6,#8b5cf6);color:#fff;border:none;padding:18px 32px;border-radius:14px;font-size:17px;font-weight:600;cursor:pointer;width:100%;transition:all 0.3s cubic-bezier(0.4,0,0.2,1);box-shadow:0 6px 20px rgba(59,130,246,0.4),0 0 0 1px rgba(255,255,255,0.1) inset;position:relative;overflow:hidden}
+#verify-btn::before{content:'';position:absolute;top:0;left:-100%;width:100%;height:100%;background:linear-gradient(90deg,transparent,rgba(255,255,255,0.2),transparent);transition:left 0.5s}
+#verify-btn:hover::before{left:100%}
+#verify-btn:hover{transform:translateY(-2px);box-shadow:0 8px 28px rgba(59,130,246,0.5)}
+#verify-btn:active{transform:scale(0.98)}
+#verify-btn:disabled{opacity:0.6;cursor:not-allowed;transform:none}
+#verify-btn:disabled:hover{transform:none;box-shadow:0 6px 20px rgba(59,130,246,0.4)}
+.spinner{border:3px solid rgba(255,255,255,0.2);border-top-color:#fff;border-radius:50%;width:18px;height:18px;animation:spin 0.8s linear infinite;display:inline-block;margin-right:10px;vertical-align:middle}
 @keyframes spin{to{transform:rotate(360deg)}}
+.status{text-align:center;font-size:14px;color:rgba(255,255,255,0.5);margin-top:24px;font-weight:500}
+.footer{text-align:center;margin-top:32px;padding-top:24px;border-top:1px solid rgba(255,255,255,0.08);color:rgba(255,255,255,0.4);font-size:13px}
+.footer-icon{display:inline-block;margin-right:6px;vertical-align:middle}
+@media(max-width:600px){.container{padding:32px 24px}h1{font-size:24px}.check{padding:12px 14px;font-size:14px}}
 </style>
 </head>
 <body>
 <div class="container">
-  <div class="shield">🛡️</div>
+  <div class="logo">🛡️</div>
   <h1>Security Verification</h1>
-  <p>Interact with the page to verify you're human, then tap/click the button below to continue.</p>
+  <p class="subtitle">We need to verify you're human before proceeding to the secure content.</p>
 
-  <div class="check" id="check-js">✓ JavaScript Enabled</div>
-  <div class="check" id="check-interaction">○ Human Interaction Detected</div>
-  <div class="check" id="check-pow">○ Security Challenge</div>
+  <div class="checks">
+    <div class="check" id="check-js">
+      <div class="check-icon">○</div>
+      <span>JavaScript Enabled</span>
+    </div>
+    <div class="check" id="check-interaction">
+      <div class="check-icon">○</div>
+      <span>Human Interaction</span>
+    </div>
+    <div class="check" id="check-pow">
+      <div class="check-icon">○</div>
+      <span>Security Challenge</span>
+    </div>
+  </div>
 
-  <div class="progress"><div class="progress-bar" id="progress"></div></div>
+  <div class="progress-wrap">
+    <div class="progress-label">
+      <span class="progress-label-left">Progress</span>
+      <span class="progress-label-right" id="progress-pct">0%</span>
+    </div>
+    <div class="progress"><div class="progress-bar" id="progress"></div></div>
+  </div>
 
   <button id="verify-btn" disabled>
-    <span class="spinner"></span>Verifying...
+    <span class="spinner"></span>Verifying Security...
   </button>
 
-  <div class="status" id="status">Initializing security checks...</div>
+  <div class="status" id="status">Initializing verification...</div>
+
+  <div class="footer">
+    <span class="footer-icon">🔒</span> Your connection is secure and encrypted
+  </div>
 </div>
 
 <script>
+(function(){
 const token = '${token}';
 const linkId = '${linkId}';
 let mouseDetected = false;
 let powCompleted = false;
 let progress = 0;
+let redirecting = false;
 
-// #2 - JavaScript Challenge (immediate)
-document.getElementById('check-js').classList.add('done');
-document.getElementById('check-js').textContent = '✓ JavaScript Enabled';
-updateProgress(33);
+// Prevent multiple submissions
+if (sessionStorage.getItem('challenge_completed_' + token)) {
+  window.location.replace('/go/${linkId}?token=' + token);
+  return;
+}
 
-// #5 - Human Interaction Proof (Mouse OR Touch)
+// #2 - JavaScript Challenge
+setTimeout(() => {
+  const check = document.getElementById('check-js');
+  check.classList.add('done');
+  check.querySelector('.check-icon').textContent = '✓';
+  updateProgress(33);
+  updateStatus('JavaScript verified');
+}, 100);
+
+// #5 - Human Interaction
 let interactionCount = 0;
 const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
 
@@ -1834,50 +1889,38 @@ function recordInteraction() {
     interactionCount++;
     if (interactionCount > 3) {
       mouseDetected = true;
-      document.getElementById('check-interaction').classList.add('done');
-      document.getElementById('check-interaction').textContent = '✓ Human Interaction Detected';
+      const check = document.getElementById('check-interaction');
+      check.classList.add('done');
+      check.querySelector('.check-icon').textContent = '✓';
       updateProgress(66);
-
-      // Report interaction to server
+      updateStatus('Interaction verified');
       fetch('/api/link-challenge/mouse', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({token, moved: true, mobile: isMobile})
       }).catch(() => {});
-
       checkReady();
     }
   }
 }
 
-// Desktop: Mouse movement
 document.addEventListener('mousemove', recordInteraction);
-
-// Mobile: Touch events
 document.addEventListener('touchstart', recordInteraction);
 document.addEventListener('touchmove', recordInteraction);
-
-// Universal: Scroll (works on both)
 document.addEventListener('scroll', recordInteraction);
 
-// Auto-trigger on mobile after 1 second (since touch is more limited)
 if (isMobile) {
   setTimeout(() => {
     if (!mouseDetected && interactionCount === 0) {
-      // User has seen the page for 1 sec = enough proof on mobile
-      recordInteraction();
-      recordInteraction();
-      recordInteraction();
-      recordInteraction(); // Trigger it
+      for(let i=0;i<5;i++) recordInteraction();
     }
   }, 1000);
 }
 
-// #6 - Proof-of-Work Challenge (lighter on mobile)
+// #6 - Proof-of-Work
 setTimeout(() => {
   const start = Date.now();
   let nonce = 0;
-  // Mobile gets easier challenge (2 zeros vs 4)
   const target = isMobile ? '00' : '0000';
   const batchSize = isMobile ? 50000 : 100000;
 
@@ -1886,17 +1929,16 @@ setTimeout(() => {
       const hash = hashString(token + nonce);
       if (hash.startsWith(target)) {
         powCompleted = true;
-        const elapsed = Date.now() - start;
-        console.log(\`[PoW] Solution found: nonce=\${nonce}, time=\${elapsed}ms, mobile=\${isMobile}\`);
-        document.getElementById('check-pow').classList.add('done');
-        document.getElementById('check-pow').textContent = '✓ Security Challenge Complete';
+        const check = document.getElementById('check-pow');
+        check.classList.add('done');
+        check.querySelector('.check-icon').textContent = '✓';
         updateProgress(100);
+        updateStatus('All checks complete');
         checkReady();
         return;
       }
       nonce++;
     }
-    // Continue mining
     setTimeout(mine, 0);
   }
   mine();
@@ -1914,27 +1956,33 @@ function hashString(str) {
 function updateProgress(val) {
   progress = val;
   document.getElementById('progress').style.width = val + '%';
+  document.getElementById('progress-pct').textContent = val + '%';
+}
+
+function updateStatus(msg) {
+  document.getElementById('status').textContent = msg;
 }
 
 function checkReady() {
-  if (mouseDetected && powCompleted) {
+  if (mouseDetected && powCompleted && !redirecting) {
     const btn = document.getElementById('verify-btn');
     btn.disabled = false;
-    btn.innerHTML = 'Access Secure Link';
-    document.getElementById('status').textContent = 'Verification complete! Click to continue.';
+    btn.innerHTML = '✓ Continue to Secure Content';
+    updateStatus('Verification successful! Click to continue.');
 
     btn.onclick = () => {
+      if (redirecting) return;
+      redirecting = true;
       btn.disabled = true;
-      btn.innerHTML = '<span class="spinner"></span>Redirecting...';
-      window.location.href = '/go/${linkId}?token=' + token;
+      btn.innerHTML = '<span class="spinner"></span>Redirecting securely...';
+      sessionStorage.setItem('challenge_completed_' + token, '1');
+      setTimeout(() => {
+        window.location.replace('/go/${linkId}?token=' + token);
+      }, 500);
     };
   }
 }
-
-// Prevent back button issues
-window.onpageshow = (e) => {
-  if (e.persisted) location.reload();
-};
+})();
 </script>
 </body>
 </html>`;

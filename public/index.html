@@ -2057,20 +2057,62 @@ function setBatchRunning(yes) {
   var rb = document.getElementById('resume-btn');
   var sb = document.getElementById('stop-btn');
   var lb = document.getElementById('launch-btn');
+
+  // Null check - prevent errors if elements don't exist
+  if (!pb || !rb || !sb || !lb) {
+    console.error('[UI] Button elements not found - cannot update batch state');
+    return;
+  }
+
   if (yes) {
-    pb.style.display = 'flex'; rb.style.display = 'none'; sb.style.display = 'flex'; lb.disabled = true;
+    pb.style.display = 'flex';
+    rb.style.display = 'none';
+    sb.style.display = 'flex';
+    lb.disabled = true;
     lb.innerHTML = '<svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> Sending...';
   } else {
-    pb.style.display = 'none'; rb.style.display = 'none'; sb.style.display = 'none'; lb.disabled = false;
+    // Force reset all control buttons to hidden state
+    pb.style.display = 'none';
+    rb.style.display = 'none';
+    sb.style.display = 'none';
+    lb.disabled = false;
     lb.innerHTML = '<svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg> Launch';
+  }
+}
+
+// Force reset UI to idle state - called on completion and errors
+function forceResetBatchUI() {
+  try {
+    setBatchRunning(false);
+    setBatchPaused(false);
+    setStatus('IDLE', 'idle');
+    clearInterval(_pauseTimer);
+    clearTimeout(_batchWatchdog);
+    setProgress(0);
+  } catch (e) {
+    console.error('[UI] Error resetting batch UI:', e);
   }
 }
 
 function setBatchPaused(yes) {
   var pb = document.getElementById('pause-btn');
   var rb = document.getElementById('resume-btn');
-  if (yes) { pb.style.display = 'none'; rb.style.display = 'flex'; setStatus('PAUSED', 'paused'); }
-  else     { pb.style.display = 'flex'; rb.style.display = 'none'; setStatus('RUNNING', 'running'); }
+
+  // Null check
+  if (!pb || !rb) {
+    console.error('[UI] Pause/Resume buttons not found');
+    return;
+  }
+
+  if (yes) {
+    pb.style.display = 'none';
+    rb.style.display = 'flex';
+    setStatus('PAUSED', 'paused');
+  } else {
+    pb.style.display = 'flex';
+    rb.style.display = 'none';
+    setStatus('RUNNING', 'running');
+  }
 }
 
 async function batchPause() {
@@ -2084,11 +2126,12 @@ async function batchResume() {
 async function batchStop() {
   try {
     await fetch('/api/batch/stop', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ socketId: socket.id }) });
+    forceResetBatchUI();
     setStatus('STOPPED', 'stopped');
-    setBatchRunning(false);
     feedLine('warn', null, null, '[USER] Stop requested.');
-    clearTimeout(_batchWatchdog);
-  } catch (e) {}
+  } catch (e) {
+    console.error('[BATCH] Stop error:', e);
+  }
 }
 
 // Watchdog: Auto-reset UI if batch appears stalled (no events for 60s)
@@ -2096,7 +2139,7 @@ function startBatchWatchdog() {
   clearTimeout(_batchWatchdog);
   _batchWatchdog = setTimeout(function() {
     console.warn('[WATCHDOG] No batch events received for 60s - resetting UI');
-    setBatchRunning(false);
+    forceResetBatchUI();
     setStatus('TIMEOUT', 'error');
     feedLine('warn', null, null, '[WATCHDOG] Batch appears stalled - UI reset. Check server logs.');
     showToast('⚠ Batch connection lost - UI reset', 'warn');
@@ -2116,6 +2159,10 @@ socket.on('connect', function() {
 socket.on('disconnect', function() {
   var d = document.getElementById('conn-dot'), l = document.getElementById('conn-label');
   d.className = 'err'; l.textContent = 'Disconnected'; l.style.color = 'var(--red)';
+
+  // Reset batch UI if disconnected during a batch
+  forceResetBatchUI();
+  showToast('⚠ Connection lost - batch UI reset', 'warn');
 });
 socket.on('batch:start', function(d) {
   _firstSend = false;
@@ -2179,14 +2226,21 @@ socket.on('batch:progress', function(d) {
   }
 });
 socket.on('batch:complete', function(d) {
-  clearInterval(_pauseTimer);
-  clearTimeout(_batchWatchdog);  // Clear watchdog timer
   var ok = d.failed === 0;
+
+  // Complete UI reset - force all buttons back to idle
+  forceResetBatchUI();
+
+  // Set final status
   setStatus(ok ? 'COMPLETE' : 'ERRORS', ok ? 'success' : 'error');
-  feedLine(ok ? 'success' : 'warn', null, null, 'Batch complete — ' + d.success + ' sent, ' + d.failed + ' failed.');
   setProgress(100);
-  if (sessionLog.length) document.getElementById('saveLogsBtn').disabled = false;
-  setBatchRunning(false);
+
+  feedLine(ok ? 'success' : 'warn', null, null, 'Batch complete — ' + d.success + ' sent, ' + d.failed + ' failed.');
+
+  if (sessionLog.length) {
+    var saveBtn = document.getElementById('saveLogsBtn');
+    if (saveBtn) saveBtn.disabled = false;
+  }
 
   // Show rotation summary if available
   var message = ok ? '✓ Batch complete — ' + d.success + ' delivered' : '⚠ Done — ' + d.success + ' sent, ' + d.failed + ' failed';
@@ -2204,6 +2258,8 @@ socket.on('batch:complete', function(d) {
     btn.textContent = '📊 Stats';
     btn.title = '';
   }
+
+  console.log('[BATCH] Complete - UI reset to idle state');
 });
 socket.on('batch:paused', function(d) {
   startBatchWatchdog();  // Reset watchdog on pause event
@@ -2556,6 +2612,8 @@ function showRotationStats() {
 
 // Initialize rotation preview on load
 document.addEventListener('DOMContentLoaded', function() {
+  // Ensure UI starts in clean idle state
+  setTimeout(forceResetBatchUI, 50);
   setTimeout(updateRotationPreview, 100);
   setTimeout(refreshDeliverabilityHealth, 500); // Load deliverability data
   setTimeout(loadGraphStatusApi, 700);
@@ -3710,7 +3768,7 @@ async function handleSend() {
 
     if (!res.ok) {
       var data = await res.json();
-      setBatchRunning(false);
+      forceResetBatchUI();
       showToast(data.error || 'Server error', 'err');
       feedLine('failed', null, null, data.error || 'Server error');
     } else {
@@ -3739,7 +3797,7 @@ async function handleSend() {
       feedLine('info', null, null, 'Batch request sent to server...');
     }
   } catch (e) {
-    setBatchRunning(false);
+    forceResetBatchUI();
     showToast('Request failed: ' + e.message, 'err');
     feedLine('failed', null, null, 'Request failed: ' + e.message);
   }
