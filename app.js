@@ -2748,26 +2748,14 @@ function msUntilSendWindow(tz, startHour, endHour) {
 // ADVANCED STEALTH SYSTEM - SERVER-SIDE PROTECTION
 // ═══════════════════════════════════════════════════════════════════════
 
+// ═══════════════════════════════════════════════════════════════════════
+// GHOST LINK STEALTH SYSTEM
+// ═══════════════════════════════════════════════════════════════════════
 // In-memory token store (use Redis in production for scale)
 const ghostLinkStore = new Map();
 const honeypotLog = new Map();
 
-// Bot detection patterns
-const BOT_PATTERNS = [
-    /bot|crawler|spider|scraper|scanner|slurp/i,
-    /curl|wget|python-requests|java|go-http|axios/i,
-    /headless|phantom|selenium|puppeteer|playwright/i,
-    /postman|insomnia|httpie|rest-client/i
-];
-
-function detectBot(req) {
-    const ua = String(req.headers['user-agent'] || '').toLowerCase();
-    if (BOT_PATTERNS.some(p => p.test(ua))) return { isBot: true, reason: 'user-agent-pattern' };
-    if (!ua || ua.length < 10) return { isBot: true, reason: 'missing-ua' };
-    if (!req.headers['accept']) return { isBot: true, reason: 'missing-accept' };
-    return { isBot: false };
-}
-
+// Time-based validation with hour:minute precision
 function isWithinActiveHours(startHour = 6, startMin = 0, endHour = 22, endMin = 0) {
     const now = new Date();
     const currentMinutes = now.getHours() * 60 + now.getMinutes();
