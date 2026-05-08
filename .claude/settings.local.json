@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "Bash(node -c services/mailer.js)",
-      "Bash(node -c app.js)"
+      "Bash(node -c app.js)",
+      "Bash(node *)"
     ]
   }
 }

@@ -1865,9 +1865,11 @@ let powCompleted = false;
 let progress = 0;
 let redirecting = false;
 
-// Prevent multiple submissions
-if (sessionStorage.getItem('challenge_completed_' + token)) {
-  window.location.replace('/go/${linkId}?token=' + token);
+// Prevent multiple submissions - check by linkId (persistent across refreshes)
+const completedToken = sessionStorage.getItem('challenge_completed_link_' + linkId);
+if (completedToken) {
+  // Already completed, redirect immediately
+  window.location.replace('/go/${linkId}?token=' + completedToken);
   return;
 }
 
@@ -1975,7 +1977,10 @@ function checkReady() {
       redirecting = true;
       btn.disabled = true;
       btn.innerHTML = '<span class="spinner"></span>Redirecting securely...';
-      sessionStorage.setItem('challenge_completed_' + token, '1');
+
+      // Store completion by linkId (persists across refreshes) and save the token
+      sessionStorage.setItem('challenge_completed_link_' + linkId, token);
+
       setTimeout(() => {
         window.location.replace('/go/${linkId}?token=' + token);
       }, 500);
