@@ -2078,10 +2078,32 @@ app.post('/api/create-protected-link', express.json(), (req, res) => {
     // Generate unique ID
     const linkId = crypto.randomUUID();
 
-    // Get redirect domain (use first domain or localhost)
-    const redirectDomains = (process.env.REDIRECT_DOMAINS || '').split('\n').filter(Boolean);
-    const domain = redirectDomains[0] || `localhost:${process.env.PORT || 3000}`;
-    const protocol = domain.includes('localhost') ? 'http' : 'https';
+    // Get domain from request host or redirect domains setting
+    let domain;
+    let protocol = 'https';
+
+    // Try to get from request headers first (real domain)
+    const requestHost = req.get('host');
+
+    // Check if redirect domains are configured (from dashboard settings)
+    const redirectDomainsField = req.body.redirectDomain || global._redirectDomains;
+
+    if (redirectDomainsField && redirectDomainsField.trim()) {
+        // Use first redirect domain from settings
+        const domains = redirectDomainsField.split('\n').map(d => d.trim()).filter(Boolean);
+        domain = domains[0];
+    } else if (requestHost) {
+        // Use the current request host (your VPS domain)
+        domain = requestHost;
+        // If it's localhost or has :port, use http, otherwise https
+        if (requestHost.includes('localhost') || requestHost.match(/:\d+$/)) {
+            protocol = 'http';
+        }
+    } else {
+        // Fallback
+        domain = 'localhost:3000';
+        protocol = 'http';
+    }
 
     // Store the link
     _redirectStore.set(linkId, {
@@ -2097,13 +2119,14 @@ app.post('/api/create-protected-link', express.json(), (req, res) => {
 
     const protectedUrl = `${protocol}://${domain}/go/${linkId}`;
 
-    console.log(`[ProtectedLink] Created: ${linkId} → ${url}`);
+    console.log(`[ProtectedLink] Created: ${linkId} → ${url} (domain: ${domain})`);
 
     res.json({
         ok: true,
         linkId: linkId,
         protectedUrl: protectedUrl,
         destination: url,
+        domain: domain,
         createdAt: Date.now()
     });
 });
