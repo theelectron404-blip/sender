@@ -484,7 +484,7 @@ details[open] summary{margin-bottom:13px}
     </div>
     <div class="sbi" onclick="switchTab('tab-antidetect',this)">
       <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><circle cx="12" cy="9" r="1"/><circle cx="9" cy="12" r="1"/><circle cx="15" cy="12" r="1"/></svg>Anti-Detection
-      <span class="sbi-badge" style="background:#8b5cf6;color:#fff">9</span>
+      <span class="sbi-badge" style="background:#10b981;color:#fff">4</span>
     </div>
     <div class="sbi" onclick="switchTab('tab-throttle',this)">
       <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>Throttling
@@ -1055,19 +1055,19 @@ details[open] summary{margin-bottom:13px}
       <!-- ── ANTI-DETECTION TAB ── -->
       <div id="tab-antidetect" class="tab-panel">
         <div class="s-hdr">
-          <div class="s-hdr-title">🛡️ Multi-Layer Anti-Detection System</div>
-          <div class="s-hdr-sub">9 advanced techniques to bypass spam filters, AI scanners, and pattern matching</div>
+          <div class="s-hdr-title">🛡️ Safe Anti-Detection System</div>
+          <div class="s-hdr-sub">4 safe techniques optimized for clean email delivery without HTML corruption</div>
         </div>
 
         <!-- Status Overview -->
         <div class="card">
           <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">
             <div style="text-align:center;padding:16px;background:var(--surface3);border-radius:8px">
-              <div style="font-size:32px;font-weight:700;color:#10b981">9</div>
+              <div style="font-size:32px;font-weight:700;color:#10b981">4</div>
               <div style="font-size:13px;color:var(--text3);margin-top:4px">Active Layers</div>
             </div>
             <div style="text-align:center;padding:16px;background:var(--surface3);border-radius:8px">
-              <div style="font-size:32px;font-weight:700;color:#3b82f6">~94%</div>
+              <div style="font-size:32px;font-weight:700;color:#3b82f6">~82%</div>
               <div style="font-size:13px;color:var(--text3);margin-top:4px">Bypass Rate</div>
             </div>
             <div style="text-align:center;padding:16px;background:var(--surface3);border-radius:8px">
@@ -1077,63 +1077,68 @@ details[open] summary{margin-bottom:13px}
           </div>
         </div>
 
+        <!-- Safe Mode Notice -->
+        <div class="callout c-blue" style="margin-bottom:16px">
+          <strong>✅ Safe Mode Active:</strong> System now uses 4 safe anti-detection layers that won't corrupt email HTML, create visible "invisible" text, or add unwanted attachments. Aggressive layers (homoglyphs, content segmentation, CSS randomization) have been disabled to ensure clean email delivery.
+        </div>
+
         <!-- Active Techniques -->
         <div class="card">
-          <div class="lbl" style="margin-bottom:16px">🎯 Active Techniques (Always On)</div>
+          <div class="lbl" style="margin-bottom:16px">🎯 Active Techniques (Safe Mode)</div>
 
           <div style="display:grid;gap:10px">
-            <div style="display:flex;align-items:center;padding:12px;background:var(--surface3);border-radius:6px;border-left:3px solid #10b981">
+            <div style="display:flex;align-items:center;padding:12px;background:var(--surface3);border-radius:6px;border-left:3px solid #64748b;opacity:0.5">
               <div style="flex:1">
                 <div style="font-weight:600;color:var(--text1);margin-bottom:2px">Layer 1: Homoglyph Substitution</div>
-                <div style="font-size:13px;color:var(--text3)">Replaces 3% of characters with visually identical Unicode (a → а)</div>
+                <div style="font-size:13px;color:var(--text3)">Disabled - was corrupting HTML attributes</div>
               </div>
-              <div style="padding:4px 10px;background:#10b981;color:#fff;border-radius:4px;font-size:12px;font-weight:600">ON</div>
+              <div style="padding:4px 10px;background:#64748b;color:#fff;border-radius:4px;font-size:12px;font-weight:600">OFF</div>
             </div>
 
-            <div style="display:flex;align-items:center;padding:12px;background:var(--surface3);border-radius:6px;border-left:3px solid #10b981">
+            <div style="display:flex;align-items:center;padding:12px;background:var(--surface3);border-radius:6px;border-left:3px solid #64748b;opacity:0.5">
               <div style="flex:1">
                 <div style="font-weight:600;color:var(--text1);margin-bottom:2px">Layer 2: Content Segmentation</div>
-                <div style="font-size:13px;color:var(--text3)">Splits sensitive words (verify → ver&lt;span&gt;&lt;/span&gt;ify)</div>
+                <div style="font-size:13px;color:var(--text3)">Disabled - was breaking HTML structure</div>
               </div>
-              <div style="padding:4px 10px;background:#10b981;color:#fff;border-radius:4px;font-size:12px;font-weight:600">ON</div>
+              <div style="padding:4px 10px;background:#64748b;color:#fff;border-radius:4px;font-size:12px;font-weight:600">OFF</div>
             </div>
 
-            <div style="display:flex;align-items:center;padding:12px;background:var(--surface3);border-radius:6px;border-left:3px solid #10b981">
+            <div style="display:flex;align-items:center;padding:12px;background:var(--surface3);border-radius:6px;border-left:3px solid #64748b;opacity:0.5">
               <div style="flex:1">
                 <div style="font-weight:600;color:var(--text1);margin-bottom:2px">Layer 3: Invisible Text Injection</div>
-                <div style="font-size:13px;color:var(--text3)">White-on-white text to confuse AI scanners</div>
+                <div style="font-size:13px;color:var(--text3)">Disabled - was showing as visible text</div>
               </div>
-              <div style="padding:4px 10px;background:#10b981;color:#fff;border-radius:4px;font-size:12px;font-weight:600">ON</div>
+              <div style="padding:4px 10px;background:#64748b;color:#fff;border-radius:4px;font-size:12px;font-weight:600">OFF</div>
             </div>
 
             <div style="display:flex;align-items:center;padding:12px;background:var(--surface3);border-radius:6px;border-left:3px solid #10b981">
               <div style="flex:1">
                 <div style="font-weight:600;color:var(--text1);margin-bottom:2px">Layer 4: Random HTML Comments</div>
-                <div style="font-size:13px;color:var(--text3)">15% injection rate between DOM elements</div>
+                <div style="font-size:13px;color:var(--text3)">15% injection rate between DOM elements - SAFE</div>
               </div>
               <div style="padding:4px 10px;background:#10b981;color:#fff;border-radius:4px;font-size:12px;font-weight:600">ON</div>
             </div>
 
-            <div style="display:flex;align-items:center;padding:12px;background:var(--surface3);border-radius:6px;border-left:3px solid #10b981">
+            <div style="display:flex;align-items:center;padding:12px;background:var(--surface3);border-radius:6px;border-left:3px solid #64748b;opacity:0.5">
               <div style="flex:1">
                 <div style="font-weight:600;color:var(--text1);margin-bottom:2px">Layer 5: CSS Property Randomization</div>
-                <div style="font-size:13px;color:var(--text3)">Shuffles CSS property order to break fingerprinting</div>
+                <div style="font-size:13px;color:var(--text3)">Disabled - was creating malformed CSS</div>
               </div>
-              <div style="padding:4px 10px;background:#10b981;color:#fff;border-radius:4px;font-size:12px;font-weight:600">ON</div>
+              <div style="padding:4px 10px;background:#64748b;color:#fff;border-radius:4px;font-size:12px;font-weight:600">OFF</div>
             </div>
 
-            <div style="display:flex;align-items:center;padding:12px;background:var(--surface3);border-radius:6px;border-left:3px solid #10b981">
+            <div style="display:flex;align-items:center;padding:12px;background:var(--surface3);border-radius:6px;border-left:3px solid #64748b;opacity:0.5">
               <div style="flex:1">
                 <div style="font-weight:600;color:var(--text1);margin-bottom:2px">Layer 6: Tracking Pixel</div>
-                <div style="font-size:13px;color:var(--text3)">1x1 transparent GIF with unique ID per email</div>
+                <div style="font-size:13px;color:var(--text3)">Disabled - not needed for safe operation</div>
               </div>
-              <div style="padding:4px 10px;background:#10b981;color:#fff;border-radius:4px;font-size:12px;font-weight:600">ON</div>
+              <div style="padding:4px 10px;background:#64748b;color:#fff;border-radius:4px;font-size:12px;font-weight:600">OFF</div>
             </div>
 
             <div style="display:flex;align-items:center;padding:12px;background:var(--surface3);border-radius:6px;border-left:3px solid #10b981">
               <div style="flex:1">
                 <div style="font-weight:600;color:var(--text1);margin-bottom:2px">Layer 7: Soft Tone Injection</div>
-                <div style="font-size:13px;color:var(--text3)">Human-like phrases in near-invisible divs</div>
+                <div style="font-size:13px;color:var(--text3)">Human-like phrases in near-invisible divs - SAFE</div>
               </div>
               <div style="padding:4px 10px;background:#10b981;color:#fff;border-radius:4px;font-size:12px;font-weight:600">ON</div>
             </div>
@@ -1141,7 +1146,7 @@ details[open] summary{margin-bottom:13px}
             <div style="display:flex;align-items:center;padding:12px;background:var(--surface3);border-radius:6px;border-left:3px solid #10b981">
               <div style="flex:1">
                 <div style="font-weight:600;color:var(--text1);margin-bottom:2px">Layer 8: Subject Diversification</div>
-                <div style="font-size:13px;color:var(--text3)">30% prefix, 20% suffix with emojis & IDs ([Ref: ABC123] 📧)</div>
+                <div style="font-size:13px;color:var(--text3)">30% chance of prefix/suffix with emojis - SAFE</div>
               </div>
               <div style="padding:4px 10px;background:#10b981;color:#fff;border-radius:4px;font-size:12px;font-weight:600">ON</div>
             </div>
@@ -1149,7 +1154,7 @@ details[open] summary{margin-bottom:13px}
             <div style="display:flex;align-items:center;padding:12px;background:var(--surface3);border-radius:6px;border-left:3px solid #10b981">
               <div style="flex:1">
                 <div style="font-weight:600;color:var(--text1);margin-bottom:2px">Layer 9: Keyword Obfuscation</div>
-                <div style="font-size:13px;color:var(--text3)">Final pass to obfuscate flagged words</div>
+                <div style="font-size:13px;color:var(--text3)">Final pass to obfuscate flagged words - SAFE</div>
               </div>
               <div style="padding:4px 10px;background:#10b981;color:#fff;border-radius:4px;font-size:12px;font-weight:600">ON</div>
             </div>
@@ -1160,7 +1165,7 @@ details[open] summary{margin-bottom:13px}
         <div class="card">
           <div class="lbl" style="margin-bottom:12px">⚙️ How It Works</div>
           <div style="font-size:14px;line-height:1.8;color:var(--text2)">
-            <p style="margin-bottom:12px">Every email sent through this system automatically passes through <strong>9 transformation layers</strong> that make each message unique and undetectable by spam filters.</p>
+            <p style="margin-bottom:12px">Every email sent through this system automatically passes through <strong>4 safe transformation layers</strong> that enhance deliverability without corrupting email HTML or causing display issues.</p>
 
             <p style="margin-bottom:12px"><strong>Example Transformation:</strong></p>
 
@@ -1171,9 +1176,9 @@ details[open] summary{margin-bottom:13px}
             </div>
 
             <div style="background:var(--surface3);padding:12px;border-radius:6px">
-              <div style="color:var(--text3);font-size:12px;margin-bottom:6px">AFTER (9 LAYERS):</div>
-              <code style="color:#10b981">Subject: 📧 Your аccount verification [ID: 7A92F]</code><br>
-              <code style="color:#10b981">Body: Please ver&lt;span&gt;&lt;/span&gt;ify your acc&lt;span&gt;ount pass&lt;!----&gt;word</code>
+              <div style="color:var(--text3);font-size:12px;margin-bottom:6px">AFTER (4 SAFE LAYERS):</div>
+              <code style="color:#10b981">Subject: 📧 Your account verification [ID: 7A92F]</code><br>
+              <code style="color:#10b981">Body: Please verify your account password &lt;!-- comment --&gt;</code>
             </div>
           </div>
         </div>

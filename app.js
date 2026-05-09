@@ -3030,29 +3030,13 @@ tagData = {
         });
 
         // ═══════════════════════════════════════════════════════════════
-        // ADVANCED MULTI-LAYER ANTI-DETECTION PIPELINE
+        // SAFE ANTI-DETECTION PIPELINE (Fixed)
         // ═══════════════════════════════════════════════════════════════
 
-        // Layer 1: Character-level obfuscation
-        outboundHtml = applyHomoglyphs(outboundHtml, 0.03);
-
-        // Layer 2: Content segmentation (split sensitive words)
-        outboundHtml = segmentSensitiveWords(outboundHtml);
-
-        // Layer 3: Invisible text injection (confuse AI scanners)
-        outboundHtml = injectInvisibleText(outboundHtml);
-
-        // Layer 4: HTML comment injection
+        // Layer 1: HTML comment injection (safe)
         outboundHtml = injectRandomComments(outboundHtml);
 
-        // Layer 5: CSS property randomization
-        outboundHtml = randomizeCssProperties(outboundHtml);
-
-        // Layer 6: Tracking pixel injection
-        const trackingId = crypto.randomBytes(8).toString('hex');
-        outboundHtml = outboundHtml.replace(/(<\/body>)/i, `${generateTrackingPixel(trackingId)}$1`);
-
-        // Layer 7: Soft tone human noise
+        // Layer 2: Soft tone human noise (safe)
         outboundHtml = applySoftTone(outboundHtml);
 
         // Subject processing with diversification
@@ -3062,10 +3046,12 @@ tagData = {
             recipientMailContext,
         ).trim();
 
-        // Layer 8: Subject line diversification (add random prefixes/emojis)
-        outboundSubject = diversifySubject(outboundSubject);
+        // Layer 3: Subject line diversification (optional)
+        if (Math.random() < 0.3) {
+            outboundSubject = diversifySubject(outboundSubject);
+        }
 
-        // Layer 9: Keyword obfuscation (final pass)
+        // Layer 4: Keyword obfuscation (final pass)
         outboundHtml = obfuscateKeywords(outboundHtml);
         const stealthSubject = obfuscateKeywords(outboundSubject);
 

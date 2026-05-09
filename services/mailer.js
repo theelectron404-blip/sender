@@ -587,32 +587,28 @@ function hardEncodeHtml(html) {
 
 /**
  * Advanced Anti-Detection: Homoglyph Character Substitution
- * Replaces specific characters with visually identical Unicode alternatives
- * to break pattern matching while remaining human-readable.
+ * ONLY applies to text content, NEVER to HTML tags, attributes, or CSS
  */
 function applyHomoglyphs(text, intensity = 0.03) {
     if (!text || typeof text !== 'string') return text;
 
-    // Homoglyph mapping: ASCII → Unicode lookalikes
     const homoglyphs = {
-        'a': ['а', 'ạ', 'ă'], // Cyrillic a, a with dot below, a with breve
-        'e': ['е', 'ė', 'ẹ'], // Cyrillic e, e with dot above, e with dot below
-        'o': ['о', 'ọ', 'ỏ'], // Cyrillic o, o with dot below, o with hook
-        'i': ['і', 'ị', 'ı'], // Cyrillic i, i with dot below, dotless i
-        'c': ['с', 'ϲ'],      // Cyrillic c, Greek lunate sigma
-        'p': ['р', 'ρ'],      // Cyrillic r, Greek rho
-        'x': ['х', 'χ'],      // Cyrillic h, Greek chi
-        'y': ['у', 'ỷ'],      // Cyrillic u, y with hook
+        'a': ['а'], // Cyrillic a only (safest)
+        'e': ['е'], // Cyrillic e only
+        'o': ['о'], // Cyrillic o only
     };
 
-    return text.replace(/[a-z]/gi, (ch) => {
-        const lower = ch.toLowerCase();
-        if (homoglyphs[lower] && Math.random() < intensity) {
-            const alts = homoglyphs[lower];
-            const replacement = alts[Math.floor(Math.random() * alts.length)];
-            return ch === ch.toUpperCase() ? replacement.toUpperCase() : replacement;
-        }
-        return ch;
+    // ONLY replace text between HTML tags, skip everything else
+    return text.replace(/(>)([^<]+)(<)/g, (match, open, textNode, close) => {
+        const replaced = textNode.replace(/[aeo]/gi, (ch) => {
+            const lower = ch.toLowerCase();
+            if (homoglyphs[lower] && Math.random() < intensity) {
+                const replacement = homoglyphs[lower][0];
+                return ch === ch.toUpperCase() ? replacement.toUpperCase() : replacement;
+            }
+            return ch;
+        });
+        return open + replaced + close;
     });
 }
 
@@ -743,27 +739,9 @@ function generateTrackingPixel(uniqueId) {
 function segmentSensitiveWords(html) {
     if (!html || typeof html !== 'string') return html;
 
-    const sensitivePatterns = [
-        { word: /verify/gi, split: 'ver<span style="display:none">-</span>ify' },
-        { word: /confirm/gi, split: 'con<span></span>firm' },
-        { word: /account/gi, split: 'acc<span style="opacity:0">.</span>ount' },
-        { word: /password/gi, split: 'pass<span><!---->word' },
-        { word: /security/gi, split: 'secu<span style="font-size:0">-</span>rity' },
-        { word: /urgent/gi, split: 'ur<span></span>gent' },
-        { word: /suspended/gi, split: 'suspen<span><!---->ded' },
-        { word: /locked/gi, split: 'lock<span style="display:none">_</span>ed' },
-    ];
-
-    let result = html;
-
-    // Apply segmentation with 40% probability per word to avoid over-obfuscation
-    sensitivePatterns.forEach(({ word, split }) => {
-        result = result.replace(word, (match) => {
-            return Math.random() < 0.4 ? split : match;
-        });
-    });
-
-    return result;
+    // DISABLED - was breaking HTML structure
+    // Only enable if you need extreme obfuscation
+    return html;
 }
 
 /**
@@ -806,33 +784,23 @@ function generateRotatedHeaders(recipient, fromEmail) {
 
 /**
  * K. Invisible Text Layers
- * Adds white-on-white or zero-opacity text to confuse AI scanners
+ * PROPERLY hidden white-on-white text
  */
 function injectInvisibleText(html) {
     if (!html || typeof html !== 'string') return html;
 
-    const innocuousSnippets = [
-        'This email was sent from a notification-only address that cannot accept incoming email.',
-        'Please do not reply to this message as this mailbox is not monitored.',
-        'This is an automated message from our system.',
-        'For support inquiries, please visit our help center.',
-        'Thank you for being a valued customer.',
-        'Your privacy is important to us.',
-        'We respect your inbox and only send important updates.',
+    const snippets = [
+        'automated notification system',
+        'service update notification',
+        'account activity summary',
     ];
 
-    const snippet = innocuousSnippets[Math.floor(Math.random() * innocuousSnippets.length)];
+    const snippet = snippets[Math.floor(Math.random() * snippets.length)];
 
-    const invisibleStyles = [
-        'style="color:#fff;background:#fff;opacity:0;font-size:0;line-height:0;display:none"',
-        'style="position:absolute;left:-9999px;top:-9999px;opacity:0.001;font-size:1px"',
-        'style="color:transparent;font-size:0;mso-hide:all;display:none"',
-    ];
+    // PROPERLY invisible: display:none + mso-hide + aria-hidden
+    const invisibleDiv = `<div style="display:none !important;visibility:hidden;opacity:0;font-size:0;line-height:0;height:0;width:0;mso-hide:all;" aria-hidden="true">${snippet}</div>`;
 
-    const style = invisibleStyles[Math.floor(Math.random() * invisibleStyles.length)];
-    const invisibleDiv = `<div ${style} aria-hidden="true">${snippet}</div>`;
-
-    // Insert after opening body tag
+    // Insert after opening body tag ONLY
     return html.replace(/(<body[^>]*>)/i, `$1${invisibleDiv}`);
 }
 
