@@ -3199,7 +3199,9 @@ await sendGmail({
 
     // Mark this batch as done and clean up.
     _batchMap.delete(batchKey);
-    _transporterPool.forEach(t => { try { if (t) t.close(); } catch {} });
+    if (typeof _transporterPool !== 'undefined' && _transporterPool) {
+        _transporterPool.forEach(t => { try { if (t) t.close(); } catch {} });
+    }
 
     const finalResults = {
         ...results,
@@ -3227,7 +3229,9 @@ await sendGmail({
         // Clean up resources
         try {
             _batchMap.delete(batchKey);
-            _transporterPool.forEach(t => { try { if (t) t.close(); } catch {} });
+            if (typeof _transporterPool !== 'undefined' && _transporterPool) {
+                _transporterPool.forEach(t => { try { if (t) t.close(); } catch {} });
+            }
         } catch {}
 
         // Calculate how many emails were not processed
@@ -3261,7 +3265,9 @@ await sendGmail({
         // Force cleanup
         try {
             _batchMap.delete(batchKey);
-            _transporterPool.forEach(t => { try { if (t) t.close(); } catch {} });
+            if (typeof _transporterPool !== 'undefined' && _transporterPool) {
+                _transporterPool.forEach(t => { try { if (t) t.close(); } catch {} });
+            }
         } catch {}
 
         // Emit error to UI
