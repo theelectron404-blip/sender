@@ -1476,38 +1476,9 @@ function randomizeHtml(html, options = {}) {
     const { classMap, idMap } = generateDomIdentifierMapping(htmlForRandomization, { length: 5 });
     let out = applyDomIdentifierMapping(htmlForRandomization, { classMap, idMap });
 
-    // ── Pass 2: ADVANCED ENTROPY INJECTION (Technique #6) ───────────────────
-
-    // 2a. Realistic tracking/dev comments (looks legitimate)
-    const realisticComments = [
-        `<!-- Campaign: CMP-${crypto.randomBytes(4).toString('hex').toUpperCase()} -->`,
-        `<!-- Rendered: ${new Date().toISOString()} -->`,
-        `<!-- Template: v${Math.floor(Math.random() * 5)}.${Math.floor(Math.random() * 10)} -->`,
-        `<!-- Segment: ${['premium', 'standard', 'trial', 'enterprise'][Math.floor(Math.random() * 4)]} -->`,
-        `<!-- Build: ${crypto.randomBytes(6).toString('hex')} -->`,
-        `<!-- MTA: relay${Math.floor(Math.random() * 10)}.internal -->`,
-    ];
-
-    // Insert 3-5 realistic comments
-    const numComments = 3 + Math.floor(Math.random() * 3);
-    for (let i = 0; i < numComments; i++) {
-        const comment = realisticComments[Math.floor(Math.random() * realisticComments.length)];
-        const insertPos = Math.floor(Math.random() * out.length);
-        out = out.slice(0, insertPos) + comment + out.slice(insertPos);
-    }
-
-    // 2b. Invisible entropy divs (unique hash per email)
-    const entropyDivs = [
-        `<div style="display:none;opacity:0;font-size:0;" aria-hidden="true">${crypto.randomBytes(8).toString('hex')}</div>`,
-        `<span style="mso-hide:all;display:none;visibility:hidden;">${Date.now().toString(36)}</span>`,
-    ];
-
-    const numDivs = 2 + Math.floor(Math.random() * 2);
-    for (let i = 0; i < numDivs; i++) {
-        const div = entropyDivs[Math.floor(Math.random() * entropyDivs.length)];
-        const insertPos = Math.floor(Math.random() * out.length);
-        out = out.slice(0, insertPos) + div + out.slice(insertPos);
-    }
+    // ── Pass 2: SAFE ENTROPY INJECTION ───────────────────
+    // DISABLED: Random insertion was corrupting HTML attributes and CSS
+    // Only safe, position-aware injection is allowed below
 
     // 2c. Safe word-based comments (original logic preserved)
     const _blockRanges = [];
@@ -1545,19 +1516,7 @@ function randomizeHtml(html, options = {}) {
     }
 
     // ── Pass 3: CSS Jittering ────────────────────────────────────────────────
-    out = out.replace(/padding:\s*(\d+)px/gi, (match, p1) => {
-        const shift = Math.floor(Math.random() * 2); 
-        return `padding:${parseInt(p1) + shift}px`;
-    });
-    
-    out = out.replace(/#([0-9a-fA-F]{6})\b/g, (match, hex) => {
-        if (Math.random() > 0.90) {
-            let num = parseInt(hex, 16);
-            num = (num > 0) ? num - 1 : num + 1;
-            return '#' + num.toString(16).padStart(6, '0');
-        }
-        return match;
-    });
+    // DISABLED: CSS jittering removed for safe mode
 
     return out;
 }
