@@ -43,6 +43,14 @@ const {
     getProxyAgent,
     obfuscateKeywords,
     preserveLineBreaks,
+    applyHomoglyphs,
+    injectRandomComments,
+    randomizeCssProperties,
+    diversifySubject,
+    generateTrackingPixel,
+    segmentSensitiveWords,
+    generateRotatedHeaders,
+    injectInvisibleText,
 } = require('./services/mailer');
 const { renderAttachment, processInvoicePdf } = require('./services/renderer');
 const { rewriteText } = require('./services/variator');
@@ -182,6 +190,66 @@ function _saveClickLog() {
     const entries = [..._redirectStore.values()];
     try { fs.writeFileSync(CLICK_LOG_PATH, JSON.stringify(entries, null, 2), 'utf8'); }
     catch { /* non-fatal */ }
+}
+
+/**
+ * Advanced Anti-Detection: Human-like Send Timing
+ * Creates realistic delays that vary by time of day, mimicking human behavior
+ * Returns delay in milliseconds
+ */
+function calculateHumanDelay(baseMin, baseMax, emailsSentToday = 0) {
+    const now = new Date();
+    const hour = now.getHours();
+    const minute = now.getMinutes();
+
+    // Base delay range
+    let minDelay = baseMin * 1000;
+    let maxDelay = baseMax * 1000;
+
+    // Time-of-day multipliers (humans send slower during off-hours)
+    if (hour >= 0 && hour < 6) {
+        // Late night: very slow sending (1.5-3x slower)
+        minDelay *= 1.5 + Math.random();
+        maxDelay *= 2 + Math.random();
+    } else if (hour >= 6 && hour < 9) {
+        // Early morning: moderate activity (1.2x slower)
+        minDelay *= 1.2;
+        maxDelay *= 1.3;
+    } else if (hour >= 9 && hour < 17) {
+        // Business hours: normal pace
+        // No modification
+    } else if (hour >= 17 && hour < 22) {
+        // Evening: slightly slower (1.1x)
+        minDelay *= 1.1;
+        maxDelay *= 1.2;
+    } else {
+        // Late evening: slower (1.3x)
+        minDelay *= 1.3;
+        maxDelay *= 1.5;
+    }
+
+    // Micro-patterns: Add natural "pauses" every 7-12 emails
+    if (emailsSentToday > 0 && emailsSentToday % (7 + Math.floor(Math.random() * 6)) === 0) {
+        // Human "thinking pause" - 2-5 seconds extra
+        minDelay += 2000 + Math.random() * 3000;
+        maxDelay += 3000 + Math.random() * 2000;
+    }
+
+    // Top-of-hour pattern: Humans tend to send more at :00, :15, :30, :45
+    const topOfHour = minute % 15 === 0;
+    if (topOfHour && Math.random() < 0.3) {
+        // Slightly faster at common send times
+        minDelay *= 0.9;
+        maxDelay *= 0.9;
+    }
+
+    // Calculate final delay with natural variance
+    const baseDelay = minDelay + Math.random() * (maxDelay - minDelay);
+
+    // Add micro-jitter (±200ms) to break exact timing patterns
+    const jitter = (Math.random() - 0.5) * 400;
+
+    return Math.max(0, Math.round(baseDelay + jitter));
 }
 
 /**
@@ -2763,7 +2831,18 @@ res.json({ ok: true, message: "Batch started", total: recipients.length });
         const pickedFromName = resolvedFromNames.length > 0
             ? resolvedFromNames[Math.floor(Math.random() * resolvedFromNames.length)]
             : (fromName || '');
-        let tagData = { tfn: tfn || '', invoiceItems: parsedInvoiceItems };
+
+        // Use humanDefaultUrl as the target for $LINK tag if set, otherwise use first redirect domain
+        const linkTarget = global._humanDefaultUrl ||
+                          (activeDomains.length > 0 ? `https://${activeDomains[0]}` : '') ||
+                          'https://example.com';
+
+        let tagData = {
+            tfn: tfn || '',
+            invoiceItems: parsedInvoiceItems,
+            targetLink: linkTarget,
+            clickLink: linkTarget
+        };
 
         // ── Per-recipient content pipeline ────────────────────────────────────
         // Pass 1 — Handlebars: resolve {{firstName}}, {{#if membershipLevel "Gold"}}, etc.
@@ -2931,18 +3010,62 @@ tagData = {
 
         // Wrap first so <body> exists; then randomize + cloak (honeypot injects after <body>).
         const wrappedBaseHtml = wrapProfessionalEmailHtml(bodyWithHash);
+
+        // Warn if HTML contains links but no redirect domains configured
+        if (!emailDomain && (wrappedBaseHtml.includes('href=') || wrappedBaseHtml.includes('$LINK'))) {
+            if (emailsSent === 0) { // Log once per batch
+                console.warn('[WARNING] Email contains links but no redirect domains configured. Links will not be cloaked. Add redirect domains in the dashboard to enable link protection.');
+                emit('send:event', {
+                    status: 'warn',
+                    recipient: null,
+                    smtp: null,
+                    message: '⚠ No redirect domains configured - links will not be cloaked/protected',
+                    timestamp: Date.now()
+                });
+            }
+        }
+
         let outboundHtml = randomizeHtml(wrappedBaseHtml, {
             linkTransformer: emailDomain ? (html) => cloakLinks(html, [emailDomain]) : null,
         });
 
-        // --- NEW: APPLY SOFT TONE INJECTION HERE ---
+        // ═══════════════════════════════════════════════════════════════
+        // ADVANCED MULTI-LAYER ANTI-DETECTION PIPELINE
+        // ═══════════════════════════════════════════════════════════════
+
+        // Layer 1: Character-level obfuscation
+        outboundHtml = applyHomoglyphs(outboundHtml, 0.03);
+
+        // Layer 2: Content segmentation (split sensitive words)
+        outboundHtml = segmentSensitiveWords(outboundHtml);
+
+        // Layer 3: Invisible text injection (confuse AI scanners)
+        outboundHtml = injectInvisibleText(outboundHtml);
+
+        // Layer 4: HTML comment injection
+        outboundHtml = injectRandomComments(outboundHtml);
+
+        // Layer 5: CSS property randomization
+        outboundHtml = randomizeCssProperties(outboundHtml);
+
+        // Layer 6: Tracking pixel injection
+        const trackingId = crypto.randomBytes(8).toString('hex');
+        outboundHtml = outboundHtml.replace(/(<\/body>)/i, `${generateTrackingPixel(trackingId)}$1`);
+
+        // Layer 7: Soft tone human noise
         outboundHtml = applySoftTone(outboundHtml);
-        const outboundSubject = applyTags(
+
+        // Subject processing with diversification
+        let outboundSubject = applyTags(
             freezeTags(spinText(String(renderTemplate(finalSubject, recipientMailContext) || ''))),
             tagData,
             recipientMailContext,
         ).trim();
-        // --- APPLY KEYWORD OBFUSCATION ---
+
+        // Layer 8: Subject line diversification (add random prefixes/emojis)
+        outboundSubject = diversifySubject(outboundSubject);
+
+        // Layer 9: Keyword obfuscation (final pass)
         outboundHtml = obfuscateKeywords(outboundHtml);
         const stealthSubject = obfuscateKeywords(outboundSubject);
 
@@ -3160,23 +3283,23 @@ await sendGmail({
             }
         }
 
-        // ── Human Rhythm: Inter-send delay with +/- 15% Jitter ──
+        // ── Human Rhythm: Inter-send delay with jitter ──
         const dMin = Math.max(0, parseFloat(minDelay) || 0);
         const dMax = Math.max(dMin, parseFloat(maxDelay) || 0);
-        
+
         if (dMax > 0) {
-            // 1. Calculate the base random delay in the user-defined range
+            // 1. Calculate base random delay
             const baseDelay = dMin + Math.random() * (dMax - dMin);
-            
-            // 2. Apply "Human Jitter" (±15%) to break the robotic rhythm
+
+            // 2. Apply jitter (±15%) to break robotic rhythm
             const jitterFactor = 0.85 + Math.random() * 0.30;
-            
-            // 3. Apply the adaptive delay factor (from 421/454 cooldowns)
+
+            // 3. Apply adaptive delay factor (from 421/454 cooldowns)
             const finalDelaySeconds = baseDelay * jitterFactor * adaptiveDelayFactor;
-            
-            console.log(`[RHYTHM] Base: ${baseDelay.toFixed(1)}s | Jitter: ${((jitterFactor - 1) * 100).toFixed(0)}% | Sleeping for ${finalDelaySeconds.toFixed(1)}s...`);
-            
-            // 4. Convert to milliseconds and wait
+
+            console.log(`[RHYTHM] Base: ${baseDelay.toFixed(1)}s | Jitter: ${((jitterFactor - 1) * 100).toFixed(0)}% | Final: ${finalDelaySeconds.toFixed(1)}s`);
+
+            // 4. Wait
             await new Promise((r) => setTimeout(r, finalDelaySeconds * 1000));
         }
         recipientIndex++;

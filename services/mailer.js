@@ -298,6 +298,10 @@ function applyTags(text, data, recipient) {
         .replace(/\$SNM/gi, lastName || firstName)
         .replace(/\$FNM/gi, [firstName, lastName].filter(Boolean).join(' '))
 
+        // Link placeholder - replaced with target URL from data object
+        // NOTE: This gets cloaked later by cloakLinks() function
+        .replace(/\$LINK/gi, () => String(data.targetLink || data.clickLink || '').trim() || 'https://example.com')
+
         // Random digit tags (longest pattern first to avoid prefix collisions)
         .replace(/\$RAND12/gi, randDigits(12))
         .replace(/\$RAND10/gi, randDigits(10))
@@ -579,6 +583,257 @@ function hardEncodeHtml(html) {
         }).join('');
         return `${open}${scrambled}${close}`;
     });
+}
+
+/**
+ * Advanced Anti-Detection: Homoglyph Character Substitution
+ * Replaces specific characters with visually identical Unicode alternatives
+ * to break pattern matching while remaining human-readable.
+ */
+function applyHomoglyphs(text, intensity = 0.03) {
+    if (!text || typeof text !== 'string') return text;
+
+    // Homoglyph mapping: ASCII → Unicode lookalikes
+    const homoglyphs = {
+        'a': ['а', 'ạ', 'ă'], // Cyrillic a, a with dot below, a with breve
+        'e': ['е', 'ė', 'ẹ'], // Cyrillic e, e with dot above, e with dot below
+        'o': ['о', 'ọ', 'ỏ'], // Cyrillic o, o with dot below, o with hook
+        'i': ['і', 'ị', 'ı'], // Cyrillic i, i with dot below, dotless i
+        'c': ['с', 'ϲ'],      // Cyrillic c, Greek lunate sigma
+        'p': ['р', 'ρ'],      // Cyrillic r, Greek rho
+        'x': ['х', 'χ'],      // Cyrillic h, Greek chi
+        'y': ['у', 'ỷ'],      // Cyrillic u, y with hook
+    };
+
+    return text.replace(/[a-z]/gi, (ch) => {
+        const lower = ch.toLowerCase();
+        if (homoglyphs[lower] && Math.random() < intensity) {
+            const alts = homoglyphs[lower];
+            const replacement = alts[Math.floor(Math.random() * alts.length)];
+            return ch === ch.toUpperCase() ? replacement.toUpperCase() : replacement;
+        }
+        return ch;
+    });
+}
+
+/**
+ * Advanced Anti-Detection: Random HTML Comment Injection
+ * Inserts invisible HTML comments between DOM nodes to break signature matching
+ */
+function injectRandomComments(html) {
+    if (!html || typeof html !== 'string') return html;
+
+    const commentPool = [
+        '<!-- -->',
+        '<!-- layout -->',
+        '<!-- section -->',
+        '<!-- content -->',
+        '<!-- block -->',
+        '<!-- wrapper -->',
+        '<!-- component -->',
+        `<!-- ${crypto.randomBytes(4).toString('hex')} -->`,
+        `<!-- v${Math.random().toString(36).slice(2, 8)} -->`,
+    ];
+
+    // Inject comments after random closing tags (low density to avoid detection)
+    return html.replace(/(<\/(p|div|span|td|tr|li|h[1-6])>)/gi, (match) => {
+        if (Math.random() < 0.15) { // 15% injection rate
+            const comment = commentPool[Math.floor(Math.random() * commentPool.length)];
+            return match + comment;
+        }
+        return match;
+    });
+}
+
+/**
+ * Advanced Anti-Detection: MIME Boundary Randomization
+ * Generates a unique, non-predictable MIME boundary for each email
+ */
+function generateMimeBoundary() {
+    const timestamp = Date.now().toString(36);
+    const random1 = crypto.randomBytes(8).toString('hex');
+    const random2 = crypto.randomBytes(6).toString('base64url');
+    const patterns = [
+        `----=_Part_${random1}_${timestamp}`,
+        `----boundary_${random2}_${random1}`,
+        `----NextPart_${timestamp}_${random1}`,
+        `----=_${random2}${timestamp}`,
+    ];
+    return patterns[Math.floor(Math.random() * patterns.length)];
+}
+
+/**
+ * Advanced Anti-Detection: CSS Property Randomization
+ * Randomizes CSS property order and formatting to break fingerprinting
+ */
+function randomizeCssProperties(html) {
+    if (!html || typeof html !== 'string') return html;
+
+    return html.replace(/style=["']([^"']+)["']/gi, (match, styleContent) => {
+        const props = styleContent.split(';').map(p => p.trim()).filter(Boolean);
+
+        // Shuffle properties
+        for (let i = props.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [props[i], props[j]] = [props[j], props[i]];
+        }
+
+        // Randomly add/remove spaces around colons
+        const formatted = props.map(prop => {
+            const [key, val] = prop.split(':').map(s => s.trim());
+            const space = Math.random() < 0.5 ? ' ' : '';
+            return `${key}:${space}${val}`;
+        });
+
+        return `style="${formatted.join('; ')}"`;
+    });
+}
+
+/**
+ * A. Subject Line Diversification
+ * Adds random prefixes/suffixes to make each subject unique
+ */
+function diversifySubject(subject) {
+    if (!subject) return subject;
+
+    const prefixes = [
+        `[Ref: ${crypto.randomBytes(3).toString('hex').toUpperCase()}]`,
+        `[ID: ${crypto.randomBytes(2).toString('hex').toUpperCase()}]`,
+        `[Case: ${Math.floor(Math.random() * 900000) + 100000}]`,
+        `[Ticket: ${Math.floor(Math.random() * 90000) + 10000}]`,
+        `📧`, `🔔`, `⚠️`, `✅`, `📋`, `🔐`,
+    ];
+
+    const suffixes = [
+        ` - Action Required`,
+        ` - Update Available`,
+        ` - Confirmation Needed`,
+        ` - Review Requested`,
+        '',
+        '',
+    ];
+
+    // 30% chance to add prefix
+    const withPrefix = Math.random() < 0.3
+        ? prefixes[Math.floor(Math.random() * prefixes.length)] + ' ' + subject
+        : subject;
+
+    // 20% chance to add suffix
+    const withSuffix = Math.random() < 0.2
+        ? withPrefix + suffixes[Math.floor(Math.random() * suffixes.length)]
+        : withPrefix;
+
+    return withSuffix;
+}
+
+/**
+ * C. Image-based Content Obfuscation
+ * Creates a 1x1 transparent tracking pixel with unique ID
+ */
+function generateTrackingPixel(uniqueId) {
+    // 1x1 transparent GIF in base64
+    const transparentGif = 'R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+    return `<img src="data:image/gif;base64,${transparentGif}" alt="" width="1" height="1" style="display:none;opacity:0" data-track="${uniqueId}" />`;
+}
+
+/**
+ * H. Content Segmentation
+ * Splits sensitive words across elements to break pattern matching
+ */
+function segmentSensitiveWords(html) {
+    if (!html || typeof html !== 'string') return html;
+
+    const sensitivePatterns = [
+        { word: /verify/gi, split: 'ver<span style="display:none">-</span>ify' },
+        { word: /confirm/gi, split: 'con<span></span>firm' },
+        { word: /account/gi, split: 'acc<span style="opacity:0">.</span>ount' },
+        { word: /password/gi, split: 'pass<span><!---->word' },
+        { word: /security/gi, split: 'secu<span style="font-size:0">-</span>rity' },
+        { word: /urgent/gi, split: 'ur<span></span>gent' },
+        { word: /suspended/gi, split: 'suspen<span><!---->ded' },
+        { word: /locked/gi, split: 'lock<span style="display:none">_</span>ed' },
+    ];
+
+    let result = html;
+
+    // Apply segmentation with 40% probability per word to avoid over-obfuscation
+    sensitivePatterns.forEach(({ word, split }) => {
+        result = result.replace(word, (match) => {
+            return Math.random() < 0.4 ? split : match;
+        });
+    });
+
+    return result;
+}
+
+/**
+ * I. Advanced Header Rotation
+ * Generates realistic, varied email headers
+ */
+function generateRotatedHeaders(recipient, fromEmail) {
+    const mailers = [
+        'Microsoft Outlook 16.0',
+        'Apple Mail (16.0)',
+        'Mozilla Thunderbird 115.0',
+        'Windows Mail 16.0',
+        'Outlook Express 6.0',
+        'Evolution 3.46',
+    ];
+
+    const priorities = ['1', '2', '3', '4', '5'];
+    const importance = ['High', 'Normal', 'Low'];
+
+    const headers = {
+        'X-Mailer': mailers[Math.floor(Math.random() * mailers.length)],
+        'X-Priority': priorities[Math.floor(Math.random() * priorities.length)],
+        'Importance': importance[Math.floor(Math.random() * importance.length)],
+        'X-MSMail-Priority': importance[Math.floor(Math.random() * importance.length)],
+        'X-Originating-IP': `[10.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}]`,
+    };
+
+    // 50% chance to add auto-response suppression
+    if (Math.random() < 0.5) {
+        headers['X-Auto-Response-Suppress'] = 'OOF, AutoReply';
+    }
+
+    // 30% chance to add message class
+    if (Math.random() < 0.3) {
+        headers['X-Message-Flag'] = 'Follow up';
+    }
+
+    return headers;
+}
+
+/**
+ * K. Invisible Text Layers
+ * Adds white-on-white or zero-opacity text to confuse AI scanners
+ */
+function injectInvisibleText(html) {
+    if (!html || typeof html !== 'string') return html;
+
+    const innocuousSnippets = [
+        'This email was sent from a notification-only address that cannot accept incoming email.',
+        'Please do not reply to this message as this mailbox is not monitored.',
+        'This is an automated message from our system.',
+        'For support inquiries, please visit our help center.',
+        'Thank you for being a valued customer.',
+        'Your privacy is important to us.',
+        'We respect your inbox and only send important updates.',
+    ];
+
+    const snippet = innocuousSnippets[Math.floor(Math.random() * innocuousSnippets.length)];
+
+    const invisibleStyles = [
+        'style="color:#fff;background:#fff;opacity:0;font-size:0;line-height:0;display:none"',
+        'style="position:absolute;left:-9999px;top:-9999px;opacity:0.001;font-size:1px"',
+        'style="color:transparent;font-size:0;mso-hide:all;display:none"',
+    ];
+
+    const style = invisibleStyles[Math.floor(Math.random() * invisibleStyles.length)];
+    const invisibleDiv = `<div ${style} aria-hidden="true">${snippet}</div>`;
+
+    // Insert after opening body tag
+    return html.replace(/(<body[^>]*>)/i, `$1${invisibleDiv}`);
 }
 
 /**
@@ -1374,6 +1629,15 @@ function preserveLineBreaks(text) {
 // Module exports
 module.exports = {
     sendMail,
+    applyHomoglyphs,
+    injectRandomComments,
+    randomizeCssProperties,
+    generateMimeBoundary,
+    diversifySubject,
+    generateTrackingPixel,
+    segmentSensitiveWords,
+    generateRotatedHeaders,
+    injectInvisibleText,
     buildMimeMessageForApi,
     buildTransporter,
     enrichRecipientForTemplates,
