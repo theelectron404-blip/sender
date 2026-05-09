@@ -2481,6 +2481,7 @@ res.json({ ok: true, message: "Batch started", total: recipients.length });
     const limit = Math.max(1, parseInt(rotateLimit, 10) || 5);
     const results = { success: 0, failed: 0, logs: [] };
 
+    try {
     // Load blacklist once per batch — addresses added by the bounce monitor
     // during a long batch will not take effect until the next batch, which is
     // the correct and expected behaviour.
@@ -3199,7 +3200,7 @@ await sendGmail({
     // Mark this batch as done and clean up.
     _batchMap.delete(batchKey);
     _transporterPool.forEach(t => { try { if (t) t.close(); } catch {} });
-    
+
     const finalResults = {
         ...results,
         rotation: rotationReport,
@@ -3209,16 +3210,72 @@ await sendGmail({
             timestamp: Date.now()
         }
     };
-    
-    emit('batch:complete', { 
-        success: results.success, 
-        failed: results.failed, 
-        total: recipients.length, 
+
+    emit('batch:complete', {
+        success: results.success,
+        failed: results.failed,
+        total: recipients.length,
         rotation: rotationReport,
-        timestamp: Date.now() 
+        timestamp: Date.now()
     });
-    
-    })(); // Closes the background function
+
+    } catch (err) {
+        // CRITICAL: Catch any unhandled errors in batch send loop
+        console.error('[BATCH] Fatal error during batch send:', err);
+        console.error('[BATCH] Stack trace:', err.stack);
+
+        // Clean up resources
+        try {
+            _batchMap.delete(batchKey);
+            _transporterPool.forEach(t => { try { if (t) t.close(); } catch {} });
+        } catch {}
+
+        // Calculate how many emails were not processed
+        const notProcessed = recipients.length - results.success - results.failed;
+
+        // Emit completion event with error info
+        emit('batch:complete', {
+            success: results.success,
+            failed: results.failed + notProcessed,
+            total: recipients.length,
+            error: err.message,
+            crashed: true,
+            timestamp: Date.now()
+        });
+
+        // Log the error for debugging
+        emit('send:event', {
+            status: 'failed',
+            recipient: null,
+            smtp: null,
+            message: `[CRITICAL ERROR] Batch crashed: ${err.message}`,
+            timestamp: Date.now()
+        });
+    }
+
+    })().catch(err => {
+        // CRITICAL: Final safety net for unhandled promise rejections
+        console.error('[BATCH] Unhandled promise rejection in batch send:', err);
+        console.error('[BATCH] Stack trace:', err.stack);
+
+        // Force cleanup
+        try {
+            _batchMap.delete(batchKey);
+            _transporterPool.forEach(t => { try { if (t) t.close(); } catch {} });
+        } catch {}
+
+        // Emit error to UI
+        if (io && batchSocketId) {
+            io.to(batchSocketId).emit('batch:complete', {
+                success: 0,
+                failed: recipients.length,
+                total: recipients.length,
+                error: 'Batch crashed: ' + err.message,
+                crashed: true,
+                timestamp: Date.now()
+            });
+        }
+    }); // Closes the background function
 }); // Closes the app.post route
 
 
